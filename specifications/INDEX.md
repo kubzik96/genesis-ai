@@ -17,7 +17,7 @@
 | ID | Название | Статус | Revision | Задачи | Дата |
 |---|---|---|---|---|---|
 | [S-0001](S-0001-Genesis-One-Window-Execution-Spike.md) | Genesis One-Window Execution Spike | Approved | 1 | T-009 | 2026-07-24 |
-| [S-0002](S-0002-Genesis-Secure-GitHub-Broker-MVP.md) | Genesis Secure GitHub Broker MVP | In Review | 1 | T-010 | 2026-07-24 |
+| [S-0002](S-0002-Genesis-Secure-GitHub-Broker-MVP.md) | Genesis Secure GitHub Broker MVP | Approved | 1 | T-010 | 2026-07-24 |
 
 ## Следующий номер
 

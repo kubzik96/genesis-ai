@@ -6,12 +6,12 @@
 |---|---|
 | **ID** | S-0002 |
 | **Название** | Genesis Secure GitHub Broker MVP |
-| **Статус** | In Review |
+| **Статус** | Approved |
 | **Revision** | 1 |
 | **Автор** | Grok — Chief Architect |
 | **Дата создания** | 2026-07-24 |
-| **Дата утверждения** | — |
-| **Утвердил** | — |
+| **Дата утверждения** | 2026-07-24 |
+| **Утвердил** | CEO Genesis AI |
 | **Execution Authorization** | NOT_GRANTED |
 | **Связанные задачи** | T-010 — Genesis Secure GitHub Broker MVP |
 | **Родительская Specification** | S-0001 Revision 1 |
@@ -462,6 +462,7 @@ bridge/QUEUE.md: �� → в
 |---|---|---|---|
 | 1 | 2026-07-24 | Grok — Chief Architect | Создан In Review; Path B2; Cloudflare Workers; Issue Assignment API |
 | 1 | 2026-07-24 | Grok — Chief Architect | Durable Object (не KV) как authoritative idempotency; точная семантика PENDING/SUCCEEDED/FAILED/UNKNOWN; rate limits; lifecycle T-010 |
+| 1 | 2026-07-24 | CEO Genesis AI | CEO Approval; Specification approved; Execution Authorization remains NOT_GRANTED |
 
 ---
 
