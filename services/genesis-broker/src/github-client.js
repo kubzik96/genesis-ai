@@ -1,4 +1,4 @@
-import { COPILOT_BOT, FIXED_BASE_BRANCH, FIXED_OWNER, FIXED_REPO, GITHUB_API_HOST } from './constants.js';
+import { COPILOT_BOT, FIXED_BASE_BRANCH, FIXED_FULL_NAME, FIXED_OWNER, FIXED_REPO, GITHUB_API_HOST } from './constants.js';
 
 /**
  * Minimal GitHub API client. Host and repo are fixed — no generic proxy.
@@ -50,13 +50,23 @@ export function createGithubClient({ pat, fetchImpl = fetch }) {
     },
 
     /**
-     * Path B2: Issue Assignment API — assign Copilot bot (single call).
+     * Path B2: Issue Assignment API — assign Copilot bot with agent_assignment (single call).
+     * Repository and base branch are fixed constants; clients cannot override (S-0002 §4.3).
      */
     async assignCopilot(issueNumber) {
       return gh(
         'POST',
         `/repos/${FIXED_OWNER}/${FIXED_REPO}/issues/${issueNumber}/assignees`,
-        { assignees: [COPILOT_BOT] },
+        {
+          assignees: [COPILOT_BOT],
+          agent_assignment: {
+            target_repo: FIXED_FULL_NAME,
+            base_branch: FIXED_BASE_BRANCH,
+            custom_instructions: '',
+            custom_agent: '',
+            model: '',
+          },
+        },
       );
     },
 
