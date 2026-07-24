@@ -39,7 +39,26 @@ QUEUE.md содержит очередь всех активных и ожида
 
 T-009 готова только к preflight. Approved Specification: S-0001 Revision 1. Execution Authorization: NOT_GRANTED. Реализация запрещена до отдельного решения CEO.
 
-T-010 выполняется по Approved Specification S-0002 Revision 1. Execution Authorization: GRANTED — Stage 1 CODE_ONLY. Разрешены только code, unit/mocked/negative tests и документация без секретов в разрешённых путях. Cloudflare deployment, PAT, secrets, Dify integration и live GitHub write-операции запрещены до отдельного CEO Authorization.
+T-010 выполняется по Approved Specification S-0002 Revision 1. Status: **WORKING**.
+
+- **Stage 1 CODE_ONLY:** ACCEPTED
+- **Accepted exact HEAD:** `6393c434d139657ea1deb8835cf8e6d523334a74`
+- **Tests:** passed 60; failed 0; skipped 0 (`node --test tests/**/*.test.js`, Node.js v24.18.0)
+- **Stage 2 DEPLOY_READONLY:** GRANTED (authorization record only; deployment NOT_STARTED)
+- **PAT:** NOT_CREATED
+- **Worker Secrets:** NOT_CREATED
+- **Live writes:** NOT_AUTHORIZED
+- **Dify integration:** NOT_AUTHORIZED
+- **PR #11 modification / merge:** NOT_AUTHORIZED
+
+Sequence before any deployment:
+
+1. independent review of the Stage 2 authorization-record PR;
+2. separate CEO merge authorization;
+3. merge of the authorization record to `main`;
+4. separate CEO **EXECUTE DEPLOY** command.
+
+Until EXECUTE DEPLOY: Cloudflare deployment, PAT, Worker Secrets, live GitHub writes, and Dify integration remain forbidden. T-010 remains **WORKING** (not DONE).
 
 ---
 
@@ -69,4 +88,4 @@ T-007 и T-008 закрыты отдельным решением CEO после
 - Каждая задача имеет ID и статус из указанного списка;
 - Статус обновляется перед началом и после завершения работы;
 - Если задача переходит в BLOCKED, указывается причина;
-- QUEUE.md обновляется �� том же commit, что и результат работы.
+- QUEUE.md обновляется в том же commit, что и результат работы.
