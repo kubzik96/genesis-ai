@@ -14,7 +14,7 @@
  * Crash-safe idempotency:
  *   • PENDING is written to DO storage BEFORE the GitHub call.
  *   • After GitHub success, SUCCEEDED + updated timestamps + updated run
- *     state are written as one atomic batch put (storage.put(Map)) so a
+ *     state are written as one atomic batch put (storage.put(Object)) so a
  *     crash cannot leave SUCCEEDED while run_id still allows a duplicate.
  *   • UNKNOWN is written after an indeterminate result; reconstruction finds
  *     it and blocks retry without another GitHub call.
@@ -202,7 +202,7 @@ export class BrokerDurableObject {
       } else if (operation === 'assign_copilot') {
         batchEntries.push([`run:${runId}`, { ...runState, assign_copilot: true }]);
       }
-      await storage.put(new Map(batchEntries));
+      await storage.put(Object.fromEntries(batchEntries));
       return this._json({ status: 200, body: result.safeResult, githubCalled: true });
     }
 

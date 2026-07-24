@@ -25,7 +25,9 @@ import { IDEM_STATES } from '../src/constants.js';
 
 /**
  * Async key/value store mirroring the Cloudflare DO storage API.
- * Supports both single-key put(key, value) and batch put(Map).
+ * Supports single-key put(key, value) and multi-key batch put(entries: Object).
+ * The multi-key overload matches the documented production API:
+ *   storage.put(Object.fromEntries(pairs)) — plain Object, no Map.
  */
 class MockStorage {
   constructor(initial = {}) {
@@ -37,8 +39,9 @@ class MockStorage {
   }
 
   async put(keyOrEntries, value) {
-    if (keyOrEntries instanceof Map) {
-      for (const [k, v] of keyOrEntries) {
+    if (typeof keyOrEntries === 'object' && keyOrEntries !== null && value === undefined) {
+      // Multi-key batch put: put(entries: Record<string, unknown>)
+      for (const [k, v] of Object.entries(keyOrEntries)) {
         this._data.set(k, v);
       }
       return;
