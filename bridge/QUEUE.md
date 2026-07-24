@@ -79,7 +79,7 @@ T-010 remains **WORKING** (not DONE).
 ## Завершённые задачи
 
 | ID | Название | Статус | Исполнитель | Подтверждение |
-|---|---|---|---|---|
+|---|---|---|---|
 | T-001 | Создать инфраструктуру Bridge | DONE | GitHub Copilot | Bridge создан в main (`294eb9cc5805ae8f3d5a32b5e8a5588563a77231`) и фактически используется |
 | T-007 | Development Workflow v1 | DONE | GitHub Engineer | PR #2; merge `7636f9872e4253d40688c45ef937db233175ef39`; post-merge verified |
 | T-008 | Repository of Approved Specifications / DR-0004 | DONE | GitHub Engineer | PR #1; merge `e6f696270fad4173ac45dddc237b81210ba4aeea`; post-merge verified |
@@ -94,4 +94,4 @@ T-007 и T-008 закрыты отдельным решением CEO после
 - Каждая задача имеет ID и статус из указанного списка;
 - Статус обновляется перед началом и после завершения работы;
 - Если задача переходит в BLOCKED, указывается причина;
-- QUEUE.md обновляется � том же commit, что и результат работы.
+- QUEUE.md обновляется �� том же commit, что и результат работы.
