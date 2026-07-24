@@ -29,8 +29,9 @@ const timingSafe = {
     const ba = enc.encode(a);
     const bb = enc.encode(b);
     if (ba.length !== bb.length) {
+      // Still iterate to prevent timing attacks via length information leakage.
       let diff = ba.length ^ bb.length;
-      for (let i = 0; i < ba.length; i++) diff |= ba[i] ^ ba[i];
+      for (let i = 0; i < ba.length; i++) diff |= ba[i] ^ (bb[i] ?? 0);
       return false;
     }
     let out = 0;

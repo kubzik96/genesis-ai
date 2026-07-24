@@ -4,7 +4,6 @@ import { isAllowedContextPath, matchRoute } from './allowlist.js';
 import { requestHash } from './hash.js';
 import { GATES, FIXED_FULL_NAME, FIXED_BASE_BRANCH } from './constants.js';
 import { mapGithubError } from './github-client.js';
-import { assertAssignIssueBelongsToRun } from './memory-store.js';
 import { auditEvent } from './audit.js';
 
 function json(status, body) {
@@ -30,7 +29,7 @@ export async function handleRequest(request, env) {
 
   if (method === 'GET' && path === '/v1/health') {
     const patOk = Boolean(env.GITHUB_PAT);
-    const doOk = Boolean(env.store || env.BROKER_DO);
+    const doOk = Boolean(env.BROKER_DO);
     const blocked = !patOk || !doOk;
     const body = {
       status: blocked ? 'BLOCKED' : 'ok',
@@ -216,6 +215,7 @@ async function handleCreateIssue(request, env, github) {
     operation: 'create_issue',
     runId: body.run_id,
     gate: body.gate,
+    operationData: { title: body.title, body: body.body, labels: body.labels },
     githubCall: async () => {
       const res = await github.createIssue({ title: body.title, body: body.body, labels: body.labels });
       if (!res.ok) {
@@ -268,12 +268,6 @@ async function handleAssign(request, env, github, issueNumber) {
     return json(gateCheck.status, { error: gateCheck.error, message: gateCheck.message });
   }
 
-  const runState = env.store.getRun(body.run_id);
-  const belong = assertAssignIssueBelongsToRun(runState, issueNumber);
-  if (!belong.ok) {
-    return json(belong.status, { error: belong.error, message: belong.message });
-  }
-
   const hash = await requestHash({
     op: 'assign_copilot',
     issue_number: issueNumber,
@@ -287,11 +281,11 @@ async function handleAssign(request, env, github, issueNumber) {
     operation: 'assign_copilot',
     runId: body.run_id,
     gate: body.gate,
+    operationData: { issueNumber },
     githubCall: async () => {
       const res = await github.assignCopilot(issueNumber);
-      const primary = res.assignees;
-      if (!primary.ok) {
-        const mapped = mapGithubError(primary.status, primary.data);
+      if (!res.ok) {
+        const mapped = mapGithubError(res.status, res.data);
         return { ok: false, status: mapped.status, safeResult: mapped };
       }
       return {
@@ -299,7 +293,7 @@ async function handleAssign(request, env, github, issueNumber) {
         status: 200,
         safeResult: {
           issue_number: issueNumber,
-          assigned: (primary.data?.assignees || []).map((a) => a.login),
+          assigned: (res.data?.assignees || []).map((a) => a.login),
           repository: FIXED_FULL_NAME,
         },
       };

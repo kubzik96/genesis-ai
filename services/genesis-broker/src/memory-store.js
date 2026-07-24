@@ -45,6 +45,7 @@ export class MemoryBrokerStore {
     operation,
     runId,
     gate,
+    operationData,
     githubCall,
   }) {
     return this.withLock(async () => {
@@ -87,6 +88,18 @@ export class MemoryBrokerStore {
           body: { error: bounds.error, message: bounds.message },
           githubCalled: false,
         };
+      }
+
+      // For assign_copilot, verify the issue was created by Broker in this run_id (atomic check).
+      if (operation === 'assign_copilot') {
+        const belong = assertAssignIssueBelongsToRun(runState, operationData?.issueNumber);
+        if (!belong.ok) {
+          return {
+            status: belong.status,
+            body: { error: belong.error, message: belong.message },
+            githubCalled: false,
+          };
+        }
       }
 
       const pending = {
@@ -133,14 +146,14 @@ export class MemoryBrokerStore {
         return { status: result.status, body: result.safeResult, githubCalled: true };
       }
 
-      const safe = result.safeResult || {
+      // Non-deterministic error (5xx, network timeout via non-ok result): mark UNKNOWN.
+      // Always use BLOCKED_RECONCILIATION_REQUIRED so the client knows not to auto-retry.
+      const safe = {
         error: 'BLOCKED_RECONCILIATION_REQUIRED',
-        message: 'Indeterminate GitHub result',
+        message: `GitHub upstream error — indeterminate result (status ${result.status}); auto-retry forbidden`,
       };
       this.setIdem(idempotencyKey, markUnknown(pending, safe));
       return { status: 409, body: safe, githubCalled: true, unknown: true };
     });
   }
 }
-
-export { assertAssignIssueBelongsToRun };

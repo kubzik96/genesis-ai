@@ -50,25 +50,14 @@ export function createGithubClient({ pat, fetchImpl = fetch }) {
     },
 
     /**
-     * Path B2: Issue Assignment API — assign Copilot bot.
+     * Path B2: Issue Assignment API — assign Copilot bot (single call).
      */
     async assignCopilot(issueNumber) {
-      const assignees = await gh(
+      return gh(
         'POST',
         `/repos/${FIXED_OWNER}/${FIXED_REPO}/issues/${issueNumber}/assignees`,
         { assignees: [COPILOT_BOT] },
       );
-      let agentAssignment = null;
-      try {
-        agentAssignment = await gh(
-          'POST',
-          `/repos/${FIXED_OWNER}/${FIXED_REPO}/issues/${issueNumber}/assignees`,
-          { assignees: [COPILOT_BOT] },
-        );
-      } catch {
-        agentAssignment = null;
-      }
-      return { assignees, agentAssignment };
     },
 
     async getIssue(issueNumber) {
