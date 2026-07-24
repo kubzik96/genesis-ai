@@ -9,7 +9,8 @@
  *      prevents a duplicate GitHub call (IN_FLIGHT → blocked).
  *   3. UNKNOWN state survives reconstruction and blocks retry.
  *
- * No Cloudflare runtime is required — all GitHub calls are mocked.
+ * No Cloudflare runtime is required — all GitHub calls are mocked via the
+ * _fetchImpl env field (picked up by createGithubClient inside the DO).
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -35,19 +36,6 @@ class MockStorage {
   async delete(key) {
     this._data.delete(key);
   }
-
-  /** Snapshot of the underlying map (for assertions). */
-  snapshot() {
-    return new Map(this._data);
-  }
-}
-
-function makeState(storage) {
-  return { storage };
-}
-
-function makeEnv(fetchImpl) {
-  return { GITHUB_PAT: 'test-pat', _fetchImpl: fetchImpl };
 }
 
 /**
@@ -62,30 +50,17 @@ function makeDoRequest(payload) {
 }
 
 /**
- * Create a BrokerDurableObject whose github client uses the given fetch mock.
- * We monkey-patch the global `fetch` inside the module by overriding the
- * createGithubClient default; instead, we patch the env so the github client
- * factory can pick it up.  Since createGithubClient takes `fetchImpl` as an
- * optional arg we must intercept at a higher level.
- *
- * Simplest approach: subclass BrokerDurableObject and override fetch() to
- * inject a mock github client.  But that couples the test to internals.
- *
- * Instead we use a minimal wrapper that calls the real fetch() but replaces
- * the global fetch before calling and restores it after.  This avoids any
- * coupling to private methods while still being a pure unit test.
+ * Invoke BrokerDurableObject.fetch() with a mocked fetch implementation.
+ * The fetchImpl is passed through env._fetchImpl so that createGithubClient
+ * inside the DO uses it — no globalThis mutation required.
  */
 async function invokeDoFetch(storage, fetchImpl, payload) {
-  const savedFetch = globalThis.fetch;
-  globalThis.fetch = fetchImpl;
-  try {
-    const do_ = new BrokerDurableObject(makeState(storage), { GITHUB_PAT: 'test-pat' });
-    const req = makeDoRequest(payload);
-    const res = await do_.fetch(req);
-    return JSON.parse(await res.text());
-  } finally {
-    globalThis.fetch = savedFetch;
-  }
+  const do_ = new BrokerDurableObject(
+    { storage },
+    { GITHUB_PAT: 'test-pat', _fetchImpl: fetchImpl },
+  );
+  const res = await do_.fetch(makeDoRequest(payload));
+  return JSON.parse(await res.text());
 }
 
 function githubOk(overrides = {}) {
@@ -143,7 +118,6 @@ describe('BrokerDurableObject crash-safe idempotency', () => {
     const storage = new MockStorage();
     let githubCallCount = 0;
 
-    // First invocation: GitHub succeeds.
     const fetchImpl = async () => {
       githubCallCount += 1;
       return githubOk();
@@ -158,6 +132,7 @@ describe('BrokerDurableObject crash-safe idempotency', () => {
       operationData: { title: 'T', body: 'B', labels: [] },
     };
 
+    // First invocation: GitHub succeeds.
     const first = await invokeDoFetch(storage, fetchImpl, payload);
     assert.equal(first.status, 200);
     assert.equal(githubCallCount, 1);

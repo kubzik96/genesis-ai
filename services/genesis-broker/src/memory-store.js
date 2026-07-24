@@ -116,11 +116,10 @@ export class MemoryBrokerStore {
       let result;
       try {
         result = await githubCall();
-      } catch (err) {
+      } catch {
         const safe = {
           error: 'BLOCKED_RECONCILIATION_REQUIRED',
           message: 'GitHub call timed out or returned indeterminate result; auto-retry forbidden',
-          detail: String(err?.message || err).slice(0, 200),
         };
         this.setIdem(idempotencyKey, markUnknown(pending, safe));
         return { status: 409, body: safe, githubCalled: true, unknown: true };

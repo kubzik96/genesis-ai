@@ -68,7 +68,7 @@ export class BrokerDurableObject {
   async fetch(request) {
     const { idempotencyKey, requestHash, operation, runId, gate, operationData } = await request.json();
 
-    const github = createGithubClient({ pat: this.env?.GITHUB_PAT });
+    const github = createGithubClient({ pat: this.env?.GITHUB_PAT, fetchImpl: this.env?._fetchImpl });
     if (!github) {
       return this._json({
         status: 503,
@@ -153,11 +153,10 @@ export class BrokerDurableObject {
     let result;
     try {
       result = await githubCall();
-    } catch (err) {
+    } catch {
       const safe = {
         error: 'BLOCKED_RECONCILIATION_REQUIRED',
         message: 'GitHub call timed out or returned indeterminate result; auto-retry forbidden',
-        detail: String(err?.message || err).slice(0, 200),
       };
       // 4a. Persist UNKNOWN so reconstruction blocks retry without another GitHub call.
       await this._putIdem(idempotencyKey, markUnknown(pending, safe));
