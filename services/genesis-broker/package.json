@@ -1,0 +1,14 @@
+{
+  "name": "genesis-broker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Genesis Secure GitHub Broker MVP (S-0002) — CODE_ONLY stage",
+  "scripts": {
+    "test": "node --test tests/**/*.test.js",
+    "typecheck": "echo 'no compile step in CODE_ONLY; pure ESM JS'"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
