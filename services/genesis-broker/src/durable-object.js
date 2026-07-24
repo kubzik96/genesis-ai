@@ -48,9 +48,9 @@ export class BrokerDurableObject {
    * While one write is active (including awaiting GitHub), all subsequent
    * calls queue behind it — preventing concurrent rate/run check races.
    *
-   * fn is used as both the success and rejection handler intentionally:
-   * the next write must always run regardless of whether the previous one
-   * succeeded or threw, so this._queue must never become a rejected Promise.
+   * fn is used as both the success and rejection handler so that this._queue
+   * never becomes a rejected Promise, ensuring subsequent writes always
+   * execute regardless of whether the previous write succeeded or threw.
    */
   _withLock(fn) {
     const run = this._queue.then(fn, fn);
