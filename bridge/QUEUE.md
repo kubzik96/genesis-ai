@@ -25,18 +25,18 @@ QUEUE.md содержит очередь всех активных и ожида
 
 | ID | Название | Статус | Исполнитель |
 |---|---|---|---|
-| T-001 | Создать инфраструктуру Bridge | REVIEW | GitHub Copilot |
 | T-002 | Создать критерии оценки CTO | BACKLOG | ChatGPT (CTO) |
 | T-003 | Подготовить тестовое задание для CTO | BACKLOG | ChatGPT (CTO) |
 | T-004 | Провести испытание моделей | BACKLOG | ChatGPT (CTO) |
 | T-005 | Оформить DR-0003 по результатам | BACKLOG | ChatGPT (CTO) |
-| T-006 | Реализовать Orchestrator v0.1 | WORKING | GitHub Copilot |
 
 ---
 
 ## Заблокированные задачи
 
-Нет заблокированных задач.
+| ID | Название | Статус | Исполнитель | Причина |
+|---|---|---|---|---|
+| T-006 | Реализовать Orchestrator v0.1 | BLOCKED | GitHub Copilot | Нет Approved Specification и отдельного Execution Authorization. Реализация остановлена до нового решения CEO. |
 
 ---
 
@@ -44,9 +44,11 @@ QUEUE.md содержит очередь всех активных и ожида
 
 | ID | Название | Статус | Исполнитель | Подтверждение |
 |---|---|---|---|---|
+| T-001 | Создать инфраструктуру Bridge | DONE | GitHub Copilot | Bridge создан в main (`294eb9cc5805ae8f3d5a32b5e8a5588563a77231`) и фактически используется |
 | T-007 | Development Workflow v1 | DONE | GitHub Engineer | PR #2; merge `7636f9872e4253d40688c45ef937db233175ef39`; post-merge verified |
 | T-008 | Repository of Approved Specifications / DR-0004 | DONE | GitHub Engineer | PR #1; merge `e6f696270fad4173ac45dddc237b81210ba4aeea`; post-merge verified |
 
+T-001 закрыт решением CEO: Bridge создан и используется.
 T-007 и T-008 закрыты отдельным решением CEO после merge и post-merge verification.
 
 ---
