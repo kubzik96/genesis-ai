@@ -1,8 +1,8 @@
 # Development Workflow v1
 
-**Status:** IN_REVIEW  
+**Status:** APPROVED  
 **Revision:** 1  
-**Approved by:** —  
+**Approved by:** CEO  
 **Date:** 2026-07-24  
 **Task:** T-007  
 **Related task:** T-008 — Approved Specifications Repository (pending)
@@ -350,4 +350,4 @@ Commit или PR сами по себе **не означают** DONE.
 ---
 
 *Документ создан в рамках T-007.  
-Статус: IN_REVIEW. Ожидает независимого review и CEO Approval.*
+Утверждён CEO. Ожидает финального pre-merge review и отдельного CEO Merge Authorization.*
