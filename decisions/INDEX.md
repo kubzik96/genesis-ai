@@ -16,7 +16,7 @@
 |---|---|---|---|
 | [DR-0001](DR-0001.md) | Архитектурная структура Genesis AI | Принято | 2026-07-22 |
 | [DR-0002](DR-0002-GitHub-Copilot.md) | Назначение GitHub Copilot на должность GitHub Engineer | Принято | 2026-07-22 |
-| [DR-0004](DR-0004.md) | Repository of Approved Specifications | Принято | 2026-07-24 |
+| [DR-0004](DR-0004.md) | Repository of Approved Specifications | На рассмотрении | 2026-07-24 |
 
 ## Следующий номер
 
