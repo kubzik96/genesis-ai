@@ -1,0 +1,21 @@
+# Genesis Broker — Cloudflare Workers config (NO SECRETS)
+# Secrets (GITHUB_PAT, BROKER_SERVICE_TOKEN) must be set via:
+#   wrangler secret put GITHUB_PAT
+#   wrangler secret put BROKER_SERVICE_TOKEN
+# Never commit secret values.
+
+name = "genesis-broker"
+main = "src/index.js"
+compatibility_date = "2024-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+[durable_objects]
+bindings = [
+  { name = "BROKER_DO", class_name = "BrokerDurableObject" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["BrokerDurableObject"]
+
+# No KV bindings — authoritative store is Durable Object only (S-0002).
