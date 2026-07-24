@@ -47,6 +47,10 @@ export class BrokerDurableObject {
    * Serialize fn through the per-instance queue.
    * While one write is active (including awaiting GitHub), all subsequent
    * calls queue behind it — preventing concurrent rate/run check races.
+   *
+   * fn is used as both the success and rejection handler intentionally:
+   * the next write must always run regardless of whether the previous one
+   * succeeded or threw, so this._queue must never become a rejected Promise.
    */
   _withLock(fn) {
     const run = this._queue.then(fn, fn);
@@ -78,7 +82,16 @@ export class BrokerDurableObject {
       });
     }
 
-    const payload = await request.json();
+    let payload;
+    try {
+      payload = await request.json();
+    } catch {
+      return this._json({
+        status: 400,
+        body: { error: 'INVALID_REQUEST', message: 'Request body must be valid JSON' },
+        githubCalled: false,
+      });
+    }
     return this._withLock(() => this._processWrite(payload, github));
   }
 

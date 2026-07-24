@@ -241,6 +241,10 @@ describe('BrokerDurableObject crash-safe idempotency', () => {
     const storage = new MockStorage();
     let githubCallCount = 0;
 
+    // Gate blocks the GitHub call until both requests are queued — deterministic.
+    let unblockGithub;
+    const githubGate = new Promise((r) => { unblockGithub = r; });
+
     // Use a single shared DO instance — same as production (one DO per repo).
     const sharedDo = new BrokerDurableObject(
       { storage },
@@ -248,9 +252,7 @@ describe('BrokerDurableObject crash-safe idempotency', () => {
         GITHUB_PAT: 'test-pat',
         _fetchImpl: async () => {
           githubCallCount += 1;
-          // Small yield so the second enqueued request can be waiting when
-          // the first is inside the GitHub await.
-          await new Promise((r) => setTimeout(r, 5));
+          await githubGate; // hold until the test signals both requests are queued
           return new Response(
             JSON.stringify({ number: 42, html_url: 'https://github.com/kubzik96/genesis-ai/issues/42', title: 'T', assignees: [] }),
             { status: 201 },
@@ -268,10 +270,18 @@ describe('BrokerDurableObject crash-safe idempotency', () => {
       operationData: { title: 'T', body: 'B', labels: [] },
     });
 
-    const [r1, r2] = await Promise.all([
-      sharedDo.fetch(makeDoRequest(makePayload('key-diff-a'))).then((r) => r.text()).then(JSON.parse),
-      sharedDo.fetch(makeDoRequest(makePayload('key-diff-b'))).then((r) => r.text()).then(JSON.parse),
-    ]);
+    // Start both fetches — neither can finish until the gate is opened.
+    const p1 = sharedDo.fetch(makeDoRequest(makePayload('key-diff-a'))).then((r) => r.text()).then(JSON.parse);
+    const p2 = sharedDo.fetch(makeDoRequest(makePayload('key-diff-b'))).then((r) => r.text()).then(JSON.parse);
+
+    // Flush all pending microtasks (both request.json() calls + _withLock queuing).
+    await new Promise((r) => setTimeout(r, 0));
+
+    // Unblock GitHub — at this point both requests have called _withLock,
+    // so the second is definitely queued behind the first.
+    unblockGithub();
+
+    const [r1, r2] = await Promise.all([p1, p2]);
 
     assert.equal(githubCallCount, 1, 'only one GitHub call must be made for the same run_id');
 
