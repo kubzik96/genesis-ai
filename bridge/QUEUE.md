@@ -58,7 +58,13 @@ Sequence before any deployment:
 3. merge of the authorization record to `main`;
 4. separate CEO **EXECUTE DEPLOY** command.
 
-Until EXECUTE DEPLOY: Cloudflare deployment, PAT, Worker Secrets, live GitHub writes, and Dify integration remain forbidden. T-010 remains **WORKING** (not DONE).
+Restrictions:
+
+- Cloudflare deployment, PAT creation and Worker Secrets remain forbidden **until** the separate CEO **EXECUTE DEPLOY** command;
+- live GitHub writes, `POST /v1/issues`, assign-copilot and Dify integration remain forbidden **throughout** Stage 2 DEPLOY_READONLY (including after any future deploy/smoke);
+- those write/integration operations require a **separate future CEO authorization** under the approved S-0001 live-write scenario.
+
+T-010 remains **WORKING** (not DONE).
 
 ---
 
@@ -88,4 +94,4 @@ T-007 и T-008 закрыты отдельным решением CEO после
 - Каждая задача имеет ID и статус из указанного списка;
 - Статус обновляется перед началом и после завершения работы;
 - Если задача переходит в BLOCKED, указывается причина;
-- QUEUE.md обновляется в том же commit, что и результат работы.
+- QUEUE.md обновляется � том же commit, что и результат работы.
