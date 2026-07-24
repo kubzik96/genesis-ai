@@ -30,6 +30,14 @@ QUEUE.md содержит очередь всех активных и ожида
 | T-004 | Провести испытание моделей | BACKLOG | ChatGPT (CTO) |
 | T-005 | Оформить DR-0003 по результатам | BACKLOG | ChatGPT (CTO) |
 
+### Sprint: Genesis One-Window MVP
+
+| ID | Название | Статус | Исполнитель |
+|---|---|---|---|
+| T-009 | Genesis One-Window Execution Spike | READY | Integration Engineer |
+
+T-009 готова только к preflight. Approved Specification: S-0001 Revision 1. Execution Authorization: NOT_GRANTED. Реализация запрещена до отдельного решения CEO.
+
 ---
 
 ## Заблокированные задачи
