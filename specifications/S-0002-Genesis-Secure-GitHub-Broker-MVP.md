@@ -12,7 +12,7 @@
 | **Дата создания** | 2026-07-24 |
 | **Дата утверждения** | 2026-07-24 |
 | **Утвердил** | CEO Genesis AI |
-| **Execution Authorization** | GRANTED — Stage 1 CODE_ONLY |
+| **Execution Authorization** | GRANTED — Stage 1 CODE_ONLY + Stage 2 DEPLOY_READONLY |
 | **Связанные задачи** | T-010 — Genesis Secure GitHub Broker MVP |
 | **Родительская Specification** | S-0001 Revision 1 |
 | **Связанные Decision Records** | DR-0004 |
@@ -464,6 +464,7 @@ bridge/QUEUE.md: �� → в
 | 1 | 2026-07-24 | Grok — Chief Architect | Durable Object (не KV) как authoritative idempotency; точная семантика PENDING/SUCCEEDED/FAILED/UNKNOWN; rate limits; lifecycle T-010 |
 | 1 | 2026-07-24 | CEO Genesis AI | CEO Approval; Specification approved; Execution Authorization remains NOT_GRANTED |
 | 1 | 2026-07-24 | CEO Genesis AI | Execution Authorization granted for T-010 Stage 1 CODE_ONLY; deployment, PAT, secrets and live writes remain forbidden |
+| 1 | 2026-07-24 | CEO Genesis AI | Stage 2 DEPLOY_READONLY GRANTED for exact Broker candidate SHA `6393c434d139657ea1deb8835cf8e6d523334a74`. After independent review, separate CEO merge authorization, and merge of the authorization-record PR to main: permits Worker deploy from that SHA only; SQLite-backed DO; BROKER_DO via `idFromName('kubzik96/genesis-ai')`; GITHUB_PAT and BROKER_SERVICE_TOKEN as Worker Secrets only; read-only GET /v1/health and POST /v1/context/read smoke; safe evidence (deployed SHA, Worker URL, smoke results). Does NOT permit during governance task: deploy, PAT/secrets creation, live writes, POST /v1/issues, assign-copilot, dummy Issue/PR, Dify/xAI/OpenAI, PR #11 Ready/merge, T-010 DONE, paid Cloudflare plan, secrets in Git. Actual deploy requires separate CEO EXECUTE DEPLOY after merge. |
 
 ---
 
