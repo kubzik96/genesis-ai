@@ -12,7 +12,7 @@
 | **Дата создания** | 2026-07-24 |
 | **Дата утверждения** | 2026-07-24 |
 | **Утвердил** | CEO Genesis AI |
-| **Execution Authorization** | NOT_GRANTED |
+| **Execution Authorization** | GRANTED — Stage 1 CODE_ONLY |
 | **Связанные задачи** | T-010 — Genesis Secure GitHub Broker MVP |
 | **Родительская Specification** | S-0001 Revision 1 |
 | **Связанные Decision Records** | DR-0004 |
@@ -463,6 +463,7 @@ bridge/QUEUE.md: �� → в
 | 1 | 2026-07-24 | Grok — Chief Architect | Создан In Review; Path B2; Cloudflare Workers; Issue Assignment API |
 | 1 | 2026-07-24 | Grok — Chief Architect | Durable Object (не KV) как authoritative idempotency; точная семантика PENDING/SUCCEEDED/FAILED/UNKNOWN; rate limits; lifecycle T-010 |
 | 1 | 2026-07-24 | CEO Genesis AI | CEO Approval; Specification approved; Execution Authorization remains NOT_GRANTED |
+| 1 | 2026-07-24 | CEO Genesis AI | Execution Authorization granted for T-010 Stage 1 CODE_ONLY; deployment, PAT, secrets and live writes remain forbidden |
 
 ---
 
