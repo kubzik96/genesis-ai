@@ -35,8 +35,11 @@ QUEUE.md содержит очередь всех активных и ожида
 | ID | Название | Статус | Исполнитель |
 |---|---|---|---|
 | T-009 | Genesis One-Window Execution Spike | READY | Integration Engineer |
+| T-010 | Genesis Secure GitHub Broker MVP | READY | Integration Engineer |
 
 T-009 готова только к preflight. Approved Specification: S-0001 Revision 1. Execution Authorization: NOT_GRANTED. Реализация запрещена до отдельного решения CEO.
+
+T-010 зарегистрирована по Approved Specification S-0002 Revision 1. Execution Authorization: NOT_GRANTED. Статус READY означает готовность к отдельному решению CEO, но реализация, deployment, создание PAT и secrets запрещены до Execution Authorization.
 
 ---
 
