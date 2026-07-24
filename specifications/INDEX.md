@@ -16,7 +16,7 @@
 
 | ID | Название | Статус | Revision | Задачи | Дата |
 |---|---|---|---|---|---|
-| [S-0001](S-0001-Genesis-One-Window-Execution-Spike.md) | Genesis One-Window Execution Spike | In Review | 1 | T-009 | 2026-07-24 |
+| [S-0001](S-0001-Genesis-One-Window-Execution-Spike.md) | Genesis One-Window Execution Spike | Approved | 1 | T-009 | 2026-07-24 |
 
 ## Следующий номер
 

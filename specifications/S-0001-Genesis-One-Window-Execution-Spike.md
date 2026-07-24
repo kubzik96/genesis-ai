@@ -6,12 +6,12 @@
 |---|---|
 | **ID** | S-0001 |
 | **Название** | Genesis One-Window Execution Spike |
-| **Статус** | In Review |
+| **Статус** | Approved |
 | **Revision** | 1 |
 | **Автор** | Grok — Chief Architect |
 | **Дата создания** | 2026-07-24 |
-| **Дата утверждения** | — |
-| **Утвердил** | — |
+| **Дата утверждения** | 2026-07-24 |
+| **Утвердил** | CEO Genesis AI |
 | **Execution Authorization** | NOT_GRANTED |
 | **Связанные задачи** | T-009 — Genesis One-Window Execution Spike |
 | **Связанные Decision Records** | DR-0004 |
@@ -325,6 +325,7 @@ Workflow **обязан** останавливаться:
 | Revision | Дата | Автор | Что изменено |
 |---|---|---|---|
 | 1 | 2026-07-24 | Grok — Chief Architect | Создан In Review; API = OpenAI **или** xAI; Approve = `APPROVE_TO_MERGE` candidate |
+| 1 | 2026-07-24 | CEO Genesis AI | CEO Approval Revision 1 (HEAD `fa82e72c…`); Execution Authorization остаётся NOT_GRANTED |
 
 ---
 
