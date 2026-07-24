@@ -5,6 +5,7 @@ import { requestHash } from './hash.js';
 import { GATES, FIXED_FULL_NAME, FIXED_BASE_BRANCH } from './constants.js';
 import { mapGithubError } from './github-client.js';
 import { auditEvent } from './audit.js';
+import { normalizeCreateIssuePayload } from './normalize-payload.js';
 
 function json(status, body) {
   return {
@@ -17,6 +18,11 @@ function json(status, body) {
 /**
  * Pure request handler — env provides secrets and store/github.
  * No merge/push/delete routes exist.
+ *
+ * Canonical idempotency identity (S-0002 §4.5):
+ *   create_issue  → hash({ op, title, body, labels, run_id, gate }) after normalizeCreateIssuePayload
+ *   assign_copilot → hash({ op, issue_number, run_id, gate })
+ * confirmed_at is Gate freshness only — validated live, never hashed.
  */
 export async function handleRequest(request, env) {
   const url = new URL(request.url);
@@ -45,7 +51,14 @@ export async function handleRequest(request, env) {
 
   const auth = authenticateService(request.headers.get('authorization'), env.BROKER_SERVICE_TOKEN);
   if (!auth.ok) {
-    auditEvent({ endpoint: path, outcome: 'auth_failed', error: auth.error });
+    auditEvent({
+      endpoint: path,
+      outcome: 'auth_failed',
+      error: auth.error,
+      github_status: null,
+      latency_ms: null,
+      idempotency_state: null,
+    });
     return json(auth.status, { error: auth.error, message: auth.message });
   }
 
@@ -70,19 +83,36 @@ export async function handleRequest(request, env) {
     }
     const filePath = body?.path;
     if (!isAllowedContextPath(filePath)) {
-      auditEvent({ endpoint: path, outcome: 'path_denied', path: filePath });
+      auditEvent({ endpoint: path, outcome: 'path_denied', path: filePath, github_status: null, idempotency_state: null });
       return json(403, { error: 'PATH_NOT_ALLOWED', message: 'Context path outside allowlist' });
     }
+    const t0 = Date.now();
     const res = await github.getContent(filePath.replace(/^\/+/, ''));
+    const latency_ms = Date.now() - t0;
     if (!res.ok) {
       const mapped = mapGithubError(res.status, res.data);
+      auditEvent({
+        endpoint: path,
+        outcome: mapped.status,
+        path: filePath,
+        github_status: res.status,
+        latency_ms,
+        idempotency_state: null,
+      });
       return json(mapped.status, mapped);
     }
     let content = res.data?.content || '';
     if (res.data?.encoding === 'base64') {
       content = atob(content.replace(/\n/g, ''));
     }
-    auditEvent({ endpoint: path, outcome: 'ok', path: filePath });
+    auditEvent({
+      endpoint: path,
+      outcome: 'ok',
+      path: filePath,
+      github_status: res.status,
+      latency_ms,
+      idempotency_state: null,
+    });
     return json(200, {
       path: filePath.replace(/^\/+/, ''),
       sha: res.data?.sha,
@@ -104,11 +134,29 @@ export async function handleRequest(request, env) {
   const statusMatch = path.match(/^\/v1\/issues\/(\d+)\/status$/);
   if (method === 'GET' && statusMatch) {
     const num = Number(statusMatch[1]);
+    const t0 = Date.now();
     const res = await github.getIssue(num);
+    const latency_ms = Date.now() - t0;
     if (!res.ok) {
       const mapped = mapGithubError(res.status, res.data);
+      auditEvent({
+        endpoint: path,
+        issue_number: num,
+        outcome: mapped.status,
+        github_status: res.status,
+        latency_ms,
+        idempotency_state: null,
+      });
       return json(mapped.status, mapped);
     }
+    auditEvent({
+      endpoint: path,
+      issue_number: num,
+      outcome: 'ok',
+      github_status: res.status,
+      latency_ms,
+      idempotency_state: null,
+    });
     return json(200, {
       number: res.data.number,
       state: res.data.state,
@@ -121,9 +169,18 @@ export async function handleRequest(request, env) {
   const prMatch = path.match(/^\/v1\/pulls\/(\d+)$/);
   if (method === 'GET' && prMatch) {
     const num = Number(prMatch[1]);
+    const t0 = Date.now();
     const res = await github.getPull(num);
     if (!res.ok) {
       const mapped = mapGithubError(res.status, res.data);
+      auditEvent({
+        endpoint: path,
+        pull_number: num,
+        outcome: mapped.status,
+        github_status: res.status,
+        latency_ms: Date.now() - t0,
+        idempotency_state: null,
+      });
       return json(mapped.status, mapped);
     }
     let ci = 'CI_NOT_CONFIGURED';
@@ -133,6 +190,14 @@ export async function handleRequest(request, env) {
     } catch {
       ci = 'CI_NOT_CONFIGURED';
     }
+    auditEvent({
+      endpoint: path,
+      pull_number: num,
+      outcome: 'ok',
+      github_status: res.status,
+      latency_ms: Date.now() - t0,
+      idempotency_state: null,
+    });
     return json(200, {
       number: res.data.number,
       title: res.data.title,
@@ -150,12 +215,30 @@ export async function handleRequest(request, env) {
   const diffMatch = path.match(/^\/v1\/pulls\/(\d+)\/diff$/);
   if (method === 'GET' && diffMatch) {
     const num = Number(diffMatch[1]);
+    const t0 = Date.now();
     const files = await github.getPullFiles(num);
     const diff = await github.getPullDiff(num);
+    const latency_ms = Date.now() - t0;
     if (!diff.ok) {
       const mapped = mapGithubError(diff.status, { message: 'Failed to fetch diff' });
+      auditEvent({
+        endpoint: path,
+        pull_number: num,
+        outcome: mapped.status,
+        github_status: diff.status,
+        latency_ms,
+        idempotency_state: null,
+      });
       return json(mapped.status, mapped);
     }
+    auditEvent({
+      endpoint: path,
+      pull_number: num,
+      outcome: 'ok',
+      github_status: diff.status,
+      latency_ms,
+      idempotency_state: null,
+    });
     return json(200, {
       number: num,
       files: files.ok
@@ -174,15 +257,62 @@ export async function handleRequest(request, env) {
   return json(404, { error: 'NOT_FOUND', message: 'Unknown endpoint' });
 }
 
+function auditWriteResult({
+  endpoint,
+  run_id,
+  gate,
+  idempotency_key,
+  issue_number,
+  result,
+  latency_ms,
+}) {
+  const outcome = result.replay
+    ? 'replay'
+    : result.unknown
+      ? 'unknown'
+      : result.status;
+  auditEvent({
+    endpoint,
+    run_id,
+    gate,
+    idempotency_key,
+    issue_number:
+      issue_number ??
+      result.body?.issue_number ??
+      result.body?.number ??
+      null,
+    github_status: result.githubStatus ?? null,
+    latency_ms,
+    outcome,
+    idempotency_state: result.idempotencyState ?? null,
+  });
+}
+
 async function handleCreateIssue(request, env, github) {
   const idemKey = request.headers.get('idempotency-key');
   if (!idemKey) {
+    auditEvent({
+      endpoint: '/v1/issues',
+      outcome: 400,
+      error: 'MISSING_IDEMPOTENCY_KEY',
+      github_status: null,
+      latency_ms: null,
+      idempotency_state: null,
+    });
     return json(400, { error: 'MISSING_IDEMPOTENCY_KEY', message: 'Idempotency-Key header required' });
   }
   let body;
   try {
     body = await request.json();
   } catch {
+    auditEvent({
+      endpoint: '/v1/issues',
+      outcome: 400,
+      error: 'INVALID_JSON',
+      github_status: null,
+      latency_ms: null,
+      idempotency_state: null,
+    });
     return json(400, { error: 'INVALID_JSON', message: 'Body must be JSON' });
   }
   if (body.repository && body.repository !== FIXED_FULL_NAME) {
@@ -198,33 +328,78 @@ async function handleCreateIssue(request, env, github) {
     run_id: body.run_id,
   });
   if (!gateCheck.ok) {
+    auditEvent({
+      endpoint: '/v1/issues',
+      run_id: body.run_id,
+      gate: body.gate,
+      idempotency_key: idemKey,
+      outcome: gateCheck.status,
+      error: gateCheck.error,
+      github_status: null,
+      latency_ms: null,
+      idempotency_state: null,
+    });
     return json(gateCheck.status, { error: gateCheck.error, message: gateCheck.message });
   }
-  const hash = await requestHash({
-    op: 'create_issue',
+
+  // Normalize once — same values for requestHash, operationData, and GitHub call.
+  // confirmed_at is intentionally excluded from the hash (Gate freshness only).
+  const normalized = normalizeCreateIssuePayload({
     title: body.title,
     body: body.body,
+    labels: body.labels,
+  });
+  if (!normalized.ok) {
+    auditEvent({
+      endpoint: '/v1/issues',
+      run_id: body.run_id,
+      gate: body.gate,
+      idempotency_key: idemKey,
+      outcome: normalized.status,
+      error: normalized.error,
+      github_status: null,
+      latency_ms: null,
+      idempotency_state: null,
+    });
+    return json(normalized.status, { error: normalized.error, message: normalized.message });
+  }
+
+  const hash = await requestHash({
+    op: 'create_issue',
+    title: normalized.title,
+    body: normalized.body,
+    labels: normalized.labels,
     run_id: body.run_id,
     gate: body.gate,
   });
 
   const store = env.store;
+  const t0 = Date.now();
   const result = await store.executeWrite({
     idempotencyKey: idemKey,
     requestHash: hash,
     operation: 'create_issue',
     runId: body.run_id,
     gate: body.gate,
-    operationData: { title: body.title, body: body.body, labels: body.labels },
+    operationData: {
+      title: normalized.title,
+      body: normalized.body,
+      labels: normalized.labels,
+    },
     githubCall: async () => {
-      const res = await github.createIssue({ title: body.title, body: body.body, labels: body.labels });
+      const res = await github.createIssue({
+        title: normalized.title,
+        body: normalized.body,
+        labels: normalized.labels,
+      });
       if (!res.ok) {
         const mapped = mapGithubError(res.status, res.data);
-        return { ok: false, status: mapped.status, safeResult: mapped };
+        return { ok: false, status: mapped.status, githubStatus: res.status, safeResult: mapped };
       }
       return {
         ok: true,
         status: 200,
+        githubStatus: res.status,
         safeResult: {
           issue_number: res.data.number,
           number: res.data.number,
@@ -236,13 +411,13 @@ async function handleCreateIssue(request, env, github) {
     },
   });
 
-  auditEvent({
+  auditWriteResult({
     endpoint: '/v1/issues',
     run_id: body.run_id,
     gate: body.gate,
     idempotency_key: idemKey,
-    outcome: result.replay ? 'replay' : result.unknown ? 'unknown' : result.status,
-    github_called: result.githubCalled,
+    result,
+    latency_ms: Date.now() - t0,
   });
   return json(result.status, result.body);
 }
@@ -250,6 +425,15 @@ async function handleCreateIssue(request, env, github) {
 async function handleAssign(request, env, github, issueNumber) {
   const idemKey = request.headers.get('idempotency-key');
   if (!idemKey) {
+    auditEvent({
+      endpoint: `/v1/issues/${issueNumber}/assign-copilot`,
+      issue_number: issueNumber,
+      outcome: 400,
+      error: 'MISSING_IDEMPOTENCY_KEY',
+      github_status: null,
+      latency_ms: null,
+      idempotency_state: null,
+    });
     return json(400, { error: 'MISSING_IDEMPOTENCY_KEY', message: 'Idempotency-Key header required' });
   }
   let body;
@@ -265,9 +449,22 @@ async function handleAssign(request, env, github, issueNumber) {
     run_id: body.run_id,
   });
   if (!gateCheck.ok) {
+    auditEvent({
+      endpoint: `/v1/issues/${issueNumber}/assign-copilot`,
+      run_id: body.run_id,
+      gate: body.gate,
+      idempotency_key: idemKey,
+      issue_number: issueNumber,
+      outcome: gateCheck.status,
+      error: gateCheck.error,
+      github_status: null,
+      latency_ms: null,
+      idempotency_state: null,
+    });
     return json(gateCheck.status, { error: gateCheck.error, message: gateCheck.message });
   }
 
+  // Assign hash: side-effect identity only — confirmed_at excluded.
   const hash = await requestHash({
     op: 'assign_copilot',
     issue_number: issueNumber,
@@ -275,6 +472,7 @@ async function handleAssign(request, env, github, issueNumber) {
     gate: body.gate,
   });
 
+  const t0 = Date.now();
   const result = await env.store.executeWrite({
     idempotencyKey: idemKey,
     requestHash: hash,
@@ -286,11 +484,12 @@ async function handleAssign(request, env, github, issueNumber) {
       const res = await github.assignCopilot(issueNumber);
       if (!res.ok) {
         const mapped = mapGithubError(res.status, res.data);
-        return { ok: false, status: mapped.status, safeResult: mapped };
+        return { ok: false, status: mapped.status, githubStatus: res.status, safeResult: mapped };
       }
       return {
         ok: true,
         status: 200,
+        githubStatus: res.status,
         safeResult: {
           issue_number: issueNumber,
           assigned: (res.data?.assignees || []).map((a) => a.login),
@@ -300,14 +499,14 @@ async function handleAssign(request, env, github, issueNumber) {
     },
   });
 
-  auditEvent({
+  auditWriteResult({
     endpoint: `/v1/issues/${issueNumber}/assign-copilot`,
     run_id: body.run_id,
     gate: body.gate,
     idempotency_key: idemKey,
     issue_number: issueNumber,
-    outcome: result.replay ? 'replay' : result.status,
-    github_called: result.githubCalled,
+    result,
+    latency_ms: Date.now() - t0,
   });
   return json(result.status, result.body);
 }
