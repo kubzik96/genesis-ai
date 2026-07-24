@@ -26,7 +26,14 @@ Specification создаётся **до начала реализации** лю
 После CEO Approval спецификация:
 1. получает статус `Approved`;
 2. публикуется в `specifications/`;
-3. становится основанием для Execution Authorization.
+3. становится **необходимым основанием** для Execution Authorization.
+
+**CEO Approval спецификации не является Execution Authorization.**  
+Execution Authorization выдаётся CEO **отдельно** и должен быть явно зафиксирован.
+
+Реализация начинается только после:
+1. Approved Specification;
+2. отдельного Execution Authorization CEO.
 
 ---
 
