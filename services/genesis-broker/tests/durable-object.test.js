@@ -2,12 +2,16 @@
  * Crash-safe Durable Object idempotency tests.
  *
  * These tests use a mock state.storage that behaves like the Cloudflare DO
- * storage API (async get/put) to verify three crash-safety properties:
+ * storage API (async get/put) to verify correctness properties:
  *
  *   1. PENDING is persisted to DO storage BEFORE the upstream GitHub call.
  *   2. Reconstructing a new BrokerDurableObject from the same storage
  *      prevents a duplicate GitHub call (IN_FLIGHT → blocked).
  *   3. UNKNOWN state survives reconstruction and blocks retry.
+ *   4. Two concurrent requests with DIFFERENT idempotency keys but the same
+ *      run_id produce only one upstream GitHub call (serialization lock).
+ *   5. Successful finalization atomically updates idem + timestamps + run state.
+ *   6. Missing state.storage returns BLOCKED and performs no GitHub call.
  *
  * No Cloudflare runtime is required — all GitHub calls are mocked via the
  * _fetchImpl env field (picked up by createGithubClient inside the DO).
@@ -19,7 +23,10 @@ import { IDEM_STATES } from '../src/constants.js';
 
 /* ── Mock helpers ─────────────────────────────────────────────────────────── */
 
-/** Simple async key/value store mirroring the Cloudflare DO storage API. */
+/**
+ * Async key/value store mirroring the Cloudflare DO storage API.
+ * Supports both single-key put(key, value) and batch put(Map).
+ */
 class MockStorage {
   constructor(initial = {}) {
     this._data = new Map(Object.entries(initial));
@@ -29,8 +36,14 @@ class MockStorage {
     return this._data.has(key) ? this._data.get(key) : undefined;
   }
 
-  async put(key, value) {
-    this._data.set(key, value);
+  async put(keyOrEntries, value) {
+    if (keyOrEntries instanceof Map) {
+      for (const [k, v] of keyOrEntries) {
+        this._data.set(k, v);
+      }
+      return;
+    }
+    this._data.set(keyOrEntries, value);
   }
 
   async delete(key) {
@@ -50,7 +63,8 @@ function makeDoRequest(payload) {
 }
 
 /**
- * Invoke BrokerDurableObject.fetch() with a mocked fetch implementation.
+ * Invoke BrokerDurableObject.fetch() on a fresh DO instance sharing the given
+ * storage.  Simulates DO reconstruction between calls.
  * The fetchImpl is passed through env._fetchImpl so that createGithubClient
  * inside the DO uses it — no globalThis mutation required.
  */
@@ -83,7 +97,7 @@ describe('BrokerDurableObject crash-safe idempotency', () => {
     const storage = new MockStorage();
     let pendingAtCallTime = null;
 
-    const fetchImpl = async (url) => {
+    const fetchImpl = async () => {
       // Capture what is in storage at the moment GitHub is called.
       pendingAtCallTime = await storage.get('idem:key-pending-test');
       return githubOk();
@@ -221,5 +235,129 @@ describe('BrokerDurableObject crash-safe idempotency', () => {
     assert.equal(githubCallCount, 1, 'GitHub must NOT be called on retry after UNKNOWN');
     assert.equal(retry.githubCalled, false);
     assert.equal(retry.body?.error, 'BLOCKED_RECONCILIATION_REQUIRED');
+  });
+
+  it('two concurrent requests with different keys and same run_id produce only one GitHub call', async () => {
+    const storage = new MockStorage();
+    let githubCallCount = 0;
+
+    // Use a single shared DO instance — same as production (one DO per repo).
+    const sharedDo = new BrokerDurableObject(
+      { storage },
+      {
+        GITHUB_PAT: 'test-pat',
+        _fetchImpl: async () => {
+          githubCallCount += 1;
+          // Small yield so the second enqueued request can be waiting when
+          // the first is inside the GitHub await.
+          await new Promise((r) => setTimeout(r, 5));
+          return new Response(
+            JSON.stringify({ number: 42, html_url: 'https://github.com/kubzik96/genesis-ai/issues/42', title: 'T', assignees: [] }),
+            { status: 201 },
+          );
+        },
+      },
+    );
+
+    const makePayload = (key) => ({
+      idempotencyKey: key,
+      requestHash: `hash-${key}`,
+      operation: 'create_issue',
+      runId: 'run-concurrent-diff',
+      gate: 'G1',
+      operationData: { title: 'T', body: 'B', labels: [] },
+    });
+
+    const [r1, r2] = await Promise.all([
+      sharedDo.fetch(makeDoRequest(makePayload('key-diff-a'))).then((r) => r.text()).then(JSON.parse),
+      sharedDo.fetch(makeDoRequest(makePayload('key-diff-b'))).then((r) => r.text()).then(JSON.parse),
+    ]);
+
+    assert.equal(githubCallCount, 1, 'only one GitHub call must be made for the same run_id');
+
+    const statuses = [r1.status, r2.status].sort((a, b) => a - b);
+    assert.equal(statuses[0], 200, 'one request must succeed');
+    assert.equal(statuses[1], 429, 'second request must be blocked by run bounds');
+
+    const blocked = r1.status === 429 ? r1 : r2;
+    assert.equal(blocked.githubCalled, false, 'blocked request must not call GitHub');
+  });
+
+  it('success finalization atomically updates idem, timestamps, and run state', async () => {
+    const storage = new MockStorage();
+
+    await invokeDoFetch(
+      storage,
+      async () => new Response(
+        JSON.stringify({ number: 10, html_url: '...', title: 'T', assignees: [] }),
+        { status: 201 },
+      ),
+      {
+        idempotencyKey: 'key-atomic',
+        requestHash: 'hash-atomic',
+        operation: 'create_issue',
+        runId: 'run-atomic',
+        gate: 'G1',
+        operationData: { title: 'T', body: 'B', labels: [] },
+      },
+    );
+
+    // All three must be present and consistent — written atomically as a batch.
+    const idem = await storage.get('idem:key-atomic');
+    const timestamps = await storage.get('rate:timestamps');
+    const runState = await storage.get('run:run-atomic');
+
+    assert.equal(idem?.state, IDEM_STATES.SUCCEEDED, 'idem must be SUCCEEDED');
+    assert.ok(Array.isArray(timestamps) && timestamps.length > 0, 'timestamps must be updated');
+    assert.equal(runState?.create_issue, true, 'run state must mark create_issue done');
+    assert.equal(runState?.created_issue_number, 10, 'run state must record issue number');
+
+    // New request with a different key but same run_id must be blocked — proving
+    // the run state was atomically updated alongside SUCCEEDED.
+    let extraGithubCalled = false;
+    const followUp = await invokeDoFetch(
+      storage,
+      async () => { extraGithubCalled = true; return new Response(JSON.stringify({ number: 11 }), { status: 201 }); },
+      {
+        idempotencyKey: 'key-atomic-2',
+        requestHash: 'hash-atomic-2',
+        operation: 'create_issue',
+        runId: 'run-atomic',
+        gate: 'G1',
+        operationData: { title: 'T2', body: 'B2', labels: [] },
+      },
+    );
+
+    assert.equal(followUp.status, 429, 'second create in same run_id must be blocked');
+    assert.equal(extraGithubCalled, false, 'GitHub must not be called for the blocked request');
+  });
+
+  it('missing state.storage returns BLOCKED and performs no GitHub call', async () => {
+    let githubCallCount = 0;
+    const fetchImpl = async () => {
+      githubCallCount += 1;
+      return new Response(JSON.stringify({ number: 1 }), { status: 201 });
+    };
+
+    // No storage property in state — simulates a DO runtime where storage is unavailable.
+    const do_ = new BrokerDurableObject(
+      { /* no storage */ },
+      { GITHUB_PAT: 'test-pat', _fetchImpl: fetchImpl },
+    );
+
+    const res = await do_.fetch(makeDoRequest({
+      idempotencyKey: 'key-nostorage',
+      requestHash: 'hash-nostorage',
+      operation: 'create_issue',
+      runId: 'run-nostorage',
+      gate: 'G1',
+      operationData: { title: 'T', body: 'B', labels: [] },
+    }));
+    const result = JSON.parse(await res.text());
+
+    assert.equal(result.status, 503, 'must return 503 when storage is missing');
+    assert.equal(result.body?.error, 'BLOCKED', 'error must be BLOCKED');
+    assert.equal(result.githubCalled, false, 'githubCalled must be false');
+    assert.equal(githubCallCount, 0, 'GitHub must not be called when storage is missing');
   });
 });

@@ -6,11 +6,21 @@
  * All write operations are serialized through this single DO instance,
  * identified by idFromName('kubzik96/genesis-ai').
  *
- * Crash-safe idempotency: each state transition is persisted to DO storage
- * individually — PENDING is written BEFORE the GitHub call, so that DO
- * reconstruction after a crash finds the key and blocks a duplicate GitHub
- * call.  The final state (SUCCEEDED / FAILED / UNKNOWN) replaces PENDING
- * after the GitHub call returns (or throws).
+ * Concurrency serialization: all incoming fetch() calls are queued through
+ * a per-instance Promise chain (_withLock).  This guarantees that two
+ * concurrent requests with DIFFERENT idempotency keys but the SAME run_id
+ * cannot both pass rate/run checks and call GitHub at the same time.
+ *
+ * Crash-safe idempotency:
+ *   • PENDING is written to DO storage BEFORE the GitHub call.
+ *   • After GitHub success, SUCCEEDED + updated timestamps + updated run
+ *     state are written as one atomic batch put (storage.put(Map)) so a
+ *     crash cannot leave SUCCEEDED while run_id still allows a duplicate.
+ *   • UNKNOWN is written after an indeterminate result; reconstruction finds
+ *     it and blocks retry without another GitHub call.
+ *
+ * Missing storage (state.storage absent) → fail closed, 503/BLOCKED,
+ * githubCalled = false.  GitHub is never called without authoritative storage.
  *
  * Storage key schema:
  *   idem:{idempotencyKey}  — idempotency record
@@ -29,44 +39,35 @@ export class BrokerDurableObject {
   constructor(state, env) {
     this.state = state;
     this.env = env;
+    // Per-instance queue: ensures all writes (including GitHub call) run serially.
+    this._queue = Promise.resolve();
   }
 
-  /* ── Storage helpers ──────────────────────────────────────────────────── */
-
-  async _getIdem(key) {
-    if (!this.state?.storage) return null;
-    return (await this.state.storage.get(`idem:${key}`)) ?? null;
-  }
-
-  async _putIdem(key, record) {
-    if (!this.state?.storage) return;
-    await this.state.storage.put(`idem:${key}`, record);
-  }
-
-  async _getTimestamps() {
-    if (!this.state?.storage) return [];
-    return (await this.state.storage.get('rate:timestamps')) ?? [];
-  }
-
-  async _putTimestamps(timestamps) {
-    if (!this.state?.storage) return;
-    await this.state.storage.put('rate:timestamps', timestamps);
-  }
-
-  async _getRun(runId) {
-    if (!this.state?.storage) return null;
-    return (await this.state.storage.get(`run:${runId}`)) ?? null;
-  }
-
-  async _putRun(runId, runState) {
-    if (!this.state?.storage) return;
-    await this.state.storage.put(`run:${runId}`, runState);
+  /**
+   * Serialize fn through the per-instance queue.
+   * While one write is active (including awaiting GitHub), all subsequent
+   * calls queue behind it — preventing concurrent rate/run check races.
+   */
+  _withLock(fn) {
+    const run = this._queue.then(fn, fn);
+    this._queue = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
   }
 
   /* ── Request handler ──────────────────────────────────────────────────── */
 
   async fetch(request) {
-    const { idempotencyKey, requestHash, operation, runId, gate, operationData } = await request.json();
+    // Fail closed when DO storage is unavailable — never call GitHub blind.
+    if (!this.state?.storage) {
+      return this._json({
+        status: 503,
+        body: { error: 'BLOCKED', message: 'DO storage unavailable; write blocked' },
+        githubCalled: false,
+      });
+    }
 
     const github = createGithubClient({ pat: this.env?.GITHUB_PAT, fetchImpl: this.env?._fetchImpl });
     if (!github) {
@@ -77,8 +78,15 @@ export class BrokerDurableObject {
       });
     }
 
+    const payload = await request.json();
+    return this._withLock(() => this._processWrite(payload, github));
+  }
+
+  async _processWrite({ idempotencyKey, requestHash, operation, runId, gate, operationData }, github) {
+    const storage = this.state.storage;
+
     // 1. Check existing key in authoritative DO storage.
-    const existing = await this._getIdem(idempotencyKey);
+    const existing = (await storage.get(`idem:${idempotencyKey}`)) ?? null;
     const decision = evaluateIdempotency(existing, requestHash);
 
     if (decision.action === 'CONFLICT' || decision.action === 'BLOCKED' || decision.action === 'IN_FLIGHT') {
@@ -98,7 +106,7 @@ export class BrokerDurableObject {
     }
 
     // Rate limit check.
-    const timestamps = await this._getTimestamps();
+    const timestamps = (await storage.get('rate:timestamps')) ?? [];
     const rate = checkHourlyWriteLimit(timestamps);
     if (!rate.ok) {
       return this._json({
@@ -109,7 +117,7 @@ export class BrokerDurableObject {
     }
 
     // Run bounds check.
-    const runState = (await this._getRun(runId)) ?? {
+    const runState = (await storage.get(`run:${runId}`)) ?? {
       create_issue: false,
       assign_copilot: false,
       created_issue_number: null,
@@ -123,7 +131,7 @@ export class BrokerDurableObject {
       });
     }
 
-    // Assign-copilot: verify the issue was created by Broker in this run_id (atomic, before PENDING).
+    // Assign-copilot: verify the issue was created by Broker in this run_id.
     if (operation === 'assign_copilot') {
       const belong = assertAssignIssueBelongsToRun(runState, operationData?.issueNumber);
       if (!belong.ok) {
@@ -135,8 +143,8 @@ export class BrokerDurableObject {
       }
     }
 
-    // 2. Atomically reserve PENDING in DO storage BEFORE calling GitHub.
-    //    After any crash/reconstruction the stored PENDING will block a duplicate call.
+    // 2. Reserve PENDING in DO storage BEFORE calling GitHub.
+    //    After any crash/reconstruction the stored PENDING blocks a duplicate call.
     const pending = {
       idempotency_key: idempotencyKey,
       request_hash: requestHash,
@@ -146,7 +154,7 @@ export class BrokerDurableObject {
       state: IDEM_STATES.PENDING,
       safe_result: null,
     };
-    await this._putIdem(idempotencyKey, pending);
+    await storage.put(`idem:${idempotencyKey}`, pending);
 
     // 3. Call GitHub.
     const githubCall = buildGithubCall(operation, operationData, github);
@@ -159,29 +167,35 @@ export class BrokerDurableObject {
         message: 'GitHub call timed out or returned indeterminate result; auto-retry forbidden',
       };
       // 4a. Persist UNKNOWN so reconstruction blocks retry without another GitHub call.
-      await this._putIdem(idempotencyKey, markUnknown(pending, safe));
+      await storage.put(`idem:${idempotencyKey}`, markUnknown(pending, safe));
       return this._json({ status: 409, body: safe, githubCalled: true, unknown: true });
     }
 
     if (result.ok) {
-      // 4b. Persist SUCCEEDED and update auxiliary state.
-      await this._putIdem(idempotencyKey, markSucceeded(pending, result.safeResult));
-      await this._putTimestamps(rate.nextTimestamps);
+      // 4b. Atomically persist SUCCEEDED + updated timestamps + updated run state
+      //     as a single batch write.  A crash cannot leave SUCCEEDED while run_id
+      //     state still allows a duplicate create or assign.
+      const succeededRecord = markSucceeded(pending, result.safeResult);
+      const batchEntries = [
+        [`idem:${idempotencyKey}`, succeededRecord],
+        ['rate:timestamps', rate.nextTimestamps],
+      ];
       if (operation === 'create_issue') {
-        await this._putRun(runId, {
+        batchEntries.push([`run:${runId}`, {
           ...runState,
           create_issue: true,
           created_issue_number: result.safeResult?.issue_number ?? result.safeResult?.number ?? null,
-        });
+        }]);
       } else if (operation === 'assign_copilot') {
-        await this._putRun(runId, { ...runState, assign_copilot: true });
+        batchEntries.push([`run:${runId}`, { ...runState, assign_copilot: true }]);
       }
+      await storage.put(new Map(batchEntries));
       return this._json({ status: 200, body: result.safeResult, githubCalled: true });
     }
 
     if (isDeterministicClientError(result.status)) {
       // 4c. Persist FAILED (deterministic client error — safe to replay).
-      await this._putIdem(idempotencyKey, markFailed(pending, result.safeResult));
+      await storage.put(`idem:${idempotencyKey}`, markFailed(pending, result.safeResult));
       return this._json({ status: result.status, body: result.safeResult, githubCalled: true });
     }
 
@@ -190,7 +204,7 @@ export class BrokerDurableObject {
       error: 'BLOCKED_RECONCILIATION_REQUIRED',
       message: `GitHub upstream error — indeterminate result (status ${result.status}); auto-retry forbidden`,
     };
-    await this._putIdem(idempotencyKey, markUnknown(pending, safe));
+    await storage.put(`idem:${idempotencyKey}`, markUnknown(pending, safe));
     return this._json({ status: 409, body: safe, githubCalled: true, unknown: true });
   }
 
