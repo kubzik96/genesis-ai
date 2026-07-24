@@ -5,6 +5,7 @@
  * Result contract (audit metadata):
  *   githubStatus     — upstream GitHub HTTP status when githubCalled; otherwise null
  *   idempotencyState — SUCCEEDED | FAILED | UNKNOWN | PENDING | null
+ *     CONFLICT → authoritative existing record state (no GitHub call)
  */
 import { evaluateIdempotency, markFailed, markSucceeded, markUnknown, isDeterministicClientError } from './idempotency.js';
 import { checkHourlyWriteLimit, checkRunBounds, assertAssignIssueBelongsToRun } from './rate-limit.js';
@@ -57,8 +58,12 @@ export class MemoryBrokerStore {
       const decision = evaluateIdempotency(existing, requestHash);
       if (decision.action === 'CONFLICT' || decision.action === 'BLOCKED' || decision.action === 'IN_FLIGHT') {
         let idempotencyState = null;
-        if (decision.action === 'IN_FLIGHT') idempotencyState = IDEM_STATES.PENDING;
-        else if (decision.action === 'BLOCKED' && decision.error === 'BLOCKED_RECONCILIATION_REQUIRED') {
+        if (decision.action === 'CONFLICT') {
+          // Authoritative existing record state (e.g. SUCCEEDED + different hash → 409, state SUCCEEDED).
+          idempotencyState = existing?.state ?? null;
+        } else if (decision.action === 'IN_FLIGHT') {
+          idempotencyState = IDEM_STATES.PENDING;
+        } else if (decision.action === 'BLOCKED' && decision.error === 'BLOCKED_RECONCILIATION_REQUIRED') {
           idempotencyState = IDEM_STATES.UNKNOWN;
         }
         return {

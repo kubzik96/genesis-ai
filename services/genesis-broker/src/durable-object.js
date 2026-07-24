@@ -3,24 +3,8 @@
  * Authoritative idempotency + rate/run state for kubzik96/genesis-ai.
  * Workers KV is NOT used (S-0002).
  *
- * All write operations are serialized through this single DO instance,
- * identified by idFromName('kubzik96/genesis-ai').
- *
- * Concurrency serialization: all incoming fetch() calls are queued through
- * a per-instance Promise chain (_withLock).
- *
- * Crash-safe idempotency:
- *   • PENDING is written to DO storage BEFORE the GitHub call.
- *   • After GitHub success, SUCCEEDED + timestamps + run state are written
- *     as one atomic batch put (storage.put(Object)).
- *   • UNKNOWN is written after an indeterminate result.
- *
  * Result contract includes githubStatus + idempotencyState for S-0002 §4.8 audit.
- *
- * Storage key schema:
- *   idem:{idempotencyKey}  — idempotency record
- *   rate:timestamps        — array of write timestamp ms values (rolling hour)
- *   run:{runId}            — per-run_id state
+ * CONFLICT returns the authoritative existing record state as idempotencyState.
  */
 import { evaluateIdempotency, markFailed, markSucceeded, markUnknown, isDeterministicClientError } from './idempotency.js';
 import { checkHourlyWriteLimit, checkRunBounds, assertAssignIssueBelongsToRun } from './rate-limit.js';
@@ -88,8 +72,11 @@ export class BrokerDurableObject {
 
     if (decision.action === 'CONFLICT' || decision.action === 'BLOCKED' || decision.action === 'IN_FLIGHT') {
       let idempotencyState = null;
-      if (decision.action === 'IN_FLIGHT') idempotencyState = IDEM_STATES.PENDING;
-      else if (decision.action === 'BLOCKED' && decision.error === 'BLOCKED_RECONCILIATION_REQUIRED') {
+      if (decision.action === 'CONFLICT') {
+        idempotencyState = existing?.state ?? null;
+      } else if (decision.action === 'IN_FLIGHT') {
+        idempotencyState = IDEM_STATES.PENDING;
+      } else if (decision.action === 'BLOCKED' && decision.error === 'BLOCKED_RECONCILIATION_REQUIRED') {
         idempotencyState = IDEM_STATES.UNKNOWN;
       }
       return this._json({
