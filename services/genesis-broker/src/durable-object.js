@@ -7,28 +7,20 @@
  * identified by idFromName('kubzik96/genesis-ai').
  *
  * Concurrency serialization: all incoming fetch() calls are queued through
- * a per-instance Promise chain (_withLock).  This guarantees that two
- * concurrent requests with DIFFERENT idempotency keys but the SAME run_id
- * cannot both pass rate/run checks and call GitHub at the same time.
+ * a per-instance Promise chain (_withLock).
  *
  * Crash-safe idempotency:
  *   • PENDING is written to DO storage BEFORE the GitHub call.
- *   • After GitHub success, SUCCEEDED + updated timestamps + updated run
- *     state are written as one atomic batch put (storage.put(Object)) so a
- *     crash cannot leave SUCCEEDED while run_id still allows a duplicate.
- *   • UNKNOWN is written after an indeterminate result; reconstruction finds
- *     it and blocks retry without another GitHub call.
+ *   • After GitHub success, SUCCEEDED + timestamps + run state are written
+ *     as one atomic batch put (storage.put(Object)).
+ *   • UNKNOWN is written after an indeterminate result.
  *
- * Missing storage (state.storage absent) → fail closed, 503/BLOCKED,
- * githubCalled = false.  GitHub is never called without authoritative storage.
+ * Result contract includes githubStatus + idempotencyState for S-0002 §4.8 audit.
  *
  * Storage key schema:
  *   idem:{idempotencyKey}  — idempotency record
  *   rate:timestamps        — array of write timestamp ms values (rolling hour)
  *   run:{runId}            — per-run_id state
- *
- * In CODE_ONLY stage this module is source for deployment later;
- * unit tests use MemoryBrokerStore instead of the real DO runtime.
  */
 import { evaluateIdempotency, markFailed, markSucceeded, markUnknown, isDeterministicClientError } from './idempotency.js';
 import { checkHourlyWriteLimit, checkRunBounds, assertAssignIssueBelongsToRun } from './rate-limit.js';
@@ -39,19 +31,9 @@ export class BrokerDurableObject {
   constructor(state, env) {
     this.state = state;
     this.env = env;
-    // Per-instance queue: ensures all writes (including GitHub call) run serially.
     this._queue = Promise.resolve();
   }
 
-  /**
-   * Serialize fn through the per-instance queue.
-   * While one write is active (including awaiting GitHub), all subsequent
-   * calls queue behind it — preventing concurrent rate/run check races.
-   *
-   * fn is used as both the success and rejection handler so that this._queue
-   * never becomes a rejected Promise, ensuring subsequent writes always
-   * execute regardless of whether the previous write succeeded or threw.
-   */
   _withLock(fn) {
     const run = this._queue.then(fn, fn);
     this._queue = run.then(
@@ -61,15 +43,14 @@ export class BrokerDurableObject {
     return run;
   }
 
-  /* ── Request handler ──────────────────────────────────────────────────── */
-
   async fetch(request) {
-    // Fail closed when DO storage is unavailable — never call GitHub blind.
     if (!this.state?.storage) {
       return this._json({
         status: 503,
         body: { error: 'BLOCKED', message: 'DO storage unavailable; write blocked' },
         githubCalled: false,
+        githubStatus: null,
+        idempotencyState: null,
       });
     }
 
@@ -79,6 +60,8 @@ export class BrokerDurableObject {
         status: 503,
         body: { error: 'PAT_NOT_CONFIGURED', message: 'GITHUB_PAT not available in Durable Object' },
         githubCalled: false,
+        githubStatus: null,
+        idempotencyState: null,
       });
     }
 
@@ -90,6 +73,8 @@ export class BrokerDurableObject {
         status: 400,
         body: { error: 'INVALID_REQUEST', message: 'Request body must be valid JSON' },
         githubCalled: false,
+        githubStatus: null,
+        idempotencyState: null,
       });
     }
     return this._withLock(() => this._processWrite(payload, github));
@@ -98,15 +83,21 @@ export class BrokerDurableObject {
   async _processWrite({ idempotencyKey, requestHash, operation, runId, gate, operationData }, github) {
     const storage = this.state.storage;
 
-    // 1. Check existing key in authoritative DO storage.
     const existing = (await storage.get(`idem:${idempotencyKey}`)) ?? null;
     const decision = evaluateIdempotency(existing, requestHash);
 
     if (decision.action === 'CONFLICT' || decision.action === 'BLOCKED' || decision.action === 'IN_FLIGHT') {
+      let idempotencyState = null;
+      if (decision.action === 'IN_FLIGHT') idempotencyState = IDEM_STATES.PENDING;
+      else if (decision.action === 'BLOCKED' && decision.error === 'BLOCKED_RECONCILIATION_REQUIRED') {
+        idempotencyState = IDEM_STATES.UNKNOWN;
+      }
       return this._json({
         status: decision.status,
         body: { error: decision.error, message: decision.message },
         githubCalled: false,
+        githubStatus: null,
+        idempotencyState,
       });
     }
     if (decision.action === 'REPLAY') {
@@ -114,11 +105,12 @@ export class BrokerDurableObject {
         status: decision.state === IDEM_STATES.FAILED ? decision.result?.status || 400 : 200,
         body: decision.result,
         githubCalled: false,
+        githubStatus: null,
+        idempotencyState: decision.state,
         replay: true,
       });
     }
 
-    // Rate limit check.
     const timestamps = (await storage.get('rate:timestamps')) ?? [];
     const rate = checkHourlyWriteLimit(timestamps);
     if (!rate.ok) {
@@ -126,10 +118,11 @@ export class BrokerDurableObject {
         status: rate.status,
         body: { error: rate.error, message: rate.message },
         githubCalled: false,
+        githubStatus: null,
+        idempotencyState: null,
       });
     }
 
-    // Run bounds check.
     const runState = (await storage.get(`run:${runId}`)) ?? {
       create_issue: false,
       assign_copilot: false,
@@ -141,10 +134,11 @@ export class BrokerDurableObject {
         status: bounds.status,
         body: { error: bounds.error, message: bounds.message },
         githubCalled: false,
+        githubStatus: null,
+        idempotencyState: null,
       });
     }
 
-    // Assign-copilot: verify the issue was created by Broker in this run_id.
     if (operation === 'assign_copilot') {
       const belong = assertAssignIssueBelongsToRun(runState, operationData?.issueNumber);
       if (!belong.ok) {
@@ -152,12 +146,12 @@ export class BrokerDurableObject {
           status: belong.status,
           body: { error: belong.error, message: belong.message },
           githubCalled: false,
+          githubStatus: null,
+          idempotencyState: null,
         });
       }
     }
 
-    // 2. Reserve PENDING in DO storage BEFORE calling GitHub.
-    //    After any crash/reconstruction the stored PENDING blocks a duplicate call.
     const pending = {
       idempotency_key: idempotencyKey,
       request_hash: requestHash,
@@ -169,7 +163,6 @@ export class BrokerDurableObject {
     };
     await storage.put(`idem:${idempotencyKey}`, pending);
 
-    // 3. Call GitHub.
     const githubCall = buildGithubCall(operation, operationData, github);
     let result;
     try {
@@ -179,15 +172,18 @@ export class BrokerDurableObject {
         error: 'BLOCKED_RECONCILIATION_REQUIRED',
         message: 'GitHub call timed out or returned indeterminate result; auto-retry forbidden',
       };
-      // 4a. Persist UNKNOWN so reconstruction blocks retry without another GitHub call.
       await storage.put(`idem:${idempotencyKey}`, markUnknown(pending, safe));
-      return this._json({ status: 409, body: safe, githubCalled: true, unknown: true });
+      return this._json({
+        status: 409,
+        body: safe,
+        githubCalled: true,
+        githubStatus: null,
+        idempotencyState: IDEM_STATES.UNKNOWN,
+        unknown: true,
+      });
     }
 
     if (result.ok) {
-      // 4b. Atomically persist SUCCEEDED + updated timestamps + updated run state
-      //     as a single batch write.  A crash cannot leave SUCCEEDED while run_id
-      //     state still allows a duplicate create or assign.
       const succeededRecord = markSucceeded(pending, result.safeResult);
       const batchEntries = [
         [`idem:${idempotencyKey}`, succeededRecord],
@@ -203,22 +199,39 @@ export class BrokerDurableObject {
         batchEntries.push([`run:${runId}`, { ...runState, assign_copilot: true }]);
       }
       await storage.put(Object.fromEntries(batchEntries));
-      return this._json({ status: 200, body: result.safeResult, githubCalled: true });
+      return this._json({
+        status: 200,
+        body: result.safeResult,
+        githubCalled: true,
+        githubStatus: result.githubStatus ?? result.status ?? null,
+        idempotencyState: IDEM_STATES.SUCCEEDED,
+      });
     }
 
     if (isDeterministicClientError(result.status)) {
-      // 4c. Persist FAILED (deterministic client error — safe to replay).
       await storage.put(`idem:${idempotencyKey}`, markFailed(pending, result.safeResult));
-      return this._json({ status: result.status, body: result.safeResult, githubCalled: true });
+      return this._json({
+        status: result.status,
+        body: result.safeResult,
+        githubCalled: true,
+        githubStatus: result.githubStatus ?? result.status ?? null,
+        idempotencyState: IDEM_STATES.FAILED,
+      });
     }
 
-    // 4d. Non-deterministic error (5xx, network) → UNKNOWN.
     const safe = {
       error: 'BLOCKED_RECONCILIATION_REQUIRED',
       message: `GitHub upstream error — indeterminate result (status ${result.status}); auto-retry forbidden`,
     };
     await storage.put(`idem:${idempotencyKey}`, markUnknown(pending, safe));
-    return this._json({ status: 409, body: safe, githubCalled: true, unknown: true });
+    return this._json({
+      status: 409,
+      body: safe,
+      githubCalled: true,
+      githubStatus: result.githubStatus ?? result.status ?? null,
+      idempotencyState: IDEM_STATES.UNKNOWN,
+      unknown: true,
+    });
   }
 
   _json(data) {
@@ -228,10 +241,6 @@ export class BrokerDurableObject {
   }
 }
 
-/**
- * Build a githubCall closure for the given operation and data.
- * Called inside the Durable Object so the GitHub PAT never leaves the DO.
- */
 function buildGithubCall(operation, operationData, github) {
   if (operation === 'create_issue') {
     return async () => {
@@ -242,11 +251,12 @@ function buildGithubCall(operation, operationData, github) {
       });
       if (!res.ok) {
         const mapped = mapGithubError(res.status, res.data);
-        return { ok: false, status: mapped.status, safeResult: mapped };
+        return { ok: false, status: mapped.status, githubStatus: res.status, safeResult: mapped };
       }
       return {
         ok: true,
         status: 200,
+        githubStatus: res.status,
         safeResult: {
           issue_number: res.data.number,
           number: res.data.number,
@@ -262,11 +272,12 @@ function buildGithubCall(operation, operationData, github) {
       const res = await github.assignCopilot(operationData?.issueNumber);
       if (!res.ok) {
         const mapped = mapGithubError(res.status, res.data);
-        return { ok: false, status: mapped.status, safeResult: mapped };
+        return { ok: false, status: mapped.status, githubStatus: res.status, safeResult: mapped };
       }
       return {
         ok: true,
         status: 200,
+        githubStatus: res.status,
         safeResult: {
           issue_number: operationData?.issueNumber,
           assigned: (res.data?.assignees || []).map((a) => a.login),
@@ -278,7 +289,7 @@ function buildGithubCall(operation, operationData, github) {
   return async () => ({
     ok: false,
     status: 400,
+    githubStatus: null,
     safeResult: { error: 'UNKNOWN_OPERATION', message: `Unknown operation: ${operation}` },
   });
 }
-

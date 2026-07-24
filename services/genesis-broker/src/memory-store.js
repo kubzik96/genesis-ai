@@ -1,6 +1,10 @@
 /**
  * In-process Durable Object stand-in for unit tests.
  * Mirrors SQLite-backed DO semantics: serialize writes, store idempotency + rate/run state.
+ *
+ * Result contract (audit metadata):
+ *   githubStatus     — upstream GitHub HTTP status when githubCalled; otherwise null
+ *   idempotencyState — SUCCEEDED | FAILED | UNKNOWN | PENDING | null
  */
 import { evaluateIdempotency, markFailed, markSucceeded, markUnknown, isDeterministicClientError } from './idempotency.js';
 import { checkHourlyWriteLimit, checkRunBounds, assertAssignIssueBelongsToRun } from './rate-limit.js';
@@ -52,10 +56,17 @@ export class MemoryBrokerStore {
       const existing = this.getIdem(idempotencyKey);
       const decision = evaluateIdempotency(existing, requestHash);
       if (decision.action === 'CONFLICT' || decision.action === 'BLOCKED' || decision.action === 'IN_FLIGHT') {
+        let idempotencyState = null;
+        if (decision.action === 'IN_FLIGHT') idempotencyState = IDEM_STATES.PENDING;
+        else if (decision.action === 'BLOCKED' && decision.error === 'BLOCKED_RECONCILIATION_REQUIRED') {
+          idempotencyState = IDEM_STATES.UNKNOWN;
+        }
         return {
           status: decision.status,
           body: { error: decision.error, message: decision.message },
           githubCalled: false,
+          githubStatus: null,
+          idempotencyState,
         };
       }
       if (decision.action === 'REPLAY') {
@@ -63,6 +74,8 @@ export class MemoryBrokerStore {
           status: decision.state === IDEM_STATES.FAILED ? decision.result?.status || 400 : 200,
           body: decision.result,
           githubCalled: false,
+          githubStatus: null,
+          idempotencyState: decision.state,
           replay: true,
         };
       }
@@ -73,6 +86,8 @@ export class MemoryBrokerStore {
           status: rate.status,
           body: { error: rate.error, message: rate.message },
           githubCalled: false,
+          githubStatus: null,
+          idempotencyState: null,
         };
       }
 
@@ -87,10 +102,11 @@ export class MemoryBrokerStore {
           status: bounds.status,
           body: { error: bounds.error, message: bounds.message },
           githubCalled: false,
+          githubStatus: null,
+          idempotencyState: null,
         };
       }
 
-      // For assign_copilot, verify the issue was created by Broker in this run_id (atomic check).
       if (operation === 'assign_copilot') {
         const belong = assertAssignIssueBelongsToRun(runState, operationData?.issueNumber);
         if (!belong.ok) {
@@ -98,6 +114,8 @@ export class MemoryBrokerStore {
             status: belong.status,
             body: { error: belong.error, message: belong.message },
             githubCalled: false,
+            githubStatus: null,
+            idempotencyState: null,
           };
         }
       }
@@ -122,7 +140,14 @@ export class MemoryBrokerStore {
           message: 'GitHub call timed out or returned indeterminate result; auto-retry forbidden',
         };
         this.setIdem(idempotencyKey, markUnknown(pending, safe));
-        return { status: 409, body: safe, githubCalled: true, unknown: true };
+        return {
+          status: 409,
+          body: safe,
+          githubCalled: true,
+          githubStatus: null,
+          idempotencyState: IDEM_STATES.UNKNOWN,
+          unknown: true,
+        };
       }
 
       if (result.ok) {
@@ -137,22 +162,39 @@ export class MemoryBrokerStore {
           this.setRun(runId, { ...runState, assign_copilot: true });
         }
         this.setIdem(idempotencyKey, markSucceeded(pending, result.safeResult));
-        return { status: 200, body: result.safeResult, githubCalled: true };
+        return {
+          status: 200,
+          body: result.safeResult,
+          githubCalled: true,
+          githubStatus: result.githubStatus ?? result.status ?? null,
+          idempotencyState: IDEM_STATES.SUCCEEDED,
+        };
       }
 
       if (isDeterministicClientError(result.status)) {
         this.setIdem(idempotencyKey, markFailed(pending, result.safeResult));
-        return { status: result.status, body: result.safeResult, githubCalled: true };
+        return {
+          status: result.status,
+          body: result.safeResult,
+          githubCalled: true,
+          githubStatus: result.githubStatus ?? result.status ?? null,
+          idempotencyState: IDEM_STATES.FAILED,
+        };
       }
 
-      // Non-deterministic error (5xx, network timeout via non-ok result): mark UNKNOWN.
-      // Always use BLOCKED_RECONCILIATION_REQUIRED so the client knows not to auto-retry.
       const safe = {
         error: 'BLOCKED_RECONCILIATION_REQUIRED',
         message: `GitHub upstream error — indeterminate result (status ${result.status}); auto-retry forbidden`,
       };
       this.setIdem(idempotencyKey, markUnknown(pending, safe));
-      return { status: 409, body: safe, githubCalled: true, unknown: true };
+      return {
+        status: 409,
+        body: safe,
+        githubCalled: true,
+        githubStatus: result.githubStatus ?? result.status ?? null,
+        idempotencyState: IDEM_STATES.UNKNOWN,
+        unknown: true,
+      };
     });
   }
 }
