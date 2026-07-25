@@ -35,36 +35,52 @@ QUEUE.md содержит очередь всех активных и ожида
 | ID | Название | Статус | Исполнитель |
 |---|---|---|---|
 | T-009 | Genesis One-Window Execution Spike | READY | Integration Engineer |
-| T-010 | Genesis Secure GitHub Broker MVP | WORKING | Integration Engineer |
+| T-010 | Genesis Secure GitHub Broker MVP | REVIEW | Integration Engineer |
 
 T-009 готова только к preflight. Approved Specification: S-0001 Revision 1. Execution Authorization: NOT_GRANTED. Реализация запрещена до отдельного решения CEO.
 
-T-010 выполняется по Approved Specification S-0002 Revision 1. Status: **WORKING**.
+T-010 выполняется по Approved Specification S-0002 Revision 1. Status: **REVIEW** (not DONE).
 
 - **Stage 1 CODE_ONLY:** ACCEPTED
-- **Accepted exact HEAD:** `6393c434d139657ea1deb8835cf8e6d523334a74`
-- **Tests:** passed 60; failed 0; skipped 0 (`node --test tests/**/*.test.js`, Node.js v24.18.0)
-- **Stage 2 DEPLOY_READONLY:** GRANTED (authorization record only; deployment NOT_STARTED)
-- **PAT:** NOT_CREATED
-- **Worker Secrets:** NOT_CREATED
-- **Live writes:** NOT_AUTHORIZED
-- **Dify integration:** NOT_AUTHORIZED
-- **PR #11 modification / merge:** NOT_AUTHORIZED
+- **Exact candidate SHA:** `6393c434d139657ea1deb8835cf8e6d523334a74`
+- **Tests:** passed 60; failed 0; skipped 0 (`node --test tests/**/*.test.js`)
+- **CI:** `CI_NOT_CONFIGURED`
+- **Stage 2 DEPLOY_READONLY:** COMPLETED / PASS
+- **Cloudflare Worker:** `genesis-broker`
+- **Final deployed version:** `654c3dff-70a2-4583-a5e9-a19f78a792da`
+- **Traffic:** 100%
+- **Script etag:** `25e9d66fe97ee6fa9029864adce8a5ba3dc67ebf74bb4693c949c19a615843f0`
+- **Health smoke:** PASS
+  - repository: `kubzik96/genesis-ai`
+  - base_branch: `main`
+  - pat_configured: true
+  - durable_object_configured: true
+  - kv_used: false
+- **Authenticated context/read smoke:** PASS
+  - path: `bridge/QUEUE.md`
+  - ref: `main`
+  - blob SHA: `b3b50a207ee1a1003a81e3a8ddf359506a6f8197`
+  - content_length: 4999
+  - content_sha256: `c9cbce62dd4313ccb2812c4be514ffc474947d41fecf0af59161e5b6731ac205`
+- **GitHub PAT:** created as repo-only fine-grained PAT (Metadata Read + Contents Read only); stored only as Cloudflare Worker Secret
+- **BROKER_SERVICE_TOKEN:** stored only as Cloudflare Worker Secret
+- **Cloudflare temporary deployment API token:** revoked after smoke
+- **Local shell secrets:** cleared
+- **Local git worktree:** clean
+- **Live GitHub writes:** NOT_AUTHORIZED and NOT_PERFORMED
+- **Issue creation:** NOT_PERFORMED
+- **Copilot assignment:** NOT_PERFORMED
+- **Dify integration:** NOT_AUTHORIZED and NOT_PERFORMED
+- **PR #11:** Draft, open, unmerged; HEAD `6393c434d139657ea1deb8835cf8e6d523334a74`
+- **Merge of PR #11:** NOT_AUTHORIZED
 
-Sequence before any deployment:
+Restrictions (unchanged):
 
-1. independent review of the Stage 2 authorization-record PR;
-2. separate CEO merge authorization;
-3. merge of the authorization record to `main`;
-4. separate CEO **EXECUTE DEPLOY** command.
-
-Restrictions:
-
-- Cloudflare deployment, PAT creation and Worker Secrets remain forbidden **until** the separate CEO **EXECUTE DEPLOY** command;
-- live GitHub writes, `POST /v1/issues`, assign-copilot and Dify integration remain forbidden **throughout** Stage 2 DEPLOY_READONLY (including after any future deploy/smoke);
-- those write/integration operations require a **separate future CEO authorization** under the approved S-0001 live-write scenario.
-
-T-010 remains **WORKING** (not DONE).
+- T-010 remains **REVIEW** until the approved S-0001 live-write scenario and separate CEO acceptance;
+- T-010 is **not** DONE;
+- T-006 remains BLOCKED;
+- first live GitHub write is **not** authorized;
+- `POST /v1/issues`, assign-copilot, dummy Issue/PR, and Dify integration remain forbidden until separate future CEO authorization under S-0001.
 
 ---
 
