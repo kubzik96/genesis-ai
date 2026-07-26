@@ -18,7 +18,7 @@ YYYY-MM-DD
 
 ## Автор решения
 
-CEO / COO / Chief Architect / другой участник
+CEO / CTO / COO / Chief Architect / другой участник
 
 ---
 
