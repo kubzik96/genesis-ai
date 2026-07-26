@@ -34,10 +34,29 @@ QUEUE.md содержит очередь всех активных и ожида
 
 | ID | Название | Статус | Исполнитель |
 |---|---|---|---|
-| T-009 | Genesis One-Window Execution Spike | READY | Integration Engineer |
+| T-009 | Genesis One-Window Execution Spike | WORKING | Integration Engineer |
 | T-010 | Genesis Secure GitHub Broker MVP | REVIEW | Integration Engineer |
 
-T-009 готова только к preflight. Approved Specification: S-0001 Revision 1. Execution Authorization: NOT_GRANTED. Реализация запрещена до отдельного решения CEO.
+T-009 выполняется по Approved Specification S-0001 Revision 1. Status: **WORKING** (not DONE).
+
+- **Stage 1 DIFY_CONFIG_ONLY:** completed (workflow skeleton / MOCK app preserved)
+- **Stage 2 DIFY_READONLY_WIRING:** completed (`POST /v1/context/read` via Genesis Broker)
+- **Stage 3 ISSUE_CREATE_ONLY:** **PARTIAL PASS**
+- **GitHub Issue:** [#15](https://github.com/kubzik96/genesis-ai/issues/15) — open
+- **Title:** `T-009: Fix encoding artifact in bridge/QUEUE.md`
+- **Created via:** Genesis Broker `POST /v1/issues` after Gate 1 confirmation
+- **First live call:** HTTP 200, `issue_number: 15`
+- **Idempotent replay:** same `Idempotency-Key` + same `payload_json` + same `run_id` → HTTP 200, same Issue #15; **no second Issue**
+- **Copilot assignment:** NOT_PERFORMED
+- **Execution PR:** NOT_CREATED
+- **Direct push:** NOT_PERFORMED
+- **xAI review:** NOT_PERFORMED
+- **Merge:** NOT_PERFORMED
+- **LIVE Dify app (`Genesis One-Window LIVE Stage 3`):** unpublished
+- **Known limitation:** Issue #15 body sections «Команда CEO» and «Контекст из GitHub» were empty (Dify template binding); root cause not fully confirmed
+- **No-write check:** Gate 1 → NO exercised; Issue #15 was **not** edited after creation
+- **Stage 4 (Copilot assign):** NOT_AUTHORIZED
+- **T-009 remains WORKING** (not DONE)
 
 T-010 выполняется по Approved Specification S-0002 Revision 1. Status: **REVIEW** (not DONE).
 
@@ -62,25 +81,23 @@ T-010 выполняется по Approved Specification S-0002 Revision 1. Stat
   - blob SHA: `b3b50a207ee1a1003a81e3a8ddf359506a6f8197`
   - content_length: 4999
   - content_sha256: `c9cbce62dd4313ccb2812c4be514ffc474947d41fecf0af59161e5b6731ac205`
-- **GitHub PAT:** created as repo-only fine-grained PAT (Metadata Read + Contents Read only); stored only as Cloudflare Worker Secret
+- **GitHub PAT (audit, no token value):**
+  - **Stage 2 (DEPLOY_READONLY):** repo-only fine-grained `kubzik96/genesis-ai`; **Metadata: Read**; **Contents: Read**; Issues/PR/Actions/Administration: No access; stored only as Cloudflare Worker Secret
+  - **Before Stage 3 ISSUE_CREATE_ONLY:** permissions **changed** — new/rotated repo-only fine-grained PAT for write path
+  - **At Issue #15 creation (Stage 3):** repo-only fine-grained `kubzik96/genesis-ai`; **Metadata: Read**; **Contents: Read**; **Issues: Read and write**; Contents Write / Pull requests Write / Actions Write / Administration: **No access**; stored only as Cloudflare Worker Secret
 - **BROKER_SERVICE_TOKEN:** stored only as Cloudflare Worker Secret
 - **Cloudflare temporary deployment API token:** revoked after smoke
 - **Local shell secrets:** cleared
-- **Local git worktree:** clean
-- **Live GitHub writes:** NOT_AUTHORIZED and NOT_PERFORMED
-- **Issue creation:** NOT_PERFORMED
-- **Copilot assignment:** NOT_PERFORMED
-- **Dify integration:** NOT_AUTHORIZED and NOT_PERFORMED
 - **PR #11:** Draft, open, unmerged; HEAD `6393c434d139657ea1deb8835cf8e6d523334a74`
 - **Merge of PR #11:** NOT_AUTHORIZED
 
 Restrictions (unchanged):
 
-- T-010 remains **REVIEW** until the approved S-0001 live-write scenario and separate CEO acceptance;
+- T-010 remains **REVIEW** until the approved S-0001 live-write scenario completes and separate CEO acceptance;
 - T-010 is **not** DONE;
 - T-006 remains BLOCKED;
-- first live GitHub write is **not** authorized;
-- `POST /v1/issues`, assign-copilot, dummy Issue/PR, and Dify integration remain forbidden until separate future CEO authorization under S-0001.
+- Copilot assignment, execution PR, xAI API, merge, and further GitHub writes require **separate** CEO authorization;
+- encoding fix (`��` → `в`) is **not** applied in this SoR record.
 
 ---
 
