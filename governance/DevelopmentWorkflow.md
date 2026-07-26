@@ -4,8 +4,8 @@
 **Revision:** 1  
 **Approved by:** CEO  
 **Date:** 2026-07-24  
-**Task:** T-007  
-**Related task:** T-008 — Approved Specifications Repository (pending)
+**Task:** T-007 — **DONE** (merged to main)  
+**Related task:** T-008 — Approved Specifications Repository — **DONE** (DR-0004)
 
 ---
 
@@ -55,9 +55,9 @@ Workflow **не изменяет** позиции Principles, Roles, Standards, 
 
 ## 4. Bootstrap / Transition
 
-T-007 и T-008 являются **bootstrap governance tasks**.
+T-007 и T-008 были **bootstrap governance tasks** и **завершены** (оба в main).
 
-Правила переходного режима:
+Исторические правила переходного режима (сохранены для справки):
 
 1. T-007 и T-008 напрямую авторизованы CEO **до** появления каталога Approved Specifications в `main`.
 2. **T-007 должен быть влит первым.**
@@ -66,7 +66,7 @@ T-007 и T-008 являются **bootstrap governance tasks**.
 5. Bootstrap-исключение **не применяется** к обычным продуктовым и инженерным задачам.
 6. Расширять bootstrap-исключение может **только CEO**.
 
-До вступления в силу каталога `specifications/` в `main` значимые bootstrap-задачи выполняются по прямому CEO Authorization и данному Workflow.
+**Текущее состояние:** каталог `specifications/` в `main` действует; новые значимые реализации требуют Approved Specification + отдельный Execution Authorization.
 
 ---
 
@@ -75,11 +75,9 @@ T-007 и T-008 являются **bootstrap governance tasks**.
 | Артефакт | Вопрос | Где |
 |---|---|---|
 | Decision Record | *Почему?* | `decisions/` |
-| Specification | *Что делать?* | `specifications/` (после merge T-008) |
+| Specification | *Что делать?* | `specifications/` |
 | Task / QUEUE | *Кто, когда, статус?* | `bridge/QUEUE.md` |
 | HANDOFF | *Какой операционный контекст?* | `bridge/HANDOFF.md` |
-
-После вступления в силу T-008:
 
 **Approved Specification является единственным источником функциональных требований для реализации.**
 
@@ -92,12 +90,12 @@ T-007 и T-008 являются **bootstrap governance tasks**.
 | Роль | Ответственность |
 |---|---|
 | **CEO** | Стратегия, утверждение scope и спецификаций, Execution Authorization, разрешение commit/PR/merge, финальная ответственность |
-| **AI-CTO / COO** | Процесс, спецификации, оркестрация, контроль Bridge, процессный review |
-| **Chief Architect** | Архитектурный review, риски, независимая техническая оценка, Dissent / Stop the Line |
+| **COO** | Процесс, координация, process review (исполнитель: ChatGPT; без GitHub write) |
+| **Chief Architect** | Архитектурный review, риски, независимая техническая оценка, Dissent / Stop the Line (исполнитель: Grok) |
 | **Автор спецификации** | Подготовка Draft Specification, учёт замечаний review |
-| **Исполнитель (Lead / Execution Engineer)** | Реализация по Approved Specification (или bootstrap CEO Authorization) и Execution Authorization |
+| **Исполнитель (Lead / Execution Engineer)** | Реализация по Approved Specification и Execution Authorization |
 | **Независимый reviewer** | Review чужой работы; не утверждает собственную реализацию |
-| **GitHub Engineer** | Техническая работа с репозиторием по утверждённым задачам; не принимает стратегические решения |
+| **Lead Engineer (GitHub Engineer)** | Техническая работа с репозиторием по утверждённым задачам (Copilot); не принимает стратегические решения |
 | **Другие ИИ-агенты** | В рамках назначенной роли и scope; без расширения полномочий |
 
 **Правила:**
@@ -140,13 +138,11 @@ Closure (Bridge → DONE)
 
 Переход на следующий этап — только после завершения предыдущего.
 
-До появления `specifications/` в `main` этап Approved Specification для bootstrap-задач заменяется прямым CEO Authorization (см. §4).
-
 ---
 
 ## 8. Specification
 
-После merge T-008 значимая реализация начинается **только** после появления **Approved Specification** в `specifications/`.
+Значимая реализация начинается **только** после появления **Approved Specification** в `specifications/`.
 
 Спецификация обязана содержать: цель, контекст, scope, ограничения, разрешённые/запрещённые файлы, критерии готовности, способы проверки, выходные артефакты, Dependencies, Assumptions, необходимость Decision Record.
 
@@ -167,11 +163,13 @@ Closure (Bridge → DONE)
 
 ## 9. Execution Authorization
 
-Выдаётся CEO **отдельно** от Approval спецификации (или, в bootstrap-режиме, от прямого CEO Authorization задачи).
+Выдаётся CEO **отдельно** от Approval спецификации.
 
 Действует только: для одной задачи, одной Approved Revision (если есть), указанного scope, назначенного исполнителя.
 
-**Не является** разрешением на: commit, push, PR, merge, изменение архитектуры, расширение scope, нарушение Governance.
+**Может быть staged** (например Stage 1 CODE_ONLY, Stage 2 DEPLOY_READONLY, Stage 3 ISSUE_CREATE_ONLY) — каждый stage требует отдельного CEO решения. **Blanket** «всё разрешено» не подразумевается.
+
+**Не является** разрешением на: commit, push, PR, merge, изменение архитектуры, расширение scope, нарушение Governance — если это не указано явно в Authorization.
 
 Автоматически прекращается при конфликте с Constitution / принятыми DR / Bridge, ошибке в спецификации, необходимости архитектурного изменения, расширении scope, указании CEO остановиться.
 
@@ -183,7 +181,6 @@ Closure (Bridge → DONE)
 - Каждый PR имеет **ограниченный и проверяемый scope**.
 - Несвязанные изменения **запрещено** смешивать в одном PR.
 - Зависимости между задачами выполняются в архитектурно правильном порядке.
-- Пример bootstrap-порядка: **T-007 merge → обновление ветки T-008 → merge T-008**.
 
 ---
 
@@ -224,7 +221,7 @@ Merge **запрещён** без отдельного **CEO Merge Authorization
 5. CI (см. §13)  
 6. Reviews  
 7. Зависимости между задачами  
-8. Соответствие Approved Specification (после вступления T-008 в силу)  
+8. Соответствие Approved Specification  
 9. Отсутствие случайных изменений  
 
 ---
@@ -235,17 +232,19 @@ Merge **запрещён** без отдельного **CEO Merge Authorization
 
 **`CI_NOT_CONFIGURED`**
 
-Отсутствие CI **нельзя** трактовать как успешное прохождение проверок. Это ограничение ручной проверки, не «зелёный» результат.
+Отсутствие CI **нельзя** трактовать как успешное прохождение проверок.
 
 ---
 
 ## 14. Merge, verification, closure
 
 1. Merge — только после CEO Merge Authorization.  
-2. После merge — **post-merge verification** в `main` (файлы на месте, ссылки корректны, нет регрессии scope).  
+2. После merge — **post-merge verification** в `main`.  
 3. Задача закрывается (**DONE**) только после verification.  
 4. Только CEO переводит задачу в DONE.  
 5. Bridge обновляется, чтобы отражать фактическое состояние.
+
+Примечание: метод merge (merge commit vs squash) фиксируется фактом Git; переписывание истории main без отдельного CEO решения **запрещено**.
 
 ---
 
@@ -264,9 +263,7 @@ HANDOFF — операционный контекст передачи межд�
 
 ### Bootstrap-исключение для T-007
 
-Первоначальное принятие Development Workflow v1 фиксируется через bootstrap-процесс и отдельное **CEO Approval** данного PR.
-
-Отдельный Decision Record для первоначального принятия T-007 **не создаётся**.
+Первоначальное принятие Development Workflow v1 зафиксировано через bootstrap и CEO Approval (отдельный DR не создавался).
 
 ### Правило после вступления Workflow v1 в силу
 
@@ -277,8 +274,6 @@ Decision Record **обязателен**, если изменение:
 - меняет модель памяти / Bridge;
 - вводит новый системный компонент;
 - отменяет ранее принятое решение.
-
-Это bootstrap-исключение применяется **только** к первоначальному принятию T-007 и не распространяется на последующие изменения Workflow.
 
 ---
 
@@ -299,7 +294,7 @@ Decision Record **обязателен**, если изменение:
 - реализация выходит за Scope;
 - обнаружен серьёзный архитектурный или процессный риск.
 
-После `STOP` работа приостанавливается до решения CEO. Это не veto, а право потребовать рассмотрения риска.
+После `STOP` работа приостанавливается до решения CEO.
 
 ---
 
@@ -314,7 +309,7 @@ Decision Record **обязателен**, если изменение:
 - изменения merged;
 - post-merge verification пройдена;
 - Bridge обновлён;
-- Decision Record создан/обновлён, если требуется (с учётом §16);
+- Decision Record создан/обновлён, если требуется;
 - временные артефакты не попали в репозиторий.
 
 Commit или PR сами по себе **не означают** DONE.
@@ -323,7 +318,7 @@ Commit или PR сами по себе **не означают** DONE.
 
 ## 20. Анти-паттерны
 
-- реализация без Approved Specification (после вступления T-008 в силу);
+- реализация без Approved Specification;
 - merge без CEO Merge Authorization;
 - review только по сообщению агента;
 - commit/merge до независимого review;
@@ -345,9 +340,8 @@ Commit или PR сами по себе **не означают** DONE.
 - `decisions/`
 - `bridge/QUEUE.md`
 - `bridge/HANDOFF.md`
-- T-008 — Approved Specifications Repository (pending)
+- `specifications/` (T-008 / DR-0004 — **DONE**)
 
 ---
 
-*Документ создан в рамках T-007.  
-Утверждён CEO. Ожидает финального pre-merge review и отдельного CEO Merge Authorization.*
+*Документ создан в рамках T-007. Утверждён CEO. T-007 и T-008 завершены и находятся в main.*
