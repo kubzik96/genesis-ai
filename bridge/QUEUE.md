@@ -81,8 +81,13 @@ T-010 выполняется по Approved Specification S-0002 Revision 1. Stat
   - blob SHA: `b3b50a207ee1a1003a81e3a8ddf359506a6f8197`
   - content_length: 4999
   - content_sha256: `c9cbce62dd4313ccb2812c4be514ffc474947d41fecf0af59161e5b6731ac205`
-- **GitHub PAT:** repo-only fine-grained; stored only as Cloudflare Worker Secret
+- **GitHub PAT (audit, no token value):**
+  - **Stage 2 (DEPLOY_READONLY):** repo-only fine-grained `kubzik96/genesis-ai`; **Metadata: Read**; **Contents: Read**; Issues/PR/Actions/Administration: No access; stored only as Cloudflare Worker Secret
+  - **Before Stage 3 ISSUE_CREATE_ONLY:** permissions **changed** — new/rotated repo-only fine-grained PAT for write path
+  - **At Issue #15 creation (Stage 3):** repo-only fine-grained `kubzik96/genesis-ai`; **Metadata: Read**; **Contents: Read**; **Issues: Read and write**; Contents Write / Pull requests Write / Actions Write / Administration: **No access**; stored only as Cloudflare Worker Secret
 - **BROKER_SERVICE_TOKEN:** stored only as Cloudflare Worker Secret
+- **Cloudflare temporary deployment API token:** revoked after smoke
+- **Local shell secrets:** cleared
 - **PR #11:** Draft, open, unmerged; HEAD `6393c434d139657ea1deb8835cf8e6d523334a74`
 - **Merge of PR #11:** NOT_AUTHORIZED
 
