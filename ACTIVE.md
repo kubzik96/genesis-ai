@@ -7,7 +7,7 @@
 | Фаза | 2 — Архитектура Genesis AI / One-Window spike |
 | Статус | Активная разработка |
 | Последнее обновление | 2026-07-27 |
-| Ориентир main HEAD | `d3ed88ae0fe86ec284375b9ca54ba018dff2062f` |
+| Base main при подготовке PR #17 | `d3ed88ae0fe86ec284375b9ca54ba018dff2062f` |
 
 ---
 
