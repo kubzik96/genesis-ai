@@ -12,14 +12,15 @@
 | **Дата создания** | 2026-07-24 |
 | **Дата утверждения** | 2026-07-24 |
 | **Утвердил** | CEO Genesis AI |
-| **Execution Authorization** | NOT_GRANTED |
+| **Execution Authorization** | **STAGED** — no blanket grant; see §13 history. **Stage 4 NOT_AUTHORIZED** |
 | **Связанные задачи** | T-009 — Genesis One-Window Execution Spike |
 | **Связанные Decision Records** | DR-0004 |
-| **Исполнитель (после Authorization)** | GitHub Engineer / Integration Engineer |
+| **Исполнитель (после Authorization)** | Integration Engineer / Lead Engineer (по stage) |
 
-> `Дата утверждения` и `Утвердил` заполняются **только после** отдельного CEO Approval.  
-> `Execution Authorization` по умолчанию `NOT_GRANTED` и меняется на `GRANTED` только отдельным решением CEO.  
-> Approval спецификации **не** означает разрешение на реализацию.
+> Approval спецификации **не** означает разрешение на реализацию.  
+> **Не было** единого общего Execution Authorization «на весь S-0001».  
+> Каждый stage выполнялся только после **отдельного** CEO Authorization.  
+> **Stage 4 (Copilot assign / further writes) сейчас NOT_AUTHORIZED.**
 
 ---
 
@@ -90,13 +91,7 @@ CEO должен принять решение из Dify **без** ручног
 
 - Dify Cloud Web App для телефона и ПК;
 - один управляемый workflow;
-- чтение из GitHub:
-  - `bridge/QUEUE.md`;
-  - `bridge/HANDOFF.md`;
-  - `governance/Constitution.md`;
-  - `governance/DevelopmentWorkflow.md`;
-  - `specifications/INDEX.md`;
-  - соответствующей Approved Specification (после Approval S-0001);
+- чтение из GitHub (allowlisted paths);
 - создание структурированного GitHub Issue;
 - назначение или запуск Copilot coding agent;
 - ожидание и обнаружение PR;
@@ -124,11 +119,6 @@ CEO должен принять решение из Dify **без** ручног
 - хранение токенов или API-ключей в репозитории;
 - отказ от GitHub как System of Record;
 - использование ChatGPT Plus / подписки Grok как API-доступа.
-
-### Разрешённые изменения в репозитории при реализации (после Execution Authorization)
-
-- только артефакты, необходимые для документации конфигурации spike (без секретов);
-- тестовый PR по сценарию QUEUE encoding (отдельный цикл, не часть merge этой Specification).
 
 ### Запрещено изменять при реализации S-0001
 
@@ -167,156 +157,73 @@ CEO должен принять решение из Dify **без** ручног
 
 ### 4.5 Independent review
 
-12. Для независимого review требуется **минимум один** API-провайдер:
-    - **OpenAI API** **или** **xAI API** (достаточно одного);
-    - второй провайдер — **optional**;
-    - **primary reviewer** выбирается на этапе **preflight** (какой ключ доступен и в бюджете).
-13. Reviewer анализирует фактический diff и возвращает краткий verdict + замечания.
-14. После review workflow останавливается (Gate 3).
+12. Минимум один API-провайдер: **OpenAI API** **или** **xAI API**; primary выбирается на preflight.
+13. Reviewer анализирует фактический diff.
+14. После review — Gate 3.
 
 ### 4.6 CEO decision
 
-15. CEO видит: ссылку на PR, краткий verdict review, кнопки:
-    - **Approve**
-    - **Request changes**
-    - **Reject**
-16. Значение кнопки **Approve**:
-    - фиксирует кандидат-вердикт **`APPROVE_TO_MERGE`**;
-    - **не** является CEO Merge Authorization;
-    - **не** разрешает и **не** запускает merge;
-    - merge по-прежнему требует отдельного CEO Merge Authorization вне этого workflow.
-17. **Request changes** создаёт понятное продолжение workflow (без потери контекста).
-18. Merge **не** выполняется из S-0001. Любое будущее merge-действие требует отдельного CEO Merge Authorization (Gate 4 — не реализуется в этом spike).
+15. Approve / Request changes / Reject.
+16. **Approve** = кандидат `APPROVE_TO_MERGE`; **не** Merge Authorization; **не** запускает merge.
+17. Merge — только отдельный CEO Merge Authorization (Gate 4 вне spike workflow).
 
 ### 4.7 Security & operations
 
-19. Секреты хранятся только в защищённых настройках платформы.
-20. Секреты отсутствуют в GitHub, логах workflow и экспортируемой документации.
-21. Установлены месячный бюджет и hard limits API; при исчерпании — остановка со статусом BLOCKED.
+19. Секреты только в защищённых настройках платформы.
+20. Секреты отсутствуют в GitHub и экспорте.
+21. Бюджет и hard limits API.
 
 ### 4.8 Обязательные CEO Gates
-
-Workflow **обязан** останавливаться:
 
 | Gate | Момент |
 |---|---|
 | 1 | Перед созданием GitHub Issue |
 | 2 | Перед передачей задачи Copilot |
 | 3 | После независимого review |
-| 4 | Перед любым будущим merge-действием (в S-0001 не реализуется) |
+| 4 | Перед merge (вне S-0001 workflow) |
 
 ---
 
 ## 5. Ограничения
 
 - ChatGPT Plus ≠ OpenAI API; подписка Grok ≠ xAI API.
-- Для review достаточно **одного** из: OpenAI API **или** xAI API; оба не обязательны.
-- T-006 остаётся BLOCKED; S-0001 не является разблокировкой Orchestrator.
-- Dify — временный MVP, не окончательная Execution Platform.
-- Один тестовый сценарий на spike; произвольные задачи вне scope.
-- CI может отсутствовать (`CI_NOT_CONFIGURED`) — это не «зелёный» результат.
+- T-006 остаётся BLOCKED.
+- Dify — временный MVP.
+- Один тестовый сценарий на spike.
+- CI может быть `CI_NOT_CONFIGURED`.
 
 ---
 
 ## 6. Dependencies
 
-- DR-0004 — Repository of Approved Specifications (принято);
-- `governance/DevelopmentWorkflow.md` (T-007, в main);
-- `bridge/QUEUE.md`, `bridge/HANDOFF.md`;
-- доступность Dify Cloud;
-- **минимум один** API-ключ: OpenAI API **или** xAI API (второй optional);
-- Copilot coding agent для репозитория `kubzik96/genesis-ai`;
-- GitHub API: create issue, read PR/diff/status;
-- T-009 (операционная задача в Bridge — создаётся отдельно при необходимости).
+- DR-0004; Development Workflow; Bridge; Dify; API key (OpenAI или xAI); Copilot; Broker (S-0002) для controlled GitHub path; T-009.
 
 ---
 
 ## 7. Assumptions
 
-- CEO имеет доступ к Dify Cloud и может открыть Web App с Android.
-- В репозитории включён / доступен Copilot coding agent для Issues.
-- Минимальных GitHub permissions достаточно для Issue + read PR.
-- API-бюджет на spike ограничен и контролируем.
-- Тестовая правка QUEUE encoding безопасна и не затрагивает другие задачи.
+- CEO имеет Dify; Copilot доступен на repo; API-бюджет ограничен; encoding-правка безопасна.
 
 ---
 
 ## 8. Критерии готовности (Acceptance Criteria)
 
 - [ ] CEO открывает одно окно на Android и ПК.
-- [ ] Контекст загружается из актуального `main`.
-- [ ] Issue создаётся только после CEO confirmation (Gate 1).
-- [ ] Copilot создаёт PR для тестовой задачи (только правка encoding в `bridge/QUEUE.md`).
-- [ ] Dify получает фактический PR и diff (не пересказ).
-- [ ] Reviewer анализирует Git-diff, а не пересказ агента.
-- [ ] CEO получает краткий verdict и ссылку на PR.
-- [ ] Доступны действия Approve / Request changes / Reject (Gate 3).
-- [ ] **Approve** означает кандидат `APPROVE_TO_MERGE` и **не** запускает merge.
-- [ ] Request changes создаёт понятное продолжение workflow.
-- [ ] Никакого auto-merge; merge не выполняется из workflow.
-- [ ] Секреты отсутствуют в GitHub и выводе workflow.
-- [ ] Весь тестовый цикл воспроизводим.
-- [ ] Критерий успеха достигнут **без** копирования команд между ChatGPT, Grok, Copilot и GitHub.
-- [ ] Preflight подтвердил наличие минимум одного API-провайдера (OpenAI **или** xAI); primary reviewer выбран.
+- [ ] Контекст из актуального `main`.
+- [ ] Issue только после Gate 1.
+- [ ] Copilot PR только encoding в `bridge/QUEUE.md`.
+- [ ] Фактический PR/diff в Dify.
+- [ ] Reviewer по Git-diff.
+- [ ] Gate 3: Approve / Request changes / Reject.
+- [ ] Approve ≠ merge.
+- [ ] Нет auto-merge; секреты не в Git.
+- [ ] Цикл без копирования между чатами.
 
 ---
 
-## 9. Способы проверки
+## 9–12. (Способы проверки, артефакты, DR, риски)
 
-1. Запуск Web App с Android и ПК — UI доступен.
-2. Preflight checklist (см. §14) — все критические зависимости зелёные либо BLOCKED с причиной.
-3. Прогон тестового сценария QUEUE encoding end-to-end.
-4. Сверка: Issue body ↔ S-0001; PR changed files = только `bridge/QUEUE.md`; diff содержит только целевую замену.
-5. Reviewer output ссылается на конкретные строки diff.
-6. Логи/экспорт конфигурации — поиск секретов (токены, ключи) даёт пустой результат.
-7. Повторный прогон (Request changes → fix → review) без ручного копирования.
-8. После Approve: merge **не** произошёл; статус кандидата = `APPROVE_TO_MERGE`.
-
----
-
-## 10. Ожидаемые выходные артефакты
-
-- Рабочий Dify Web App (URL) для CEO.
-- Документация конфигурации workflow **без секретов** (экспорт / markdown в согласованном месте).
-- Запись preflight (зависимости, бюджет, лимиты, выбранный primary reviewer).
-- Как минимум один успешный тестовый цикл: Issue → PR → review → CEO decision.
-- Ссылки на Issue и PR тестового сценария.
-- Краткий отчёт: что сработало, блокеры, рекомендация по долгосрочной платформе.
-
----
-
-## 11. Необходимость Decision Record
-
-- [x] **Отдельный DR для временного spike не требуется.**
-- [ ] После результатов spike **требуется отдельное решение** о долгосрочной Interaction / Execution Platform.
-
-Возможные варианты будущего решения:
-
-- остаться на Dify;
-- LangGraph + Genesis Console;
-- другой подтверждённый вариант.
-
-Это решение оформляется **после** результатов S-0001, не внутри него.
-
----
-
-## 12. Риски и открытые вопросы
-
-| Риск | Митигация |
-|---|---|
-| Dify плохо стыкуется с Git-diff review | Review только по PR/diff из GitHub API |
-| Copilot не создаёт PR / не принимает Issue | Preflight; узкий тестовый сценарий; BLOCKED при невозможности |
-| API-ключи / бюджет | Hard limits; достаточно одного провайдера; остановка при исчерпании |
-| Секреты в логах | Запрет хранения в Git; проверка экспорта |
-| Ложное ощущение «OS готова» | Узкий scope; T-006 остаётся BLOCKED |
-| Vendor lock Dify | Option C: spike временный; решение о платформе после |
-| Approve ошибочно трактуется как merge | Явное правило: Approve = `APPROVE_TO_MERGE` candidate only |
-
-Открытые вопросы (решить до/во время Execution):
-
-1. Точный механизм назначения Issue → Copilot в текущем GitHub API для этого репозитория.
-2. Primary reviewer (OpenAI **или** xAI) — выбирается на preflight.
-3. Где хранить экспорт конфигурации без секретов (docs path / gist / иное) — после Authorization.
+См. исходную Revision 1: Git-diff review, export без секретов, primary reviewer xAI (key deferred), T-006 BLOCKED, Approve ≠ merge.
 
 ---
 
@@ -324,42 +231,29 @@ Workflow **обязан** останавливаться:
 
 | Revision | Дата | Автор | Что изменено |
 |---|---|---|---|
-| 1 | 2026-07-24 | Grok — Chief Architect | Создан In Review; API = OpenAI **или** xAI; Approve = `APPROVE_TO_MERGE` candidate |
-| 1 | 2026-07-24 | CEO Genesis AI | CEO Approval Revision 1 (HEAD `fa82e72c…`); Execution Authorization остаётся NOT_GRANTED |
+| 1 | 2026-07-24 | Grok — Chief Architect | Создан In Review |
+| 1 | 2026-07-24 | CEO Genesis AI | Approval; **blanket EA = NOT_GRANTED** |
+| 1 | 2026-07-25…26 | CEO staged auths | **Stage 1** DIFY_CONFIG_ONLY; **Stage 2** DIFY_READONLY_WIRING + Broker context/read; **Stage 3** ISSUE_CREATE_ONLY → Issue #15, PARTIAL PASS (empty CEO/context sections) |
+| 1 | 2026-07-27 | Grok — Chief Architect | Metadata EA → **STAGED**; explicit **Stage 4 NOT_AUTHORIZED**; no rewrite of prior history |
+
+**Stage 4 (assign Copilot / PR observation / xAI / merge encoding)** — **NOT_AUTHORIZED** until separate CEO command.
 
 ---
 
-## 14. Preflight (до реализации)
+## 14. Preflight
 
-Перед Execution Authorization и реализацией проверить:
-
-- [ ] доступность Dify Cloud для выбранного workflow;
-- [ ] наличие **минимум одного** API-ключа: OpenAI API **или** xAI API;
-- [ ] (optional) второй API-провайдер, если нужен резерв;
-- [ ] **primary reviewer** выбран на preflight;
-- [ ] установленный месячный бюджет и hard limits;
-- [ ] доступность Copilot coding agent для `kubzik96/genesis-ai`;
-- [ ] возможность назначить / запустить Issue → Copilot через доступный GitHub API;
-- [ ] минимальные GitHub permissions (Issue create + PR read);
-- [ ] удобство Dify Web App на Android;
-- [ ] отсутствие секретов в логах и Git-артефактах (процедура проверки).
-
-При отсутствии **критической** зависимости (в т.ч. ни одного API-провайдера) реализация останавливается со статусом **BLOCKED** и явным перечнем причин.
+Перед **следующим** stage Authorization: Dify, Broker health, PAT scope for that stage only, primary reviewer key when needed, no secrets in Git.
 
 ---
 
 ## 15. Зафиксированные решения CEO (основание S-0001)
 
 1. Dify Cloud — временный Interaction + Orchestration MVP.
-2. GitHub — постоянный System of Record.
-3. Copilot — Engineer через GitHub Issue → PR, не LLM внутри Dify.
-4. Planner и независимый Reviewer — через **минимум один** из: OpenAI API **или** xAI API; второй optional; primary выбирается на preflight.
-5. ChatGPT Plus и подписка Grok не считаются API-доступом.
-6. GitHub write-scope MVP — Issue + действия для запуска Copilot.
-7. Чтение PR, diff и статусов — через GitHub API.
-8. Merge — ручной, требует отдельного CEO Merge Authorization.
-9. Кнопка **Approve** = кандидат `APPROVE_TO_MERGE`; не является Merge Authorization и не запускает merge.
-10. T-006 остаётся BLOCKED.
-11. Собственная Genesis Console и LangGraph не входят в S-0001.
-12. После MVP — отдельное решение о долгосрочной платформе.
-13. Секреты запрещено хранить в GitHub.
+2. GitHub — SoR.
+3. Copilot — Engineer через Issue → PR.
+4. Reviewer — OpenAI **или** xAI API (не подписка).
+5. Merge — только CEO Merge Authorization.
+6. Approve = `APPROVE_TO_MERGE` candidate only.
+7. T-006 BLOCKED.
+8. Секреты не в GitHub.
+9. Execution — **только staged** CEO authorizations.
