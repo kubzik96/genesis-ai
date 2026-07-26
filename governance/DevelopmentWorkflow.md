@@ -1,11 +1,12 @@
 # Development Workflow v1
 
 **Status:** APPROVED  
-**Revision:** 1  
+**Revision:** 2  
 **Approved by:** CEO  
-**Date:** 2026-07-24  
+**Date:** 2026-07-24 (Rev 1); **2026-07-27** (Rev 2 — role model alignment, **DR-0005**)  
 **Task:** T-007 — **DONE** (merged to main)  
-**Related task:** T-008 — Approved Specifications Repository — **DONE** (DR-0004)
+**Related task:** T-008 — Approved Specifications Repository — **DONE** (DR-0004)  
+**Related Decision Record:** DR-0005 — Operational AI Team Roles
 
 ---
 
@@ -55,7 +56,7 @@ Workflow **не изменяет** позиции Principles, Roles, Standards, 
 
 ## 4. Bootstrap / Transition
 
-T-007 и T-008 были **bootstrap governance tasks** и **завершены** (оба в main).
+T-007 и T-008 были **bootstrap governance tasks** и **завершены** (оба в `main`).
 
 Исторические правила переходного режима (сохранены для справки):
 
@@ -66,7 +67,7 @@ T-007 и T-008 были **bootstrap governance tasks** и **завершены**
 5. Bootstrap-исключение **не применяется** к обычным продуктовым и инженерным задачам.
 6. Расширять bootstrap-исключение может **только CEO**.
 
-**Текущее состояние:** каталог `specifications/` в `main` действует; новые значимые реализации требуют Approved Specification + отдельный Execution Authorization.
+**Текущее состояние:** каталог `specifications/` в `main` действует. Bootstrap-период **завершён**. Новые значимые реализации требуют Approved Specification и отдельный Execution Authorization.
 
 ---
 
@@ -90,13 +91,15 @@ T-007 и T-008 были **bootstrap governance tasks** и **завершены**
 | Роль | Ответственность |
 |---|---|
 | **CEO** | Стратегия, утверждение scope и спецификаций, Execution Authorization, разрешение commit/PR/merge, финальная ответственность |
-| **COO** | Процесс, координация, process review (исполнитель: ChatGPT; без GitHub write) |
-| **Chief Architect** | Архитектурный review, риски, независимая техническая оценка, Dissent / Stop the Line (исполнитель: Grok) |
+| **COO** | Процесс, спецификации (process), оркестрация, контроль Bridge, процессный review |
+| **Chief Architect** | Архитектурный review, риски, независимая техническая оценка, Dissent / Stop the Line |
 | **Автор спецификации** | Подготовка Draft Specification, учёт замечаний review |
 | **Исполнитель (Lead / Execution Engineer)** | Реализация по Approved Specification и Execution Authorization |
 | **Независимый reviewer** | Review чужой работы; не утверждает собственную реализацию |
-| **Lead Engineer (GitHub Engineer)** | Техническая работа с репозиторием по утверждённым задачам (Copilot); не принимает стратегические решения |
+| **GitHub Engineer / Lead Engineer** | Техническая работа с репозиторием по утверждённым задачам; не принимает стратегические решения |
 | **Другие ИИ-агенты** | В рамках назначенной роли и scope; без расширения полномочий |
+
+Имена конкретных исполнителей ролей — в `governance/Roles.md` и **DR-0005**, не в этой таблице.
 
 **Правила:**
 
@@ -167,9 +170,9 @@ Closure (Bridge → DONE)
 
 Действует только: для одной задачи, одной Approved Revision (если есть), указанного scope, назначенного исполнителя.
 
-**Может быть staged** (например Stage 1 CODE_ONLY, Stage 2 DEPLOY_READONLY, Stage 3 ISSUE_CREATE_ONLY) — каждый stage требует отдельного CEO решения. **Blanket** «всё разрешено» не подразумевается.
+Execution Authorization **может быть staged** (например Stage 1 / Stage 2 / Stage 3) — каждый stage требует отдельного решения CEO. Blanket «всё разрешено» не подразумевается.
 
-**Не является** разрешением на: commit, push, PR, merge, изменение архитектуры, расширение scope, нарушение Governance — если это не указано явно в Authorization.
+**Не является** разрешением на: commit, push, PR, merge, изменение архитектуры, расширение scope, нарушение Governance.
 
 Автоматически прекращается при конфликте с Constitution / принятыми DR / Bridge, ошибке в спецификации, необходимости архитектурного изменения, расширении scope, указании CEO остановиться.
 
@@ -232,19 +235,17 @@ Merge **запрещён** без отдельного **CEO Merge Authorization
 
 **`CI_NOT_CONFIGURED`**
 
-Отсутствие CI **нельзя** трактовать как успешное прохождение проверок.
+Отсутствие CI **нельзя** трактовать как успешное прохождение проверок. Это ограничение ручной проверки, не «зелёный» результат.
 
 ---
 
 ## 14. Merge, verification, closure
 
 1. Merge — только после CEO Merge Authorization.  
-2. После merge — **post-merge verification** в `main`.  
+2. После merge — **post-merge verification** в `main` (файлы на месте, ссылки корректны, нет регрессии scope).  
 3. Задача закрывается (**DONE**) только после verification.  
 4. Только CEO переводит задачу в DONE.  
 5. Bridge обновляется, чтобы отражать фактическое состояние.
-
-Примечание: метод merge (merge commit vs squash) фиксируется фактом Git; переписывание истории main без отдельного CEO решения **запрещено**.
 
 ---
 
@@ -263,7 +264,9 @@ HANDOFF — операционный контекст передачи межд�
 
 ### Bootstrap-исключение для T-007
 
-Первоначальное принятие Development Workflow v1 зафиксировано через bootstrap и CEO Approval (отдельный DR не создавался).
+Первоначальное принятие Development Workflow v1 фиксируется через bootstrap-процесс и отдельное **CEO Approval** данного PR.
+
+Отдельный Decision Record для первоначального принятия T-007 **не создаётся**.
 
 ### Правило после вступления Workflow v1 в силу
 
@@ -274,6 +277,10 @@ Decision Record **обязателен**, если изменение:
 - меняет модель памяти / Bridge;
 - вводит новый системный компонент;
 - отменяет ранее принятое решение.
+
+Это bootstrap-исключение применяется **только** к первоначальному принятию T-007 и не распространяется на последующие изменения Workflow.
+
+Revision 2 настоящего документа и **DR-0005** оформляют изменение операционной модели ролей после вступления Workflow в силу.
 
 ---
 
@@ -294,7 +301,7 @@ Decision Record **обязателен**, если изменение:
 - реализация выходит за Scope;
 - обнаружен серьёзный архитектурный или процессный риск.
 
-После `STOP` работа приостанавливается до решения CEO.
+После `STOP` работа приостанавливается до решения CEO. Это не veto, а право потребовать рассмотрения риска.
 
 ---
 
@@ -309,7 +316,7 @@ Decision Record **обязателен**, если изменение:
 - изменения merged;
 - post-merge verification пройдена;
 - Bridge обновлён;
-- Decision Record создан/обновлён, если требуется;
+- Decision Record создан/обновлён, если требуется (с учётом §16);
 - временные артефакты не попали в репозиторий.
 
 Commit или PR сами по себе **не означают** DONE.
@@ -337,11 +344,11 @@ Commit или PR сами по себе **не означают** DONE.
 - `governance/Roles.md`
 - `governance/Principles.md`
 - `governance/Standards.md`
-- `decisions/`
+- `decisions/` (включая DR-0004, **DR-0005**)
 - `bridge/QUEUE.md`
 - `bridge/HANDOFF.md`
 - `specifications/` (T-008 / DR-0004 — **DONE**)
 
 ---
 
-*Документ создан в рамках T-007. Утверждён CEO. T-007 и T-008 завершены и находятся в main.*
+*Документ создан в рамках T-007. Утверждён CEO. T-007 и T-008 завершены и находятся в main. Revision 2 (2026-07-27) — выравнивание ролей по DR-0005.*
