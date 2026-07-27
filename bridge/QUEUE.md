@@ -112,7 +112,7 @@ Restrictions (unchanged):
 ## Завершённые задачи
 
 | ID | Название | Статус | Исполнитель | Подтверждение |
-|---|---|---|---|
+|---|---|---|---|---|
 | T-001 | Создать инфраструктуру Bridge | DONE | GitHub Copilot | Bridge создан в main (`294eb9cc5805ae8f3d5a32b5e8a5588563a77231`) и фактически используется |
 | T-007 | Development Workflow v1 | DONE | GitHub Engineer | PR #2; merge `7636f9872e4253d40688c45ef937db233175ef39`; post-merge verified |
 | T-008 | Repository of Approved Specifications / DR-0004 | DONE | GitHub Engineer | PR #1; merge `e6f696270fad4173ac45dddc237b81210ba4aeea`; post-merge verified |
