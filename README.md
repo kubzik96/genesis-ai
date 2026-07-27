@@ -1,4 +1,4 @@
-﻿# Genesis AI
+# Genesis AI
 
 Genesis AI — система совместной работы человека и ИИ-агентов для создания, развития и сопровождения программных продуктов.
 
@@ -6,63 +6,58 @@ Genesis AI — система совместной работы человека
 
 Создать практическую ИИ-команду, которая умеет превращать идеи в работающие решения, сохранять знания и улучшать собственные процессы.
 
-## Участники
+## Участники (оперативный состав, DR-0005)
 
-- CEO — человек, владелец проекта и финальный автор решений.
-- CTO — ИИ, отвечающий за архитектуру, риски и качество решений.
-- Developer — ИИ-инструмент или человек, выполняющий реализацию.
-- QA — роль проверки результата.
-- GitHub — единый источник истины проекта.
+| Роль | Исполнитель | Примечание |
+|---|---|---|
+| **CEO** | Человек | Владелец проекта, финальные решения, Execution / Merge Authorization |
+| **COO** | ChatGPT | Процесс, координация, анализ и review; **GitHub write недоступен** |
+| **Chief Architect** | Grok | Независимая архитектурная оценка; GitHub-изменения **только** в пределах CEO Authorization |
+| **Lead Engineer** | GitHub Copilot | Реализация назначенных задач через контролируемый Issue → PR |
+| **Repository / SoR** | GitHub | Единый источник истины |
 
-## Текущий статус
+Роль **CTO** (постоянный) **не занята**: выбор — задачи T-002…T-005 (BACKLOG). Архитектурные обязанности на текущем этапе покрывает Chief Architect.
 
-Genesis AI находится в фазе формирования архитектуры.
+## Текущий статус (SoR: `main`)
 
-Завершено:
+Фаза 2 — Архитектура / One-Window spike в работе.
 
-- создан и настроен GitHub-репозиторий;
-- определены Конституция, роли, принципы и стандарты;
-- создано долгосрочное видение и Roadmap;
-- организована базовая структура репозитория;
-- создана долговременная память проекта.
+| Задача | Статус | Кратко |
+|---|---|---|
+| **T-009** One-Window Spike (S-0001) | **WORKING** | Stage 3 ISSUE_CREATE_ONLY = **PARTIAL PASS**; Issue [#15](https://github.com/kubzik96/genesis-ai/issues/15) open; Stage 4 **NOT_AUTHORIZED** |
+| **T-010** Secure GitHub Broker (S-0002) | **REVIEW** | Stage 2 DEPLOY_READONLY completed; code on PR #11 Draft |
+| **T-006** Orchestrator | **BLOCKED** | Нет Approved Spec + EA |
 
-## Структура репозитория
+Оперативный SoR задач: `bridge/QUEUE.md` (не дублировать полностью здесь).
 
-- `README.md` — точка входа в проект.
-- `MEMORY.md` — долговременная память.
+Единое окно (Dify end-to-end) **ещё не завершено**.
 
-### `governance/`
+## Структура репозитория (канонические пути)
 
-Управляющие документы:
+| Путь | Назначение |
+|---|---|
+| `governance/` | Constitution, Roles, Principles, Standards, DevelopmentWorkflow |
+| `strategy/` | Vision, Roadmap |
+| `decisions/` | Decision Records |
+| `specifications/` | Approved Specifications (DR-0004) |
+| `bridge/` | QUEUE / HANDOFF — операционное состояние |
+| `templates/` | Шаблоны (в т.ч. Decision Record) |
+| `projects/` | Продукты |
+| `archive/` | Устаревшие материалы |
+| `MEMORY.md` / `ACTIVE.md` | Долговременная память / сессионный снимок |
+| `05_Агенты/` | Описания агентов (в т.ч. GitHub-Copilot.md) — **действующий** раздел |
+| `07_Эксперименты/` | Эксперименты / historical tests — **действующий** раздел |
 
-- `governance/Constitution.md` — высшие правила проекта;
-- `governance/Principles.md` — устойчивые принципы;
-- `governance/Roles.md` — роли и зоны ответственности;
-- `governance/Standards.md` — стандарты работы и качества.
-
-### `strategy/`
-
-Стратегические документы:
-
-- `strategy/Vision.md` — долгосрочное видение;
-- `strategy/Roadmap.md` — этапы развития.
-
-### Рабочие разделы
-
-- `decisions/` — зафиксированные значимые решения;
-- `templates/` — повторно используемые шаблоны;
-- `projects/` — создаваемые продукты;
-- `archive/` — устаревшие и завершённые материалы.
+**Legacy stubs (не канон):** повреждённые или пустые указатели в `00_Управление/`, `01_Стратегия/`, `02_Решения/`, `03_Контекст/` — содержат deprecation-ссылки на канон выше. Это **не** упраздняет `05_Агенты/` и `07_Эксперименты/`.
 
 ## Рабочий цикл
 
-Цель → анализ → решение → реализация → проверка → фиксация знаний → следующий цикл.
+Idea → Specification → CEO Approval → Execution Authorization → Implementation (branch/PR) → Independent review → CEO Merge Authorization → Post-merge verification → Bridge DONE.
 
-## Ближайшая цель
+Подробности: `governance/DevelopmentWorkflow.md`.
 
-Завершить архитектуру управления:
+## Ближайший фокус
 
-1. создать шаблон Decision Record;
-2. создать индекс решений;
-3. определить активный контекст работы;
-4. выбрать первый практический продукт.
+1. Закрыть качество Issue #15 / Dify bindings (без Stage 4, пока нет CEO auth).
+2. Stage 4 (Copilot assign) — **только** после отдельного CEO Authorization.
+3. Не объявлять T-009 / T-010 DONE до live-сценария encoding и принятия CEO.

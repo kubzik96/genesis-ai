@@ -1,11 +1,12 @@
 # Development Workflow v1
 
 **Status:** APPROVED  
-**Revision:** 1  
+**Revision:** 2  
 **Approved by:** CEO  
-**Date:** 2026-07-24  
-**Task:** T-007  
-**Related task:** T-008 — Approved Specifications Repository (pending)
+**Date:** 2026-07-24 (Rev 1); **2026-07-27** (Rev 2 — role model alignment, **DR-0005**)  
+**Task:** T-007 — **DONE** (merged to main)  
+**Related task:** T-008 — Approved Specifications Repository — **DONE** (DR-0004)  
+**Related Decision Record:** DR-0005 — Operational AI Team Roles
 
 ---
 
@@ -55,9 +56,9 @@ Workflow **не изменяет** позиции Principles, Roles, Standards, 
 
 ## 4. Bootstrap / Transition
 
-T-007 и T-008 являются **bootstrap governance tasks**.
+T-007 и T-008 были **bootstrap governance tasks** и **завершены** (оба в `main`).
 
-Правила переходного режима:
+Исторические правила переходного режима (сохранены для справки):
 
 1. T-007 и T-008 напрямую авторизованы CEO **до** появления каталога Approved Specifications в `main`.
 2. **T-007 должен быть влит первым.**
@@ -66,7 +67,7 @@ T-007 и T-008 являются **bootstrap governance tasks**.
 5. Bootstrap-исключение **не применяется** к обычным продуктовым и инженерным задачам.
 6. Расширять bootstrap-исключение может **только CEO**.
 
-До вступления в силу каталога `specifications/` в `main` значимые bootstrap-задачи выполняются по прямому CEO Authorization и данному Workflow.
+**Текущее состояние:** каталог `specifications/` в `main` действует. Bootstrap-период **завершён**. Новые значимые реализации требуют Approved Specification и отдельный Execution Authorization.
 
 ---
 
@@ -75,11 +76,9 @@ T-007 и T-008 являются **bootstrap governance tasks**.
 | Артефакт | Вопрос | Где |
 |---|---|---|
 | Decision Record | *Почему?* | `decisions/` |
-| Specification | *Что делать?* | `specifications/` (после merge T-008) |
+| Specification | *Что делать?* | `specifications/` |
 | Task / QUEUE | *Кто, когда, статус?* | `bridge/QUEUE.md` |
 | HANDOFF | *Какой операционный контекст?* | `bridge/HANDOFF.md` |
-
-После вступления в силу T-008:
 
 **Approved Specification является единственным источником функциональных требований для реализации.**
 
@@ -92,13 +91,15 @@ T-007 и T-008 являются **bootstrap governance tasks**.
 | Роль | Ответственность |
 |---|---|
 | **CEO** | Стратегия, утверждение scope и спецификаций, Execution Authorization, разрешение commit/PR/merge, финальная ответственность |
-| **AI-CTO / COO** | Процесс, спецификации, оркестрация, контроль Bridge, процессный review |
+| **COO** | Процесс, спецификации (process), оркестрация, контроль Bridge, процессный review |
 | **Chief Architect** | Архитектурный review, риски, независимая техническая оценка, Dissent / Stop the Line |
 | **Автор спецификации** | Подготовка Draft Specification, учёт замечаний review |
-| **Исполнитель (Lead / Execution Engineer)** | Реализация по Approved Specification (или bootstrap CEO Authorization) и Execution Authorization |
+| **Исполнитель (Lead / Execution Engineer)** | Реализация по Approved Specification и Execution Authorization |
 | **Независимый reviewer** | Review чужой работы; не утверждает собственную реализацию |
-| **GitHub Engineer** | Техническая работа с репозиторием по утверждённым задачам; не принимает стратегические решения |
+| **GitHub Engineer / Lead Engineer** | Техническая работа с репозиторием по утверждённым задачам; не принимает стратегические решения |
 | **Другие ИИ-агенты** | В рамках назначенной роли и scope; без расширения полномочий |
+
+Имена конкретных исполнителей ролей — в `governance/Roles.md` и **DR-0005**, не в этой таблице.
 
 **Правила:**
 
@@ -140,13 +141,11 @@ Closure (Bridge → DONE)
 
 Переход на следующий этап — только после завершения предыдущего.
 
-До появления `specifications/` в `main` этап Approved Specification для bootstrap-задач заменяется прямым CEO Authorization (см. §4).
-
 ---
 
 ## 8. Specification
 
-После merge T-008 значимая реализация начинается **только** после появления **Approved Specification** в `specifications/`.
+Значимая реализация начинается **только** после появления **Approved Specification** в `specifications/`.
 
 Спецификация обязана содержать: цель, контекст, scope, ограничения, разрешённые/запрещённые файлы, критерии готовности, способы проверки, выходные артефакты, Dependencies, Assumptions, необходимость Decision Record.
 
@@ -167,9 +166,11 @@ Closure (Bridge → DONE)
 
 ## 9. Execution Authorization
 
-Выдаётся CEO **отдельно** от Approval спецификации (или, в bootstrap-режиме, от прямого CEO Authorization задачи).
+Выдаётся CEO **отдельно** от Approval спецификации.
 
 Действует только: для одной задачи, одной Approved Revision (если есть), указанного scope, назначенного исполнителя.
+
+Execution Authorization **может быть staged** (например Stage 1 / Stage 2 / Stage 3) — каждый stage требует отдельного решения CEO. Blanket «всё разрешено» не подразумевается.
 
 **Не является** разрешением на: commit, push, PR, merge, изменение архитектуры, расширение scope, нарушение Governance.
 
@@ -183,7 +184,6 @@ Closure (Bridge → DONE)
 - Каждый PR имеет **ограниченный и проверяемый scope**.
 - Несвязанные изменения **запрещено** смешивать в одном PR.
 - Зависимости между задачами выполняются в архитектурно правильном порядке.
-- Пример bootstrap-порядка: **T-007 merge → обновление ветки T-008 → merge T-008**.
 
 ---
 
@@ -224,7 +224,7 @@ Merge **запрещён** без отдельного **CEO Merge Authorization
 5. CI (см. §13)  
 6. Reviews  
 7. Зависимости между задачами  
-8. Соответствие Approved Specification (после вступления T-008 в силу)  
+8. Соответствие Approved Specification  
 9. Отсутствие случайных изменений  
 
 ---
@@ -280,6 +280,8 @@ Decision Record **обязателен**, если изменение:
 
 Это bootstrap-исключение применяется **только** к первоначальному принятию T-007 и не распространяется на последующие изменения Workflow.
 
+Revision 2 настоящего документа и **DR-0005** оформляют изменение операционной модели ролей после вступления Workflow в силу.
+
 ---
 
 ## 17. Процесс важнее инструмента
@@ -323,7 +325,7 @@ Commit или PR сами по себе **не означают** DONE.
 
 ## 20. Анти-паттерны
 
-- реализация без Approved Specification (после вступления T-008 в силу);
+- реализация без Approved Specification;
 - merge без CEO Merge Authorization;
 - review только по сообщению агента;
 - commit/merge до независимого review;
@@ -342,12 +344,11 @@ Commit или PR сами по себе **не означают** DONE.
 - `governance/Roles.md`
 - `governance/Principles.md`
 - `governance/Standards.md`
-- `decisions/`
+- `decisions/` (включая DR-0004, **DR-0005**)
 - `bridge/QUEUE.md`
 - `bridge/HANDOFF.md`
-- T-008 — Approved Specifications Repository (pending)
+- `specifications/` (T-008 / DR-0004 — **DONE**)
 
 ---
 
-*Документ создан в рамках T-007.  
-Утверждён CEO. Ожидает финального pre-merge review и отдельного CEO Merge Authorization.*
+*Документ создан в рамках T-007. Утверждён CEO. T-007 и T-008 завершены и находятся в main. Revision 2 (2026-07-27) — выравнивание ролей по DR-0005.*

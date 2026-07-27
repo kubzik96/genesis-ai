@@ -12,14 +12,16 @@
 | **Дата создания** | 2026-07-24 |
 | **Дата утверждения** | 2026-07-24 |
 | **Утвердил** | CEO Genesis AI |
-| **Execution Authorization** | NOT_GRANTED |
+| **Execution Authorization** | **STAGED** (no blanket grant). Stages 1–3 authorized separately by CEO; **Stage 4 NOT_AUTHORIZED** |
 | **Связанные задачи** | T-009 — Genesis One-Window Execution Spike |
 | **Связанные Decision Records** | DR-0004 |
-| **Исполнитель (после Authorization)** | GitHub Engineer / Integration Engineer |
+| **Исполнитель (после Authorization)** | Integration Engineer / Lead Engineer (по stage; см. §13) |
 
 > `Дата утверждения` и `Утвердил` заполняются **только после** отдельного CEO Approval.  
-> `Execution Authorization` по умолчанию `NOT_GRANTED` и меняется на `GRANTED` только отдельным решением CEO.  
-> Approval спецификации **не** означает разрешение на реализацию.
+> Approval спецификации **не** означает разрешение на реализацию.  
+> **Не было** единого общего Execution Authorization «на весь S-0001».  
+> Каждый Stage выполнялся только после **отдельного** CEO Authorization.  
+> **Stage 4 (Copilot assign / further live writes) сейчас NOT_AUTHORIZED.**
 
 ---
 
@@ -323,9 +325,13 @@ Workflow **обязан** останавливаться:
 ## 13. История изменений
 
 | Revision | Дата | Автор | Что изменено |
-|---|---|---|---|
+|---|---|---|
 | 1 | 2026-07-24 | Grok — Chief Architect | Создан In Review; API = OpenAI **или** xAI; Approve = `APPROVE_TO_MERGE` candidate |
-| 1 | 2026-07-24 | CEO Genesis AI | CEO Approval Revision 1 (HEAD `fa82e72c…`); Execution Authorization остаётся NOT_GRANTED |
+| 1 | 2026-07-24 | CEO Genesis AI | CEO Approval Revision 1 (HEAD `fa82e72c…`); **blanket Execution Authorization remains NOT_GRANTED** |
+| 1 | 2026-07-25…26 | CEO Genesis AI (staged) | **Stage 1** DIFY_CONFIG_ONLY; **Stage 2** DIFY_READONLY_WIRING (+ Broker `context/read`); **Stage 3** ISSUE_CREATE_ONLY → GitHub Issue #15 via Broker after Gate 1; PARTIAL PASS (empty «Команда CEO» / «Контекст из GitHub»); idempotent replay OK |
+| 1 | 2026-07-27 | Grok — Chief Architect | Metadata EA → **STAGED** (no blanket); history rows for Stages 1–3; **Stage 4 NOT_AUTHORIZED**; full body of Revision 1 preserved |
+
+**Stage 4** (assign Copilot / PR observation / xAI live review / merge encoding PR) — **NOT_AUTHORIZED** until a separate CEO command.
 
 ---
 
