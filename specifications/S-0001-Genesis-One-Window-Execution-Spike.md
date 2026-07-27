@@ -21,7 +21,7 @@
 > Approval спецификации **не** означает разрешение на реализацию.  
 > **Не было** единого общего Execution Authorization «на весь S-0001».  
 > Каждый Stage выполнялся только после **отдельного** CEO Authorization.  
-> **Stage 4 (Copilot assign / further live writes) сейчас NOT_AUTHORIZED.**
+> **Stage 4 (Copilot assign / PR observation / independent live review) сейчас NOT_AUTHORIZED.**
 
 ---
 
@@ -330,8 +330,11 @@ Workflow **обязан** останавливаться:
 | 1 | 2026-07-24 | CEO Genesis AI | CEO Approval Revision 1 (HEAD `fa82e72c…`); **blanket Execution Authorization remains NOT_GRANTED** |
 | 1 | 2026-07-25…26 | CEO Genesis AI (staged) | **Stage 1** DIFY_CONFIG_ONLY; **Stage 2** DIFY_READONLY_WIRING (+ Broker `context/read`); **Stage 3** ISSUE_CREATE_ONLY → GitHub Issue #15 via Broker after Gate 1; PARTIAL PASS (empty «Команда CEO» / «Контекст из GitHub»); idempotent replay OK |
 | 1 | 2026-07-27 | Grok — Chief Architect | Metadata EA → **STAGED** (no blanket); history rows for Stages 1–3; **Stage 4 NOT_AUTHORIZED**; full body of Revision 1 preserved |
+| 1 | 2026-07-27 | Grok — Chief Architect | §13 clarification: Stage 4 scope = assign Copilot / PR observation / independent live review; **Stage 4 ends at Gate 3**; merge of encoding PR requires **separate CEO Gate 4 / Merge Authorization** (outside Stage 4). Wording aligned with §§4.6, 4.8, 15 |
 
-**Stage 4** (assign Copilot / PR observation / xAI live review / merge encoding PR) — **NOT_AUTHORIZED** until a separate CEO command.
+**Stage 4** (assign Copilot / PR observation / independent live review via API) — **NOT_AUTHORIZED** until a separate CEO command.  
+**Stage 4 ends at Gate 3.**  
+Merge of the encoding PR requires a **separate CEO Gate 4 / Merge Authorization** and is **not** part of Stage 4.
 
 ---
 
