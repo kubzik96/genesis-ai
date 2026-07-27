@@ -25,10 +25,10 @@ QUEUE.md содержит очередь всех активных и ожида
 
 | ID | Название | Статус | Исполнитель |
 |---|---|---|---|
-| T-002 | Создать критерии оценки CTO | BACKLOG | ChatGPT (CTO) |
-| T-003 | Подготовить тестовое задание для CTO | BACKLOG | ChatGPT (CTO) |
-| T-004 | Провести испытание моделей | BACKLOG | ChatGPT (CTO) |
-| T-005 | Оформить DR-0003 по результатам | BACKLOG | ChatGPT (CTO) |
+| T-002 | Создать критерии оценки CTO | BACKLOG | ChatGPT (COO) |
+| T-003 | Подготовить тестовое задание для CTO | BACKLOG | ChatGPT (COO) |
+| T-004 | Провести испытание моделей | BACKLOG | ChatGPT (COO) |
+| T-005 | Оформить DR-0003 по результатам | BACKLOG | ChatGPT (COO) |
 
 ### Sprint: Genesis One-Window MVP
 
