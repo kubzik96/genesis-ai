@@ -6,22 +6,23 @@
 |---|---|
 | **ID** | S-0004 |
 | **Название** | Post-Stage-4 Source of Record Synchronization (Governance Correction) |
-| **Статус** | **In Review** |
+| **Статус** | **Approved** |
 | **Revision** | **1** |
 | **Автор** | Grok — Chief Architect |
 | **Дата создания** | 2026-08-07 |
-| **Дата утверждения** | *pending CEO Approval* |
-| **Утвердил** | *pending* |
+| **Дата утверждения** | **2026-08-07** |
+| **Утвердил** | **CEO Genesis AI** |
 | **Execution Authorization** | **NOT_GRANTED** |
 | **Связанные задачи** | T-009, T-010 |
 | **Связанные Decision Records** | DR-0004, DR-0005; DR-0006 — требуется при реализации роли Codex |
-| **Related Specification** | [S-0003](S-0003-Post-Stage-4-Source-of-Record-Synchronization.md) (Approved Revision 1) |
-| **Supersession intent** | После CEO Approval S-0004 **заменяет** S-0003 как действующую Specification для implementation; S-0003 → `Superseded` (только отдельным Approval-действием, не в этом candidate) |
+| **Related Specification** | [S-0003](S-0003-Post-Stage-4-Source-of-Record-Synchronization.md) (Revision 1, **Superseded**) |
+| **Supersession** | S-0004 is the **authoritative** Specification for this implementation scope. S-0003 Revision 1 is **Superseded by S-0004**. |
 
-> Candidate **In Review**. Не Approved. Не даёт Execution Authorization.  
-> S-0003 Revision 1 остаётся **Approved** до CEO Approval S-0004.  
+> **Approved Specification** (Revision 1).  
+> Approval **не** является Execution Authorization.  
 > EA S-0003 Revision 1 = **TERMINATED** (governance conflict).  
-> Новый EA возможен **только** после CEO Approval S-0004 и отдельного решения CEO.
+> Execution Authorization for S-0004 = **NOT_GRANTED** until separate CEO decision.  
+> S-0003 Revision 1 remains in repository history as Superseded.
 
 ---
 
@@ -150,18 +151,18 @@ S-0003 Revision 1 (Approved, 2026-08-07) определила синхрониз
 
 - Constitution; Development Workflow Revision 2;
 - DR-0004; DR-0005;
-- S-0003 Revision 1 (Approved; to be Superseded only after S-0004 Approval);
+- S-0003 Revision 1 (**Superseded by S-0004**);
 - Issue #19; PR #20; commit `99e6d153…`;
-- independent review of this S-0004 candidate;
-- separate CEO decisions: Approval S-0004, EA, Merge Authorization.
+- independent review of S-0004;
+- separate CEO decisions: Approval S-0004 (recorded), EA, Merge Authorization.
 
 ---
 
 ## 6. Assumptions
 
-- S-0003 Rev 1 остаётся Approved в `main` до Approval S-0004;
-- PR #22 Draft не изменяется этим candidate PR;
-- T-009/T-010 не DONE без отдельных решений CEO;
+- S-0003 Rev 1 remains in repository as **Superseded** historical record;
+- PR #22 Draft is not modified by this Approval commit;
+- T-009/T-010 not DONE without separate CEO decisions;
 - CI may remain `CI_NOT_CONFIGURED`.
 
 ---
@@ -215,7 +216,7 @@ S-0003 Revision 1 (Approved, 2026-08-07) определила синхрониз
 - [x] DR-0006 required (Codex role formalization).
 - [x] DR-0006 supplements DR-0005.
 - [ ] Approval of S-0004 does not create/accept DR-0006.
-- [ ] After CEO Approval S-0004: S-0003 → Superseded (separate metadata action).
+- [x] S-0003 Revision 1 → **Superseded by S-0004** (recorded with this Approval).
 
 ---
 
@@ -223,12 +224,12 @@ S-0003 Revision 1 (Approved, 2026-08-07) определила синхрониз
 
 | Risk | Mitigation |
 |---|---|
-| Treat S-0003 Rev2 as valid | Explicit: Major Scope change → S-0004; S-0003 Rev1 unchanged until Superseded |
+| Treat S-0003 Rev2 as valid | Explicit: Major Scope change → S-0004; S-0003 Rev1 Superseded |
 | INDEX drift | INDEX in §3.1; same-commit rule |
 | Premature Approved on S-0001 Rev 2 | §3.1.1 lifecycle |
 | T-009 → DONE | Explicit REVIEW only |
 | Codex over-scope | §3.3 boundaries |
-| EA under S-0003 Rev1 | TERMINATED; new EA only after S-0004 Approval |
+| EA under S-0003 Rev1 | TERMINATED; new EA only after separate CEO decision on Approved S-0004 |
 
 ---
 
@@ -236,4 +237,5 @@ S-0003 Revision 1 (Approved, 2026-08-07) определила синхрониз
 
 | Revision | Date | Author | Status | Change |
 |---|---|---|---|---|
-| 1 | 2026-08-07 | Grok — Chief Architect | **In Review** | New Specification: governance correction of S-0003 Scope (INDEX + S-0001 Rev 2 lifecycle); supersession intent after Approval; goals/outcomes unchanged |
+| 1 | 2026-08-07 | Grok — Chief Architect | In Review | New Specification: governance correction of S-0003 Scope (INDEX + S-0001 Rev 2 lifecycle); supersession intent after Approval; goals/outcomes unchanged |
+| 1 | 2026-08-07 | CEO Genesis AI | **Approved** | CEO Approval Revision 1; S-0004 becomes authoritative Specification; S-0003 Revision 1 Superseded; Execution Authorization remains NOT_GRANTED |
