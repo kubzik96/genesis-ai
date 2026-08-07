@@ -6,22 +6,29 @@
 |---|---|
 | **ID** | S-0001 |
 | **Название** | Genesis One-Window Execution Spike |
-| **Статус** | Approved |
-| **Revision** | 1 |
-| **Автор** | Grok — Chief Architect |
+| **Статус** | **Approved** |
+| **Revision** | **2** |
+| **Автор Revision 1** | Grok — Chief Architect |
+| **Автор Revision 2** | Grok — execution agent under S-0004 PR A EA |
 | **Дата создания** | 2026-07-24 |
-| **Дата утверждения** | 2026-07-24 |
-| **Утвердил** | CEO Genesis AI |
-| **Execution Authorization** | **STAGED** (no blanket grant). Stages 1–3 authorized separately by CEO; **Stage 4 NOT_AUTHORIZED** |
+| **Дата утверждения Revision 1** | 2026-07-24 |
+| **Дата утверждения Revision 2** | 2026-08-07 |
+| **Утвердил Revision 1** | CEO Genesis AI |
+| **Утвердил Revision 2** | CEO Genesis AI |
+| **Execution Authorization** | **STAGED** (no blanket grant). Stages 1–4 each required separate CEO Authorization. CEO Approval Revision 2 is **not** a new blanket EA for One-Window implementation. |
 | **Связанные задачи** | T-009 — Genesis One-Window Execution Spike |
 | **Связанные Decision Records** | DR-0004 |
+| **Related Specifications** | [S-0004](S-0004-Post-Stage-4-Source-of-Record-Synchronization-Governance-Correction.md) (Approved R1 — authoritative for SoR sync); [S-0003](S-0003-Post-Stage-4-Source-of-Record-Synchronization.md) (Revision 1 — **Superseded**) |
 | **Исполнитель (после Authorization)** | Integration Engineer / Lead Engineer (по stage; см. §13) |
 
-> `Дата утверждения` и `Утвердил` заполняются **только после** отдельного CEO Approval.  
-> Approval спецификации **не** означает разрешение на реализацию.  
-> **Не было** единого общего Execution Authorization «на весь S-0001».  
+> **Revision 2 = Approved** (2026-08-07) after independent specification review (BLOCKERS NONE) and CEO Approval.  
+> CEO Approval Revision 1 (2026-07-24) сохранён в истории.  
+> **Не было** и **нет** единого общего Execution Authorization «на весь S-0001».  
 > Каждый Stage выполнялся только после **отдельного** CEO Authorization.  
-> **Stage 4 (Copilot assign / PR observation / independent live review) сейчас NOT_AUTHORIZED.**
+> **Stage 4 result:** **PARTIAL PASS** — см. §13.  
+> Историческое состояние «Stage 4 NOT_AUTHORIZED» сохранено в истории Revision 1 и не выдаётся за текущий статус.  
+> SoR synchronization после Stage 4 выполняется по **Approved S-0004 Revision 1**.  
+> Revision 2 **не ослабляет** исходные критерии успеха One-Window: PARTIAL PASS — фактический итог Stage 4, не новый более слабый definition of done.
 
 ---
 
@@ -83,6 +90,8 @@ QUEUE.md обновляется в том же commit, что и результ�
 Copilot должен открыть PR **только** с этой правкой.  
 Независимый reviewer должен проверить **фактический diff PR**.  
 CEO должен принять решение из Dify **без** ручного копирования команд между чатами.
+
+**Фактический итог Stage 4 (не definition of done):** целевой encoding-diff принят в `main` через Issue #19 и PR #20 (squash `99e6d153…`). Полный One-Window цикл без ручных шагов **не** достигнут → Stage 4 = **PARTIAL PASS**, не PASS. Исходные критерии успеха ниже **не** ослаблены.
 
 ---
 
@@ -188,7 +197,7 @@ CEO должен принять решение из Dify **без** ручног
     - **не** разрешает и **не** запускает merge;
     - merge по-прежнему требует отдельного CEO Merge Authorization вне этого workflow.
 17. **Request changes** создаёт понятное продолжение workflow (без потери контекста).
-18. Merge **не** выполняется из S-0001. Любое будущее merge-действие требует отдельного CEO Merge Authorization (Gate 4 — не реализуется в этом spike).
+18. Merge **не** выполняется из S-0001. Любое будущее merge-действие требует отдельного CEO Merge Authorization (Gate 4).
 
 ### 4.7 Security & operations
 
@@ -205,7 +214,7 @@ Workflow **обязан** останавливаться:
 | 1 | Перед созданием GitHub Issue |
 | 2 | Перед передачей задачи Copilot |
 | 3 | После независимого review |
-| 4 | Перед любым будущим merge-действием (в S-0001 не реализуется) |
+| 4 | Перед любым merge-действием |
 
 ---
 
@@ -229,7 +238,7 @@ Workflow **обязан** останавливаться:
 - **минимум один** API-ключ: OpenAI API **или** xAI API (второй optional);
 - Copilot coding agent для репозитория `kubzik96/genesis-ai`;
 - GitHub API: create issue, read PR/diff/status;
-- T-009 (операционная задача в Bridge — создаётся отдельно при необходимости).
+- T-009 (операционная задача в Bridge).
 
 ---
 
@@ -245,21 +254,30 @@ Workflow **обязан** останавливаться:
 
 ## 8. Критерии готовности (Acceptance Criteria)
 
+Исходные требования One-Window **сохраняются**. `[x]` ставится только если критерий выполнен **как сформулирован** (автоматизация / One-Window path). Ручной обход **не** засчитывается как выполнение автоматического критерия.
+
 - [ ] CEO открывает одно окно на Android и ПК.
 - [ ] Контекст загружается из актуального `main`.
 - [ ] Issue создаётся только после CEO confirmation (Gate 1).
-- [ ] Copilot создаёт PR для тестовой задачи (только правка encoding в `bridge/QUEUE.md`).
-- [ ] Dify получает фактический PR и diff (не пересказ).
-- [ ] Reviewer анализирует Git-diff, а не пересказ агента.
+- [ ] Copilot создаёт PR для тестовой задачи (только правка encoding в `bridge/QUEUE.md`).  
+  *Stage 4 actual result: PARTIAL PASS — target diff was ultimately created/reviewed/merged (Issue #19 / PR #20 / `99e6d153…`), but Copilot runner / full One-Window automation did not satisfy this criterion.*
+- [ ] Dify получает фактический PR и diff (не пересказ).  
+  *Stage 4 actual result: PARTIAL PASS — Git artifacts existed; automated Dify observation path was not fully satisfied.*
+- [ ] Reviewer анализирует Git-diff, а не пересказ агента.  
+  *Stage 4 actual result: PARTIAL PASS — independent review and CEO Gate 3/4 occurred; not fully via the automated One-Window reviewer path.*
 - [ ] CEO получает краткий verdict и ссылку на PR.
 - [ ] Доступны действия Approve / Request changes / Reject (Gate 3).
 - [ ] **Approve** означает кандидат `APPROVE_TO_MERGE` и **не** запускает merge.
 - [ ] Request changes создаёт понятное продолжение workflow.
-- [ ] Никакого auto-merge; merge не выполняется из workflow.
+- [ ] Никакого auto-merge; merge не выполняется из workflow.  
+  *Confirmed for Stage 4 encoding path: auto-merge not used; merge only after separate CEO Merge Authorization.*
 - [ ] Секреты отсутствуют в GitHub и выводе workflow.
 - [ ] Весь тестовый цикл воспроизводим.
-- [ ] Критерий успеха достигнут **без** копирования команд между ChatGPT, Grok, Copilot и GitHub.
+- [ ] Критерий успеха достигнут **без** копирования команд между ChatGPT, Grok, Copilot и GitHub.  
+  *Stage 4 actual result: PARTIAL PASS — full One-Window cycle without manual steps not achieved.*
 - [ ] Preflight подтвердил наличие минимум одного API-провайдера (OpenAI **или** xAI); primary reviewer выбран.
+
+**Stage 4 summary (evidence, not weakened DoD):** target encoding change is in `main`; Stage 4 = **PARTIAL PASS**; remaining unchecked criteria above remain **open requirements**.
 
 ---
 
@@ -272,7 +290,8 @@ Workflow **обязан** останавливаться:
 5. Reviewer output ссылается на конкретные строки diff.
 6. Логи/экспорт конфигурации — поиск секретов (токены, ключи) даёт пустой результат.
 7. Повторный прогон (Request changes → fix → review) без ручного копирования.
-8. После Approve: merge **не** произошёл; статус кандидата = `APPROVE_TO_MERGE`.
+8. После Approve: merge **не** произошёл автоматически; требуется CEO Merge Authorization.
+9. **Различать:** (a) фактический Git-результат PR #20 / commit `99e6d153…` — **подтверждён**; (b) критерий One-Window automation — **не достигнут** (PARTIAL PASS, не PASS).
 
 ---
 
@@ -281,9 +300,11 @@ Workflow **обязан** останавливаться:
 - Рабочий Dify Web App (URL) для CEO.
 - Документация конфигурации workflow **без секретов** (экспорт / markdown в согласованном месте).
 - Запись preflight (зависимости, бюджет, лимиты, выбранный primary reviewer).
-- Как минимум один успешный тестовый цикл: Issue → PR → review → CEO decision.
+- **Как минимум один успешный тестовый цикл:** Issue → PR → review → CEO decision (полный воспроизводимый One-Window path).
 - Ссылки на Issue и PR тестового сценария.
 - Краткий отчёт: что сработало, блокеры, рекомендация по долгосрочной платформе.
+
+**Current evidence (not a weakened expected artifact):** Stage 4 produced a **PARTIAL PASS** (Issue #19 CLOSED; PR #20 MERGED squash `99e6d153…`; encoding fix in main). Full successful reproducible One-Window cycle remains **outstanding**.
 
 ---
 
@@ -291,6 +312,7 @@ Workflow **обязан** останавливаться:
 
 - [x] **Отдельный DR для временного spike не требуется.**
 - [ ] После результатов spike **требуется отдельное решение** о долгосрочной Interaction / Execution Platform.
+- [ ] DR-0006 (Codex role) — отдельный артефакт, **deferred**; не часть S-0001 scope и не блокирует One-Window critical path.
 
 Возможные варианты будущего решения:
 
@@ -307,34 +329,48 @@ Workflow **обязан** останавливаться:
 | Риск | Митигация |
 |---|---|
 | Dify плохо стыкуется с Git-diff review | Review только по PR/diff из GitHub API |
-| Copilot не создаёт PR / не принимает Issue | Preflight; узкий тестовый сценарий; BLOCKED при невозможности |
+| Copilot runner не завершает цикл автоматически | Зафиксировано как limitation; PARTIAL PASS; target diff всё же принят; критерий Copilot PR остаётся открытым |
 | API-ключи / бюджет | Hard limits; достаточно одного провайдера; остановка при исчерпании |
 | Секреты в логах | Запрет хранения в Git; проверка экспорта |
-| Ложное ощущение «OS готова» | Узкий scope; T-006 остаётся BLOCKED |
+| Ложное ощущение «OS готова» / «Stage 4 = PASS» | Явный **PARTIAL PASS**; критерии One-Window не ослаблены; T-009 остаётся REVIEW |
 | Vendor lock Dify | Option C: spike временный; решение о платформе после |
 | Approve ошибочно трактуется как merge | Явное правило: Approve = `APPROVE_TO_MERGE` candidate only |
+| Premature Approved на Revision 2 | Lifecycle completed: In Review → independent review → CEO Approval → Approved + INDEX same commit (S-0004 §3.1.1) |
 
-Открытые вопросы (решить до/во время Execution):
+Открытые вопросы:
 
-1. Точный механизм назначения Issue → Copilot в текущем GitHub API для этого репозитория.
-2. Primary reviewer (OpenAI **или** xAI) — выбирается на preflight.
-3. Где хранить экспорт конфигурации без секретов (docs path / gist / иное) — после Authorization.
+1. Точный механизм устойчивого назначения Issue → Copilot без ручных шагов.
+2. Primary reviewer (OpenAI **или** xAI) для воспроизводимого One-Window цикла.
+3. Долгосрочная Interaction / Execution Platform — отдельное решение после spike.
 
 ---
 
 ## 13. История изменений
 
 | Revision | Дата | Автор | Что изменено |
-|---|---|---|
+|---|---|---|---|
 | 1 | 2026-07-24 | Grok — Chief Architect | Создан In Review; API = OpenAI **или** xAI; Approve = `APPROVE_TO_MERGE` candidate |
 | 1 | 2026-07-24 | CEO Genesis AI | CEO Approval Revision 1 (HEAD `fa82e72c…`); **blanket Execution Authorization remains NOT_GRANTED** |
 | 1 | 2026-07-25…26 | CEO Genesis AI (staged) | **Stage 1** DIFY_CONFIG_ONLY; **Stage 2** DIFY_READONLY_WIRING (+ Broker `context/read`); **Stage 3** ISSUE_CREATE_ONLY → GitHub Issue #15 via Broker after Gate 1; PARTIAL PASS (empty «Команда CEO» / «Контекст из GitHub»); idempotent replay OK |
-| 1 | 2026-07-27 | Grok — Chief Architect | Metadata EA → **STAGED** (no blanket); history rows for Stages 1–3; **Stage 4 NOT_AUTHORIZED**; full body of Revision 1 preserved |
-| 1 | 2026-07-27 | Grok — Chief Architect | §13 clarification: Stage 4 scope = assign Copilot / PR observation / independent live review; **Stage 4 ends at Gate 3**; merge of encoding PR requires **separate CEO Gate 4 / Merge Authorization** (outside Stage 4). Wording aligned with §§4.6, 4.8, 15 |
+| 1 | 2026-07-27 | Grok — Chief Architect | Metadata EA → **STAGED** (no blanket); history rows for Stages 1–3; **Stage 4 NOT_AUTHORIZED** (historical state); full body of Revision 1 preserved |
+| 1 | 2026-07-27 | Grok — Chief Architect | §13 clarification: Stage 4 scope = assign Copilot / PR observation / independent live review; **Stage 4 ends at Gate 3**; merge of encoding PR requires **separate CEO Gate 4 / Merge Authorization** (outside Stage 4) |
+| 2 | 2026-08-07 | Grok — under S-0004 PR A EA | Revision 2 prepared as In Review. Stage 4 **PARTIAL PASS** recorded as evidence. Original One-Window acceptance criteria **preserved** (not weakened). Related Specs: S-0004 authoritative, S-0003 Superseded. |
+| 2 | 2026-08-07 | CEO Genesis AI | **Approved** Revision 2 after independent specification review (BLOCKERS NONE). INDEX synchronized in same commit. **No** new blanket Execution Authorization. |
 
-**Stage 4** (assign Copilot / PR observation / independent live review via API) — **NOT_AUTHORIZED** until a separate CEO command.  
-**Stage 4 ends at Gate 3.**  
-Merge of the encoding PR requires a **separate CEO Gate 4 / Merge Authorization** and is **not** part of Stage 4.
+### Stage 4 — текущий итог (Revision 2)
+
+- **Result:** **PARTIAL PASS** (not PASS).
+- **Historical:** Stage 4 was **NOT_AUTHORIZED** until separate CEO authorization.
+- **Issue #19:** CLOSED / completed.
+- **PR #20:** MERGED (squash).
+- **Squash commit:** `99e6d153ac91b2bf25f9604d58fe51c387ba3d28`.
+- **Diff:** only encoding fix in `bridge/QUEUE.md`.
+- **Auto-merge:** not used.
+- **CI:** `CI_NOT_CONFIGURED`.
+- **Limitation:** Copilot runner did not complete the full automatic implementation cycle; target diff accepted after independent review and separate CEO Gate 3 / Gate 4.
+- **One-Window without manual steps:** not achieved.
+- **T-009:** REVIEW (not DONE).
+- **DoD:** original success criteria in §8 remain open where unchecked; PARTIAL PASS does not redefine them.
 
 ---
 
@@ -372,3 +408,4 @@ Merge of the encoding PR requires a **separate CEO Gate 4 / Merge Authorization*
 11. Собственная Genesis Console и LangGraph не входят в S-0001.
 12. После MVP — отдельное решение о долгосрочной платформе.
 13. Секреты запрещено хранить в GitHub.
+14. Stage 4 result = **PARTIAL PASS** (evidence); T-009 не переводится в DONE без принятия воспроизводимого One-Window цикла; исходные критерии §8 не ослабляются (S-0004 SoR path).
