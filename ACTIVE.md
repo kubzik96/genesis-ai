@@ -22,7 +22,7 @@
 
 ## Текущий спринт
 
-**Genesis One-Window MVP** (S-0001 candidate Rev2 / S-0002 / S-0004)
+**Genesis One-Window MVP** (S-0001 Approved R2 / S-0002 / S-0004)
 
 | ID | Статус | Note |
 |---|---|---|
@@ -45,6 +45,7 @@
 - Stage 4 encoding fix: Issue #19 CLOSED; PR #20 MERGED squash `99e6d153…` (PARTIAL PASS — full One-Window automation not achieved; original S-0001 success criteria not weakened).
 - **S-0004 Approved R1** in main (PR #23, `0c7ecbff…`) — authoritative Specification for Post-Stage-4 SoR synchronization.
 - **S-0003 Revision 1 Superseded** by S-0004.
+- **S-0001 Revision 2 Approved** (2026-08-07) after independent specification review (BLOCKERS NONE) + CEO Approval; INDEX synced in same commit.
 
 ---
 
@@ -52,34 +53,34 @@
 
 **S-0004 PR A** — Source-of-Record synchronization (PR #22 Draft):
 
-- S-0001 Revision 2 = **In Review** candidate (not Approved);
-- QUEUE / ACTIVE / MEMORY aligned with Stage 4 PARTIAL PASS and S-0004;
-- INDEX **not** updated in this PR (same-commit only when S-0001 Rev2 is Approved).
+- S-0001 Revision 2 = **Approved**;
+- independent specification review = **completed**;
+- CEO Approval Revision 2 = **completed**;
+- INDEX sync = **completed in this commit**;
+- QUEUE / ACTIVE / MEMORY aligned with Stage 4 PARTIAL PASS and S-0004.
 
 **DR-0006 / PR B** — deferred; **not** blocking One-Window critical path.
 
 ---
 
-## Порядок gates (обязательный)
+## Порядок gates (текущий)
 
-1. **Independent Specification Review** S-0001 Revision 2 (candidate in PR #22).
-2. **CEO Approval** S-0001 Revision 2.
-3. **In the same approval commit** — `specifications/INDEX.md` sync (S-0001 → Approved R2).
-4. **Independent implementation review** of current PR #22 HEAD (SoR files + approved Spec state).
+1. ~~Independent Specification Review S-0001 Revision 2~~ — **done**.
+2. ~~CEO Approval S-0001 Revision 2~~ — **done**.
+3. ~~INDEX sync (same approval commit)~~ — **done**.
+4. **Independent implementation review** of current PR #22 HEAD (SoR files + Approved Spec state).
 5. **Separate CEO Merge Authorization** for PR A.
 6. **Merge** PR #22 + post-merge verification.
 7. **Next One-Window technical cycle** (product work).
-
-Merge Authorization for PR #22 **must not** precede CEO Approval of S-0001 Revision 2.
 
 ---
 
 ## Следующие шаги (требуют отдельных Authorization)
 
-- Complete gates 1–6 above in order.
+- Complete gates 4–6 above in order.
 - One-Window technical cycle after post-merge verification.
 - PR B / DR-0006 (Codex) — after next One-Window cycle (deferred).
-- T-009 / T-010 → DONE — **not** authorized by S-0004 PR A EA.
+- T-009 / T-010 → DONE — **not** authorized by S-0004 PR A EA or by S-0001 Rev2 Approval.
 
 ---
 
@@ -109,6 +110,7 @@ Merge Authorization for PR #22 **must not** precede CEO Approval of S-0001 Revis
 
 ## Последнее значимое решение в Git
 
+- S-0001 Revision 2 — **Approved** (2026-08-07) in PR #22 (this commit).
 - `specifications/S-0004-…` — **Approved** (PR #23, squash `0c7ecbff…`).
 - S-0003 Revision 1 — **Superseded** by S-0004.
 - Stage 4 PARTIAL PASS evidence: Issue #19, PR #20, commit `99e6d153…`.
@@ -122,6 +124,6 @@ Merge Authorization for PR #22 **must not** precede CEO Approval of S-0001 Revis
 1. `ACTIVE.md`
 2. `governance/Constitution.md`
 3. `bridge/QUEUE.md` (если задача из Bridge)
-4. релевантную **Approved** Specification (сейчас SoR path: **S-0004**)
+4. релевантную **Approved** Specification (SoR path: **S-0004**; One-Window: **S-0001 R2**)
 
 После значимой работы — обновить Bridge и при необходимости ACTIVE/MEMORY **отдельным** auth, если требуется write.

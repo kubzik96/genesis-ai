@@ -39,8 +39,8 @@ QUEUE.md содержит очередь всех активных и ожида
 
 T-009: **REVIEW** (not DONE). Stage 4 = **PARTIAL PASS**.  
 SoR synchronization after Stage 4 выполняется по **Approved S-0004 Revision 1**.  
-S-0001 **Revision 2** = **candidate / In Review** (не Approved).  
-T-009 **не** считается выполняемым по Approved S-0001 Revision 2.
+S-0001 **Revision 2** = **Approved** (2026-08-07).  
+CEO Approval S-0001 Revision 2 **не** является новым blanket Execution Authorization на One-Window implementation.
 
 #### Stages 1–3 (история)
 
@@ -108,7 +108,7 @@ Restrictions:
 ## Завершённые задачи
 
 | ID | Название | Статус | Исполнитель | Подтверждение |
-|---|---|---|---|---|
+|---|---|---|---|
 | T-001 | Создать инфраструктуру Bridge | DONE | GitHub Copilot | Bridge создан в main (`294eb9cc5805ae8f3d5a32b5e8a5588563a77231`) и фактически используется |
 | T-007 | Development Workflow v1 | DONE | GitHub Engineer | PR #2; merge `7636f9872e4253d40688c45ef937db233175ef39`; post-merge verified |
 | T-008 | Repository of Approved Specifications / DR-0004 | DONE | GitHub Engineer | PR #1; merge `e6f696270fad4173ac45dddc237b81210ba4aeea`; post-merge verified |
