@@ -1,0 +1,539 @@
+import { authenticateService } from './auth.js';
+import { validateGate } from './gate.js';
+import { isAllowedContextPath, matchRoute } from './allowlist.js';
+import { requestHash } from './hash.js';
+import { GATES, FIXED_FULL_NAME, FIXED_BASE_BRANCH } from './constants.js';
+import { mapGithubError } from './github-client.js';
+import { auditEvent } from './audit.js';
+import { normalizeCreateIssuePayload } from './normalize-payload.js';
+
+function json(status, body) {
+  return {
+    status,
+    headers: { 'content-type': 'application/json; charset=utf-8' },
+    body: JSON.stringify(body),
+  };
+}
+
+/**
+ * Pre-store / early-reject audit helper.
+ * github_status and idempotency_state are always null.
+ * latency_ms is a measured non-negative number (0 when rejection is immediate).
+ * Never logs raw bodies, headers, or secrets.
+ */
+function auditReject({ endpoint, outcome, error, run_id, gate, idempotency_key, issue_number, path: filePath, latency_ms = 0 }) {
+  auditEvent({
+    endpoint,
+    outcome,
+    error,
+    run_id: run_id ?? null,
+    gate: gate ?? null,
+    idempotency_key: idempotency_key ?? null,
+    issue_number: issue_number ?? null,
+    path: filePath ?? null,
+    github_status: null,
+    latency_ms: Math.max(0, latency_ms),
+    idempotency_state: null,
+  });
+}
+
+function auditWriteResult({
+  endpoint,
+  run_id,
+  gate,
+  idempotency_key,
+  issue_number,
+  result,
+  latency_ms,
+}) {
+  const outcome = result.replay
+    ? 'replay'
+    : result.unknown
+      ? 'unknown'
+      : result.status;
+  auditEvent({
+    endpoint,
+    run_id,
+    gate,
+    idempotency_key,
+    issue_number:
+      issue_number ??
+      result.body?.issue_number ??
+      result.body?.number ??
+      null,
+    github_status: result.githubStatus ?? null,
+    latency_ms: Math.max(0, latency_ms),
+    outcome,
+    idempotency_state: result.idempotencyState ?? null,
+  });
+}
+
+/**
+ * Pure request handler — env provides secrets and store/github.
+ * No merge/push/delete routes exist.
+ *
+ * Canonical idempotency identity (S-0002 §4.5):
+ *   create_issue  → hash({ op, title, body, labels, run_id, gate }) after normalizeCreateIssuePayload
+ *   assign_copilot → hash({ op, issue_number, run_id, gate })
+ * confirmed_at is Gate freshness only — validated live, never hashed.
+ */
+export async function handleRequest(request, env) {
+  const url = new URL(request.url);
+  const method = request.method.toUpperCase();
+  const path = url.pathname;
+
+  if (!matchRoute(method, path)) {
+    return json(404, { error: 'NOT_FOUND', message: 'Unknown endpoint or method' });
+  }
+
+  if (method === 'GET' && path === '/v1/health') {
+    const patOk = Boolean(env.GITHUB_PAT);
+    const doOk = Boolean(env.BROKER_DO);
+    const blocked = !patOk || !doOk;
+    const body = {
+      status: blocked ? 'BLOCKED' : 'ok',
+      repository: FIXED_FULL_NAME,
+      base_branch: FIXED_BASE_BRANCH,
+      pat_configured: patOk,
+      durable_object_configured: doOk,
+      kv_used: false,
+    };
+    auditEvent({ endpoint: '/v1/health', outcome: body.status, github_status: null, idempotency_state: null, latency_ms: 0 });
+    return json(blocked ? 503 : 200, body);
+  }
+
+  const auth = authenticateService(request.headers.get('authorization'), env.BROKER_SERVICE_TOKEN);
+  if (!auth.ok) {
+    auditReject({ endpoint: path, outcome: 'auth_failed', error: auth.error, latency_ms: 0 });
+    return json(auth.status, { error: auth.error, message: auth.message });
+  }
+
+  if (!env.GITHUB_PAT) {
+    auditReject({ endpoint: path, outcome: 503, error: 'PAT_NOT_CONFIGURED', latency_ms: 0 });
+    return json(503, { error: 'PAT_NOT_CONFIGURED', message: 'GITHUB_PAT missing — fail-closed' });
+  }
+  if (!env.store && !env.BROKER_DO) {
+    auditReject({ endpoint: path, outcome: 503, error: 'DURABLE_OBJECT_NOT_CONFIGURED', latency_ms: 0 });
+    return json(503, {
+      error: 'DURABLE_OBJECT_NOT_CONFIGURED',
+      message: 'Durable Object binding missing — write endpoints BLOCKED',
+    });
+  }
+
+  const github = env.github;
+
+  if (method === 'POST' && path === '/v1/context/read') {
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      auditReject({ endpoint: path, outcome: 400, error: 'INVALID_JSON', latency_ms: 0 });
+      return json(400, { error: 'INVALID_JSON', message: 'Body must be JSON' });
+    }
+    const filePath = body?.path;
+    if (!isAllowedContextPath(filePath)) {
+      auditReject({ endpoint: path, outcome: 'path_denied', error: 'PATH_NOT_ALLOWED', path: filePath, latency_ms: 0 });
+      return json(403, { error: 'PATH_NOT_ALLOWED', message: 'Context path outside allowlist' });
+    }
+    const t0 = Date.now();
+    const res = await github.getContent(filePath.replace(/^\/+/, ''));
+    const latency_ms = Date.now() - t0;
+    if (!res.ok) {
+      const mapped = mapGithubError(res.status, res.data);
+      auditEvent({
+        endpoint: path,
+        outcome: mapped.status,
+        path: filePath,
+        github_status: res.status,
+        latency_ms,
+        idempotency_state: null,
+      });
+      return json(mapped.status, mapped);
+    }
+    let content = res.data?.content || '';
+    if (res.data?.encoding === 'base64') {
+      content = atob(content.replace(/\n/g, ''));
+    }
+    auditEvent({
+      endpoint: path,
+      outcome: 'ok',
+      path: filePath,
+      github_status: res.status,
+      latency_ms,
+      idempotency_state: null,
+    });
+    return json(200, {
+      path: filePath.replace(/^\/+/, ''),
+      sha: res.data?.sha,
+      content,
+      repository: FIXED_FULL_NAME,
+      ref: FIXED_BASE_BRANCH,
+    });
+  }
+
+  if (method === 'POST' && path === '/v1/issues') {
+    return handleCreateIssue(request, env, github);
+  }
+
+  const assignMatch = path.match(/^\/v1\/issues\/(\d+)\/assign-copilot$/);
+  if (method === 'POST' && assignMatch) {
+    return handleAssign(request, env, github, Number(assignMatch[1]));
+  }
+
+  const statusMatch = path.match(/^\/v1\/issues\/(\d+)\/status$/);
+  if (method === 'GET' && statusMatch) {
+    const num = Number(statusMatch[1]);
+    const t0 = Date.now();
+    const res = await github.getIssue(num);
+    const latency_ms = Date.now() - t0;
+    if (!res.ok) {
+      const mapped = mapGithubError(res.status, res.data);
+      auditEvent({
+        endpoint: path,
+        issue_number: num,
+        outcome: mapped.status,
+        github_status: res.status,
+        latency_ms,
+        idempotency_state: null,
+      });
+      return json(mapped.status, mapped);
+    }
+    auditEvent({
+      endpoint: path,
+      issue_number: num,
+      outcome: 'ok',
+      github_status: res.status,
+      latency_ms,
+      idempotency_state: null,
+    });
+    return json(200, {
+      number: res.data.number,
+      state: res.data.state,
+      title: res.data.title,
+      assignees: (res.data.assignees || []).map((a) => a.login),
+      html_url: res.data.html_url,
+    });
+  }
+
+  const prMatch = path.match(/^\/v1\/pulls\/(\d+)$/);
+  if (method === 'GET' && prMatch) {
+    const num = Number(prMatch[1]);
+    const t0 = Date.now();
+    const res = await github.getPull(num);
+    if (!res.ok) {
+      const mapped = mapGithubError(res.status, res.data);
+      auditEvent({
+        endpoint: path,
+        pull_number: num,
+        outcome: mapped.status,
+        github_status: res.status,
+        latency_ms: Date.now() - t0,
+        idempotency_state: null,
+      });
+      return json(mapped.status, mapped);
+    }
+    let ci = 'CI_NOT_CONFIGURED';
+    try {
+      const st = await github.getCombinedStatus(res.data.head?.sha);
+      if (st.ok && st.data?.state) ci = st.data.state;
+    } catch {
+      ci = 'CI_NOT_CONFIGURED';
+    }
+    auditEvent({
+      endpoint: path,
+      pull_number: num,
+      outcome: 'ok',
+      github_status: res.status,
+      latency_ms: Date.now() - t0,
+      idempotency_state: null,
+    });
+    return json(200, {
+      number: res.data.number,
+      title: res.data.title,
+      state: res.data.state,
+      html_url: res.data.html_url,
+      head_sha: res.data.head?.sha,
+      base: res.data.base?.ref,
+      mergeable: res.data.mergeable,
+      mergeable_state: res.data.mergeable_state,
+      ci,
+      repository: FIXED_FULL_NAME,
+    });
+  }
+
+  const diffMatch = path.match(/^\/v1\/pulls\/(\d+)\/diff$/);
+  if (method === 'GET' && diffMatch) {
+    const num = Number(diffMatch[1]);
+    const t0 = Date.now();
+    const files = await github.getPullFiles(num);
+    const diff = await github.getPullDiff(num);
+    const latency_ms = Date.now() - t0;
+    if (!diff.ok) {
+      const mapped = mapGithubError(diff.status, { message: 'Failed to fetch diff' });
+      auditEvent({
+        endpoint: path,
+        pull_number: num,
+        outcome: mapped.status,
+        github_status: diff.status,
+        latency_ms,
+        idempotency_state: null,
+      });
+      return json(mapped.status, mapped);
+    }
+    auditEvent({
+      endpoint: path,
+      pull_number: num,
+      outcome: 'ok',
+      github_status: diff.status,
+      latency_ms,
+      idempotency_state: null,
+    });
+    return json(200, {
+      number: num,
+      files: files.ok
+        ? (files.data || []).map((f) => ({
+            filename: f.filename,
+            status: f.status,
+            additions: f.additions,
+            deletions: f.deletions,
+          }))
+        : [],
+      diff: typeof diff.data === 'string' ? diff.data : '',
+      repository: FIXED_FULL_NAME,
+    });
+  }
+
+  return json(404, { error: 'NOT_FOUND', message: 'Unknown endpoint' });
+}
+
+async function handleCreateIssue(request, env, github) {
+  const tStart = Date.now();
+  const idemKey = request.headers.get('idempotency-key');
+  if (!idemKey) {
+    auditReject({ endpoint: '/v1/issues', outcome: 400, error: 'MISSING_IDEMPOTENCY_KEY', latency_ms: Date.now() - tStart });
+    return json(400, { error: 'MISSING_IDEMPOTENCY_KEY', message: 'Idempotency-Key header required' });
+  }
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    auditReject({
+      endpoint: '/v1/issues',
+      outcome: 400,
+      error: 'INVALID_JSON',
+      idempotency_key: idemKey,
+      latency_ms: Date.now() - tStart,
+    });
+    return json(400, { error: 'INVALID_JSON', message: 'Body must be JSON' });
+  }
+  if (body.repository && body.repository !== FIXED_FULL_NAME) {
+    auditReject({
+      endpoint: '/v1/issues',
+      outcome: 403,
+      error: 'REPO_NOT_ALLOWED',
+      run_id: body.run_id,
+      gate: body.gate,
+      idempotency_key: idemKey,
+      latency_ms: Date.now() - tStart,
+    });
+    return json(403, { error: 'REPO_NOT_ALLOWED', message: `Only ${FIXED_FULL_NAME}` });
+  }
+  if (body.base_branch && body.base_branch !== FIXED_BASE_BRANCH) {
+    auditReject({
+      endpoint: '/v1/issues',
+      outcome: 403,
+      error: 'BASE_BRANCH_NOT_ALLOWED',
+      run_id: body.run_id,
+      gate: body.gate,
+      idempotency_key: idemKey,
+      latency_ms: Date.now() - tStart,
+    });
+    return json(403, { error: 'BASE_BRANCH_NOT_ALLOWED', message: `Only ${FIXED_BASE_BRANCH}` });
+  }
+  const gateCheck = validateGate({
+    gate: body.gate,
+    expectedGate: GATES.CREATE_ISSUE,
+    confirmed_at: body.confirmed_at,
+    run_id: body.run_id,
+  });
+  if (!gateCheck.ok) {
+    auditReject({
+      endpoint: '/v1/issues',
+      outcome: gateCheck.status,
+      error: gateCheck.error,
+      run_id: body.run_id,
+      gate: body.gate,
+      idempotency_key: idemKey,
+      latency_ms: Date.now() - tStart,
+    });
+    return json(gateCheck.status, { error: gateCheck.error, message: gateCheck.message });
+  }
+
+  const normalized = normalizeCreateIssuePayload({
+    title: body.title,
+    body: body.body,
+    labels: body.labels,
+  });
+  if (!normalized.ok) {
+    auditReject({
+      endpoint: '/v1/issues',
+      outcome: normalized.status,
+      error: normalized.error,
+      run_id: body.run_id,
+      gate: body.gate,
+      idempotency_key: idemKey,
+      latency_ms: Date.now() - tStart,
+    });
+    return json(normalized.status, { error: normalized.error, message: normalized.message });
+  }
+
+  const hash = await requestHash({
+    op: 'create_issue',
+    title: normalized.title,
+    body: normalized.body,
+    labels: normalized.labels,
+    run_id: body.run_id,
+    gate: body.gate,
+  });
+
+  const store = env.store;
+  const t0 = Date.now();
+  const result = await store.executeWrite({
+    idempotencyKey: idemKey,
+    requestHash: hash,
+    operation: 'create_issue',
+    runId: body.run_id,
+    gate: body.gate,
+    operationData: {
+      title: normalized.title,
+      body: normalized.body,
+      labels: normalized.labels,
+    },
+    githubCall: async () => {
+      const res = await github.createIssue({
+        title: normalized.title,
+        body: normalized.body,
+        labels: normalized.labels,
+      });
+      if (!res.ok) {
+        const mapped = mapGithubError(res.status, res.data);
+        return { ok: false, status: mapped.status, githubStatus: res.status, safeResult: mapped };
+      }
+      return {
+        ok: true,
+        status: 200,
+        githubStatus: res.status,
+        safeResult: {
+          issue_number: res.data.number,
+          number: res.data.number,
+          html_url: res.data.html_url,
+          title: res.data.title,
+          repository: FIXED_FULL_NAME,
+        },
+      };
+    },
+  });
+
+  auditWriteResult({
+    endpoint: '/v1/issues',
+    run_id: body.run_id,
+    gate: body.gate,
+    idempotency_key: idemKey,
+    result,
+    latency_ms: Date.now() - t0,
+  });
+  return json(result.status, result.body);
+}
+
+async function handleAssign(request, env, github, issueNumber) {
+  const tStart = Date.now();
+  const idemKey = request.headers.get('idempotency-key');
+  if (!idemKey) {
+    auditReject({
+      endpoint: `/v1/issues/${issueNumber}/assign-copilot`,
+      outcome: 400,
+      error: 'MISSING_IDEMPOTENCY_KEY',
+      issue_number: issueNumber,
+      latency_ms: Date.now() - tStart,
+    });
+    return json(400, { error: 'MISSING_IDEMPOTENCY_KEY', message: 'Idempotency-Key header required' });
+  }
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    auditReject({
+      endpoint: `/v1/issues/${issueNumber}/assign-copilot`,
+      outcome: 400,
+      error: 'INVALID_JSON',
+      idempotency_key: idemKey,
+      issue_number: issueNumber,
+      latency_ms: Date.now() - tStart,
+    });
+    return json(400, { error: 'INVALID_JSON', message: 'Body must be JSON' });
+  }
+  const gateCheck = validateGate({
+    gate: body.gate,
+    expectedGate: GATES.ASSIGN_COPILOT,
+    confirmed_at: body.confirmed_at,
+    run_id: body.run_id,
+  });
+  if (!gateCheck.ok) {
+    auditReject({
+      endpoint: `/v1/issues/${issueNumber}/assign-copilot`,
+      outcome: gateCheck.status,
+      error: gateCheck.error,
+      run_id: body.run_id,
+      gate: body.gate,
+      idempotency_key: idemKey,
+      issue_number: issueNumber,
+      latency_ms: Date.now() - tStart,
+    });
+    return json(gateCheck.status, { error: gateCheck.error, message: gateCheck.message });
+  }
+
+  const hash = await requestHash({
+    op: 'assign_copilot',
+    issue_number: issueNumber,
+    run_id: body.run_id,
+    gate: body.gate,
+  });
+
+  const t0 = Date.now();
+  const result = await env.store.executeWrite({
+    idempotencyKey: idemKey,
+    requestHash: hash,
+    operation: 'assign_copilot',
+    runId: body.run_id,
+    gate: body.gate,
+    operationData: { issueNumber },
+    githubCall: async () => {
+      const res = await github.assignCopilot(issueNumber);
+      if (!res.ok) {
+        const mapped = mapGithubError(res.status, res.data);
+        return { ok: false, status: mapped.status, githubStatus: res.status, safeResult: mapped };
+      }
+      return {
+        ok: true,
+        status: 200,
+        githubStatus: res.status,
+        safeResult: {
+          issue_number: issueNumber,
+          assigned: (res.data?.assignees || []).map((a) => a.login),
+          repository: FIXED_FULL_NAME,
+        },
+      };
+    },
+  });
+
+  auditWriteResult({
+    endpoint: `/v1/issues/${issueNumber}/assign-copilot`,
+    run_id: body.run_id,
+    gate: body.gate,
+    idempotency_key: idemKey,
+    issue_number: issueNumber,
+    result,
+    latency_ms: Date.now() - t0,
+  });
+  return json(result.status, result.body);
+}
