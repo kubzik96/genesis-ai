@@ -42,7 +42,7 @@
 - Bridge QUEUE/HANDOFF.
 - Broker Stage 1–2 (T-010 REVIEW).
 - Dify Stage 1–2 + Stage 3 Issue #15 via Broker (PARTIAL PASS).
-- Stage 4 encoding fix: Issue #19 CLOSED; PR #20 MERGED squash `99e6d153…` (PARTIAL PASS — full One-Window automation not achieved).
+- Stage 4 encoding fix: Issue #19 CLOSED; PR #20 MERGED squash `99e6d153…` (PARTIAL PASS — full One-Window automation not achieved; original S-0001 success criteria not weakened).
 - **S-0004 Approved R1** in main (PR #23, `0c7ecbff…`) — authoritative Specification for Post-Stage-4 SoR synchronization.
 - **S-0003 Revision 1 Superseded** by S-0004.
 
@@ -50,21 +50,34 @@
 
 ## Выполняется сейчас
 
-**S-0004 PR A** — Source-of-Record synchronization (this change set):
+**S-0004 PR A** — Source-of-Record synchronization (PR #22 Draft):
 
 - S-0001 Revision 2 = **In Review** candidate (not Approved);
 - QUEUE / ACTIVE / MEMORY aligned with Stage 4 PARTIAL PASS and S-0004;
-- INDEX **not** updated in this PR (same-commit later when S-0001 Rev2 is Approved).
+- INDEX **not** updated in this PR (same-commit only when S-0001 Rev2 is Approved).
 
 **DR-0006 / PR B** — deferred; **not** blocking One-Window critical path.
 
 ---
 
+## Порядок gates (обязательный)
+
+1. **Independent Specification Review** S-0001 Revision 2 (candidate in PR #22).
+2. **CEO Approval** S-0001 Revision 2.
+3. **In the same approval commit** — `specifications/INDEX.md` sync (S-0001 → Approved R2).
+4. **Independent implementation review** of current PR #22 HEAD (SoR files + approved Spec state).
+5. **Separate CEO Merge Authorization** for PR A.
+6. **Merge** PR #22 + post-merge verification.
+7. **Next One-Window technical cycle** (product work).
+
+Merge Authorization for PR #22 **must not** precede CEO Approval of S-0001 Revision 2.
+
+---
+
 ## Следующие шаги (требуют отдельных Authorization)
 
-- Independent review PR #22 (COO / ChatGPT) + CEO Merge Authorization for PR A.
-- Independent specification review + CEO Approval S-0001 Revision 2 (then INDEX same commit).
-- One-Window technical cycle.
+- Complete gates 1–6 above in order.
+- One-Window technical cycle after post-merge verification.
 - PR B / DR-0006 (Codex) — after next One-Window cycle (deferred).
 - T-009 / T-010 → DONE — **not** authorized by S-0004 PR A EA.
 
@@ -73,6 +86,7 @@
 ## Блокеры / ограничения
 
 - Full One-Window cycle without manual steps — not achieved; T-009 stays REVIEW.
+- Original S-0001 success criteria remain open where unchecked (not redefined by PARTIAL PASS).
 - T-010 acceptance — separate CEO decision.
 - T-006 BLOCKED.
 - CI_NOT_CONFIGURED.
