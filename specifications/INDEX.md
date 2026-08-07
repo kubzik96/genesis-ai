@@ -18,7 +18,7 @@
 |---|---|---|---|---|---|
 | [S-0001](S-0001-Genesis-One-Window-Execution-Spike.md) | Genesis One-Window Execution Spike | Approved | 1 | T-009 | 2026-07-24 |
 | [S-0002](S-0002-Genesis-Secure-GitHub-Broker-MVP.md) | Genesis Secure GitHub Broker MVP | Approved | 1 | T-010 | 2026-07-24 |
-| [S-0003](S-0003-Post-Stage-4-Source-of-Record-Synchronization.md) | Post-Stage-4 Source of Record Synchronization and Codex Role Definition | Draft | 1 | T-009, T-010 | 2026-08-07 |
+| [S-0003](S-0003-Post-Stage-4-Source-of-Record-Synchronization.md) | Post-Stage-4 Source of Record Synchronization and Codex Role Definition | Approved | 1 | T-009, T-010 | 2026-08-07 |
 
 ## Следующий номер
 

@@ -6,12 +6,12 @@
 |---|---|
 | **ID** | S-0003 |
 | **Название** | Post-Stage-4 Source of Record Synchronization and Codex Role Definition |
-| **Статус** | Draft |
+| **Статус** | Approved |
 | **Revision** | 1 |
 | **Автор Draft** | Codex — по ограниченному разрешению CEO |
 | **Дата создания** | 2026-08-07 |
-| **Дата утверждения** | — |
-| **Утвердил** | — |
+| **Дата утверждения** | 2026-08-07 |
+| **Утвердил** | CEO Genesis AI |
 | **Execution Authorization** | **NOT_GRANTED** |
 | **Связанные задачи** | T-009, T-010 |
 | **Связанные Decision Records** | DR-0004, DR-0005; DR-0006 — требуется при реализации роли Codex |
