@@ -6,19 +6,24 @@
 |---|---|
 | **ID** | S-0003 |
 | **Название** | Post-Stage-4 Source of Record Synchronization and Codex Role Definition |
-| **Статус** | Approved |
-| **Revision** | 1 |
-| **Автор Draft** | Codex — по ограниченному разрешению CEO |
+| **Статус** | **In Review** |
+| **Revision** | **2** |
+| **Автор Draft / Revision 1** | Codex — по ограниченному разрешению CEO |
+| **Автор Revision 2** | Grok — Chief Architect (governance correction) |
 | **Дата создания** | 2026-08-07 |
-| **Дата утверждения** | 2026-08-07 |
-| **Утвердил** | CEO Genesis AI |
-| **Execution Authorization** | **NOT_GRANTED** |
+| **Дата утверждения Revision 1** | 2026-08-07 |
+| **Утвердил Revision 1** | CEO Genesis AI |
+| **Дата Revision 2** | 2026-08-07 |
+| **Утвердил Revision 2** | *pending CEO Approval* |
+| **Execution Authorization Revision 1** | **TERMINATED** (governance conflict: INDEX scope vs DR-0004; premature S-0001 Rev 2 Approved status) |
+| **Execution Authorization Revision 2** | **NOT_GRANTED** (возможен только после CEO Approval Revision 2) |
 | **Связанные задачи** | T-009, T-010 |
 | **Связанные Decision Records** | DR-0004, DR-0005; DR-0006 — требуется при реализации роли Codex |
 
-> Этот документ — **Approved Specification** (Revision 1).  
-> Approval не изменяет статусы T-009/T-010, не создаёт DR-0006, не назначает Codex на официальную роль и не разрешает реализацию или merge.  
-> Execution Authorization является отдельным решением CEO.
+> **Revision 1** (2026-08-07) — **Approved** CEO; история сохранена.  
+> **Revision 2** — **In Review** (candidate). Не Approved. Не даёт Execution Authorization.  
+> Approval Revision 2 не изменяет статусы T-009/T-010 на DONE, не создаёт DR-0006, не назначает Codex и не разрешает merge.  
+> Новый Execution Authorization возможен **только** после CEO Approval Revision 2 и отдельного решения CEO.
 
 ---
 
@@ -41,11 +46,23 @@ GitHub остаётся единственным Source of Record Genesis AI. П
 
 Требуется привести Source of Record в соответствие фактам, не переписывая историю и не завышая степень завершённости T-009/T-010 или полномочия Codex.
 
+### 1.1 Governance conflict (основание Revision 2)
+
+После Approval Revision 1 и условного EA обнаружен конфликт:
+
+1. DR-0004 / `specifications/INDEX.md` требуют обновлять INDEX **в том же commit**, что и спецификация.
+2. Revision 1 §3.1 **не** включал `specifications/INDEX.md` в allowed files.
+3. Candidate S-0001 Revision 2 не может иметь Status `Approved` до отдельного independent review и CEO Approval.
+4. EA Revision 1 **TERMINATED** (Development Workflow §9: ошибка/пробел Specification, риск scope expansion).
+5. PR #22 (implementation attempt) остаётся Draft без изменений до Approval Revision 2 и нового EA.
+
+Revision 2 устраняет пробел Scope относительно DR-0004 **без** изменения целей и критериев результата S-0003.
+
 ---
 
 ## 2. Цель
 
-После отдельного CEO Approval и отдельного Execution Authorization:
+После отдельного CEO Approval **Revision 2** и отдельного Execution Authorization:
 
 1. синхронизировать документы Source of Record с подтверждённым результатом Stage 4;
 2. зафиксировать `PARTIAL PASS`, PR #20, итоговый commit и закрытие Issue #19;
@@ -63,7 +80,8 @@ GitHub остаётся единственным Source of Record Genesis AI. П
 
 Только следующие файлы:
 
-- `specifications/S-0001-Genesis-One-Window-Execution-Spike.md` — подготовить Revision 2: сохранить исторические записи Stages 1–3 и добавить проверенный итог Stage 4 / Gate 4 без ложного объявления полного успеха; Revision 2 требует отдельного review и CEO Approval;
+- `specifications/S-0001-Genesis-One-Window-Execution-Spike.md` — подготовить **Revision 2** (см. §3.1.1);
+- `specifications/INDEX.md` — синхронизировать запись S-0001 с Revision 2 **в том же commit**, в котором S-0001 Revision 2 получает Status `Approved` (DR-0004);
 - `bridge/QUEUE.md` — синхронизировать факты Stage 4; T-009 → `REVIEW`; T-010 оставить `REVIEW`;
 - `ACTIVE.md` — обновить текущий фокус и контрольную точку `main`;
 - `MEMORY.md` — обновить устойчивые факты, не включая секреты;
@@ -71,7 +89,21 @@ GitHub остаётся единственным Source of Record Genesis AI. П
 - `decisions/INDEX.md` — добавить DR-0006 и обновить следующий номер;
 - `governance/Roles.md` — отразить принятую DR-0006 роль и её границы.
 
-Изменения должны быть выполнены в отдельной feature-ветке и ограниченном Pull Request. Разбиение реализации на два Draft PR допускается, если Chief Architect или CEO сочтёт отдельный review фактической синхронизации и ролевого решения более безопасным.
+Изменения должны быть выполнены в отдельной feature-ветке и ограниченном Pull Request. Разбиение реализации на **два Draft PR** (TWO_PRS) допускается и рекомендуется:
+
+- **PR A** — Source-of-Record synchronization (`S-0001` Rev 2 lifecycle, `INDEX.md`, `QUEUE.md`, `ACTIVE.md`, `MEMORY.md`);
+- **PR B** — `DR-0006` + `decisions/INDEX.md` + `governance/Roles.md`.
+
+### 3.1.1 Lifecycle S-0001 Revision 2 (обязательный)
+
+1. Candidate S-0001 Revision 2 сначала имеет Status **`In Review`** (не `Approved`).
+2. Проходит **independent specification review**.
+3. Требует **отдельного CEO Approval** Revision 2.
+4. Только после CEO Approval получает Status **`Approved`**.
+5. `specifications/INDEX.md` синхронизируется с S-0001 Revision 2 **в том же commit**, согласно DR-0004.
+6. Related Documents: S-0003 указывается как Related Specification, **не** как Decision Record.
+
+Исторические записи Stages 1–3 сохраняются. Итог Stage 4 / Gate 4 фиксируется как `PARTIAL PASS` без ложного объявления полного One-Window успеха.
 
 ### 3.2 Обязательное содержание синхронизации
 
@@ -148,17 +180,19 @@ DR-0006 должен **дополнять**, а не заменять DR-0005.
 6. `Roles.md`, DR-0005 и будущий DR-0006 не должны приписывать Codex полномочия COO, CTO, Chief Architect или Lead Engineer.
 7. `DevelopmentWorkflow.md` и Constitution остаются неизменными.
 8. GitHub остаётся единственным Source of Record.
+9. `specifications/INDEX.md` согласован с фактическим Status/Revision каждой Specification (DR-0004).
 
 ### 4.3 Governance gates
 
-9. Draft S-0003 проходит независимый specification review Грока как Chief Architect.
-10. Только CEO может перевести S-0003 в `Approved`.
-11. Approval S-0003 не является Execution Authorization.
-12. Реализация начинается только после отдельного ограниченного Execution Authorization CEO.
-13. Реализация выполняется в feature-ветке и PR.
-14. Review проводится по актуальному HEAD и фактическому diff.
-15. Ready for review не означает разрешение на merge.
-16. Merge и auto-merge запрещены без отдельного CEO Merge Authorization.
+10. Candidate Revision (включая Revision 2) проходит независимый specification review.
+11. Только CEO может перевести Revision в `Approved`.
+12. Approval Specification / Revision **не** является Execution Authorization.
+13. Реализация начинается только после отдельного ограниченного Execution Authorization CEO на **утверждённую** Revision.
+14. Реализация выполняется в feature-ветке и PR.
+15. Review проводится по актуальному HEAD и фактическому diff.
+16. Ready for review не означает разрешение на merge.
+17. Merge и auto-merge запрещены без отдельного CEO Merge Authorization.
+18. EA автоматически прекращается при ошибке Specification, необходимости изменения Scope, scope expansion или указании CEO (Development Workflow §9).
 
 ---
 
@@ -168,10 +202,10 @@ DR-0006 должен **дополнять**, а не заменять DR-0005.
 - `governance/DevelopmentWorkflow.md` Revision 2;
 - DR-0004 — Repository of Approved Specifications;
 - DR-0005 — Operational AI Team Roles;
-- S-0001 Revision 1;
+- S-0001 (Revision 1 in main; Revision 2 — отдельный lifecycle §3.1.1);
 - GitHub Issue #19, PR #20 и commit `99e6d153…`;
-- независимый review Draft S-0003;
-- отдельные решения CEO: Approval, Execution Authorization и Merge Authorization.
+- независимый review candidate S-0003 Revision 2;
+- отдельные решения CEO: Approval Revision 2, Execution Authorization и Merge Authorization.
 
 ---
 
@@ -181,19 +215,21 @@ DR-0006 должен **дополнять**, а не заменять DR-0005.
 - PR #20 и Issue #19 остаются доступными как доказательства;
 - T-009 не может стать `DONE`, пока полный воспроизводимый One-Window цикл не принят CEO;
 - T-010 не может стать `DONE` без отдельного CEO acceptance;
-- название и формулировки роли Codex могут быть скорректированы по результатам review Грока до Approval;
-- CI может оставаться не настроенным, но это должно быть указано явно.
+- название и формулировки роли Codex могут быть скорректированы по результатам review до Approval DR-0006;
+- CI может оставаться не настроенным, но это должно быть указано явно;
+- PR #22 остаётся Draft до Approval Revision 2 и нового EA; не является действующей реализацией под EA Revision 1.
 
 ---
 
 ## 7. Критерии готовности реализации (Acceptance Criteria)
 
-- [ ] Изменены только разрешённые файлы.
+- [ ] Изменены только разрешённые файлы §3.1 (включая `specifications/INDEX.md` при публикации S-0001 Rev 2).
 - [ ] Stage 4 в текущем состоянии указан как `PARTIAL PASS`.
 - [ ] T-009 указан как `REVIEW`, но не `DONE`.
 - [ ] T-010 остаётся `REVIEW`, но не `DONE`.
 - [ ] Зафиксированы PR #20, Issue #19 и полный squash commit SHA.
-- [ ] S-0001 оформлен как Revision 2 с сохранением истории Revision 1 и отдельным CEO Approval.
+- [ ] S-0001 Revision 2 прошёл lifecycle §3.1.1 (In Review → review → CEO Approval → Approved).
+- [ ] `specifications/INDEX.md` синхронизирован с Approved S-0001 Revision 2 в том же commit.
 - [ ] Зафиксировано `CI_NOT_CONFIGURED` без трактовки как успешного CI.
 - [ ] Историческое `Stage 4 NOT_AUTHORIZED` сохранено только как прошлое состояние.
 - [ ] Ограничение Copilot runner описано без преувеличения результата.
@@ -203,7 +239,7 @@ DR-0006 должен **дополнять**, а не заменять DR-0005.
 - [ ] Codex не назначен COO, CTO, Chief Architect, Lead Engineer или Independent Reviewer по умолчанию.
 - [ ] Constitution, Development Workflow, DR-0005 и HANDOFF не изменены.
 - [ ] Секреты и значения токенов отсутствуют.
-- [ ] Реализация находится в feature-ветке и PR.
+- [ ] Реализация находится в feature-ветке и PR (рекомендуется TWO_PRS).
 - [ ] Фактический HEAD/diff прошёл независимый review.
 - [ ] Merge не выполнен до отдельного CEO Merge Authorization.
 - [ ] Post-merge verification выполнена до любого решения о `DONE`.
@@ -213,8 +249,8 @@ DR-0006 должен **дополнять**, а не заменять DR-0005.
 ## 8. Способы проверки
 
 1. Сверить PR #20, Issue #19 и commit `99e6d153…` через GitHub.
-2. Проверить список changed files будущего implementation PR против §3.1.
-3. Сравнить текущие статусы и факты в `S-0001`, `QUEUE.md`, `ACTIVE.md`, `MEMORY.md`.
+2. Проверить список changed files implementation PR против §3.1.
+3. Сравнить текущие статусы и факты в `S-0001`, `INDEX.md`, `QUEUE.md`, `ACTIVE.md`, `MEMORY.md`.
 4. Проверить DR-0006 и `Roles.md` на соответствие ограничениям §3.3.
 5. Убедиться, что diff не содержит Constitution, Development Workflow, DR-0005, HANDOFF, код или секреты.
 6. Зафиксировать `CI_NOT_CONFIGURED`, если CI по-прежнему отсутствует.
@@ -226,7 +262,8 @@ DR-0006 должен **дополнять**, а не заменять DR-0005.
 ## 9. Ожидаемые выходные артефакты
 
 - согласованный Source of Record после Stage 4;
-- S-0001 с сохранённой историей и актуальным результатом Stage 4;
+- S-0001 Revision 2 с сохранённой историей и актуальным результатом Stage 4;
+- `specifications/INDEX.md`, согласованный с Approved Revision;
 - QUEUE / ACTIVE / MEMORY без противоречий по T-009/T-010;
 - DR-0006 о роли Codex;
 - обновлённый `governance/Roles.md`;
@@ -239,7 +276,7 @@ DR-0006 должен **дополнять**, а не заменять DR-0005.
 
 - [x] **DR-0006 обязателен**, потому что формализация Codex меняет операционную модель ролей и полномочий.
 - [x] DR-0006 должен дополнять DR-0005 и не переписывать принятое решение.
-- [ ] Approval этой Specification не создаёт и не принимает DR-0006.
+- [ ] Approval этой Specification / Revision не создаёт и не принимает DR-0006.
 - [ ] Отдельный DR о долгосрочной платформе остаётся вне Scope.
 
 ---
@@ -248,7 +285,7 @@ DR-0006 должен **дополнять**, а не заменять DR-0005.
 
 | Риск | Митигация |
 |---|---|
-| Устаревшие документы продолжают считаться текущим состоянием | Evidence-first синхронизация всех четырёх SoR-документов |
+| Устаревшие документы продолжают считаться текущим состоянием | Evidence-first синхронизация SoR-документов + INDEX |
 | T-009 ошибочно объявляется DONE | Явно ограничить статус значением `REVIEW` |
 | T-010 принимается неявно | Сохранить `REVIEW`; требовать отдельный CEO acceptance |
 | Codex получает слишком широкую роль | DR-0006 с per-task authorization и запретом самостоятельного merge |
@@ -256,12 +293,15 @@ DR-0006 должен **дополнять**, а не заменять DR-0005.
 | История staged authorization переписывается | Сохранять прежние записи как историю и отдельно указывать текущее состояние |
 | Отсутствие CI трактуется как успех | Явный `CI_NOT_CONFIGURED` |
 | Scope расширяется до платформы или инфраструктуры | Закрытый список файлов и запретов §3 |
+| INDEX рассинхронизирован со Specification | §3.1 + DR-0004: INDEX в allowed files; same-commit update |
+| Premature Approved на candidate Revision | §3.1.1 lifecycle: In Review → Approval → Approved |
 | Секреты попадают в SoR | Хранить только аудит наличия/границ, без значений секретов |
 
 ---
 
 ## 12. История изменений
 
-| Revision | Дата | Автор | Что изменено |
-|---|---|---|---|
-| 1 | 2026-08-07 | Codex — по разрешению CEO | Создан Draft для синхронизации SoR после Stage 4 и определения роли Codex; реализация и DR-0006 не разрешены |
+| Revision | Дата | Автор | Статус | Что изменено |
+|---|---|---|---|---|
+| 1 | 2026-08-07 | Codex — по разрешению CEO | **Approved** | Создан Draft для синхронизации SoR после Stage 4 и определения роли Codex; реализация и DR-0006 не разрешены; CEO Approval 2026-08-07 |
+| 2 | 2026-08-07 | Grok — Chief Architect | **In Review** | **Governance correction (Minor):** добавить `specifications/INDEX.md` в §3.1 allowed files; определить lifecycle S-0001 Revision 2 (In Review → review → CEO Approval → Approved + INDEX same commit); устранить конфликт с DR-0004; зафиксировать EA Revision 1 **TERMINATED**; цели/результаты (PARTIAL PASS, T-009 REVIEW, T-010 REVIEW, DR-0006 boundaries, TWO_PRS) **не** расширены |
