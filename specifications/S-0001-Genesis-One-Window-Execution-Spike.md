@@ -6,24 +6,29 @@
 |---|---|
 | **ID** | S-0001 |
 | **Название** | Genesis One-Window Execution Spike |
-| **Статус** | Approved |
-| **Revision** | 2 |
+| **Статус** | **In Review** |
+| **Revision** | **2** |
 | **Автор Revision 1** | Grok — Chief Architect |
-| **Автор Revision 2** | Lead Engineer — S-0003 PR A SoR sync |
+| **Автор Revision 2** | Grok — execution agent under S-0004 PR A EA |
 | **Дата создания** | 2026-07-24 |
 | **Дата утверждения Revision 1** | 2026-07-24 |
 | **Дата Revision 2** | 2026-08-07 |
 | **Утвердил Revision 1** | CEO Genesis AI |
+| **Утвердил Revision 2** | *pending CEO Approval* |
 | **Execution Authorization** | **STAGED** (no blanket grant). Stages 1–4 each required separate CEO Authorization |
 | **Связанные задачи** | T-009 — Genesis One-Window Execution Spike |
-| **Связанные Decision Records** | DR-0004; S-0003 (SoR sync after Stage 4) |
+| **Связанные Decision Records** | DR-0004 |
+| **Related Specifications** | [S-0004](S-0004-Post-Stage-4-Source-of-Record-Synchronization-Governance-Correction.md) (Approved R1 — authoritative for SoR sync); [S-0003](S-0003-Post-Stage-4-Source-of-Record-Synchronization.md) (Revision 1 — **Superseded**) |
 | **Исполнитель (после Authorization)** | Integration Engineer / Lead Engineer (по stage; см. §13) |
 
-> Approval спецификации **не** означает разрешение на реализацию.  
+> **Revision 2 = candidate / In Review.** Не Approved.  
+> CEO Approval Revision 1 (2026-07-24) сохранён.  
+> Approval Revision 2 — отдельное решение CEO после independent specification review.  
 > **Не было** единого общего Execution Authorization «на весь S-0001».  
 > Каждый Stage выполнялся только после **отдельного** CEO Authorization.  
 > **Stage 4 result (текущее состояние):** **PARTIAL PASS** — см. §13.  
-> Историческое состояние «Stage 4 NOT_AUTHORIZED» сохранено в истории Revision 1 и не выдаётся за текущий статус.
+> Историческое состояние «Stage 4 NOT_AUTHORIZED» сохранено в истории Revision 1 и не выдаётся за текущий статус.  
+> SoR synchronization после Stage 4 выполняется по **Approved S-0004 Revision 1**, не по candidate S-0001 Revision 2.
 
 ---
 
@@ -292,7 +297,7 @@ Workflow **обязан** останавливаться:
 
 - [x] **Отдельный DR для временного spike не требуется.**
 - [ ] После результатов spike **требуется отдельное решение** о долгосрочной Interaction / Execution Platform.
-- [ ] S-0003 / DR-0006 (Codex role) — отдельные артефакты, не часть S-0001 scope.
+- [ ] DR-0006 (Codex role) — отдельный артефакт, **deferred**; не часть S-0001 scope и не блокирует One-Window critical path.
 
 Возможные варианты будущего решения:
 
@@ -315,6 +320,7 @@ Workflow **обязан** останавливаться:
 | Ложное ощущение «OS готова» / «Stage 4 = PASS» | Явный **PARTIAL PASS**; T-009 остаётся REVIEW, не DONE |
 | Vendor lock Dify | Option C: spike временный; решение о платформе после |
 | Approve ошибочно трактуется как merge | Явное правило: Approve = `APPROVE_TO_MERGE` candidate only |
+| Premature Approved на Revision 2 | Lifecycle: In Review → independent review → CEO Approval → Approved + INDEX same commit (S-0004 §3.1.1) |
 
 Открытые вопросы:
 
@@ -333,9 +339,9 @@ Workflow **обязан** останавливаться:
 | 1 | 2026-07-25…26 | CEO Genesis AI (staged) | **Stage 1** DIFY_CONFIG_ONLY; **Stage 2** DIFY_READONLY_WIRING (+ Broker `context/read`); **Stage 3** ISSUE_CREATE_ONLY → GitHub Issue #15 via Broker after Gate 1; PARTIAL PASS (empty «Команда CEO» / «Контекст из GitHub»); idempotent replay OK |
 | 1 | 2026-07-27 | Grok — Chief Architect | Metadata EA → **STAGED** (no blanket); history rows for Stages 1–3; **Stage 4 NOT_AUTHORIZED** (historical state); full body of Revision 1 preserved |
 | 1 | 2026-07-27 | Grok — Chief Architect | §13 clarification: Stage 4 scope = assign Copilot / PR observation / independent live review; **Stage 4 ends at Gate 3**; merge of encoding PR requires **separate CEO Gate 4 / Merge Authorization** (outside Stage 4) |
-| 2 | 2026-08-07 | Lead Engineer — S-0003 PR A | **Stage 4 PARTIAL PASS** recorded. Evidence: Issue [#19](https://github.com/kubzik96/genesis-ai/issues/19) CLOSED (`completed`); PR [#20](https://github.com/kubzik96/genesis-ai/pull/20) MERGED (squash); commit [`99e6d153ac91b2bf25f9604d58fe51c387ba3d28`](https://github.com/kubzik96/genesis-ai/commit/99e6d153ac91b2bf25f9604d58fe51c387ba3d28); only `bridge/QUEUE.md` (`��` → `в`). Historical **Stage 4 NOT_AUTHORIZED** preserved as past state. Full One-Window automation **not** claimed. `CI_NOT_CONFIGURED`. T-009 → REVIEW (not DONE) per S-0003 |
+| 2 | 2026-08-07 | Grok — under S-0004 PR A EA | **Candidate Revision 2 / In Review.** Stage 4 **PARTIAL PASS** recorded. Evidence: Issue [#19](https://github.com/kubzik96/genesis-ai/issues/19) CLOSED (`completed`); PR [#20](https://github.com/kubzik96/genesis-ai/pull/20) MERGED (squash); commit [`99e6d153ac91b2bf25f9604d58fe51c387ba3d28`](https://github.com/kubzik96/genesis-ai/commit/99e6d153ac91b2bf25f9604d58fe51c387ba3d28); only `bridge/QUEUE.md` (`��` → `в`). Historical **Stage 4 NOT_AUTHORIZED** preserved as past state. Full One-Window automation **not** claimed. `CI_NOT_CONFIGURED`. Related Specs: S-0004 authoritative, S-0003 Superseded. **Not Approved** until independent review + CEO Approval Revision 2 |
 
-### Stage 4 — текущий итог (Revision 2)
+### Stage 4 — текущий итог (Revision 2 candidate)
 
 - **Result:** **PARTIAL PASS** (not PASS).
 - **Historical:** Stage 4 was **NOT_AUTHORIZED** until separate CEO authorization.
@@ -385,4 +391,4 @@ Workflow **обязан** останавливаться:
 11. Собственная Genesis Console и LangGraph не входят в S-0001.
 12. После MVP — отдельное решение о долгосрочной платформе.
 13. Секреты запрещено хранить в GitHub.
-14. Stage 4 result = **PARTIAL PASS**; T-009 не переводится в DONE без принятия воспроизводимого One-Window цикла (S-0003).
+14. Stage 4 result = **PARTIAL PASS**; T-009 не переводится в DONE без принятия воспроизводимого One-Window цикла (S-0004 SoR path).

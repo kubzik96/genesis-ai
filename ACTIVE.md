@@ -7,7 +7,7 @@
 | Фаза | 2 — Архитектура Genesis AI / One-Window spike |
 | Статус | Активная разработка |
 | Последнее обновление | 2026-08-07 |
-| Контрольная точка main | `fced49eff5fd88cece5159a4902bd14e989e390d` (после PR #21, S-0003 Approved) |
+| Контрольная точка main | `0c7ecbff2487ef09a36f1156dbced722ab62a114` (после PR #23, S-0004 Approved) |
 | Stage 4 encoding squash | `99e6d153ac91b2bf25f9604d58fe51c387ba3d28` (PR #20) |
 
 ---
@@ -16,11 +16,13 @@
 
 Построить операционную систему Genesis AI для совместной работы человека и ИИ-агентов.
 
+Практический приоритет текущего этапа: **рабочий One-Window** (CEO → один интерфейс → агенты → PR → review → решения CEO).
+
 ---
 
 ## Текущий спринт
 
-**Genesis One-Window MVP** (S-0001 Revision 2 / S-0002 / S-0003)
+**Genesis One-Window MVP** (S-0001 candidate Rev2 / S-0002 / S-0004)
 
 | ID | Статус | Note |
 |---|---|---|
@@ -41,21 +43,30 @@
 - Broker Stage 1–2 (T-010 REVIEW).
 - Dify Stage 1–2 + Stage 3 Issue #15 via Broker (PARTIAL PASS).
 - Stage 4 encoding fix: Issue #19 CLOSED; PR #20 MERGED squash `99e6d153…` (PARTIAL PASS — full One-Window automation not achieved).
-- S-0003 Approved in main (PR #21, `fced49eff5…`) — SoR sync + Codex role definition (implementation staged).
+- **S-0004 Approved R1** in main (PR #23, `0c7ecbff…`) — authoritative Specification for Post-Stage-4 SoR synchronization.
+- **S-0003 Revision 1 Superseded** by S-0004.
 
 ---
 
 ## Выполняется сейчас
 
-S-0003 PR A — Source-of-Record synchronization (this change set): align S-0001 / QUEUE / ACTIVE / MEMORY with Stage 4 facts. T-009 → REVIEW. DR-0006 / Roles — separate PR B (not this PR).
+**S-0004 PR A** — Source-of-Record synchronization (this change set):
+
+- S-0001 Revision 2 = **In Review** candidate (not Approved);
+- QUEUE / ACTIVE / MEMORY aligned with Stage 4 PARTIAL PASS and S-0004;
+- INDEX **not** updated in this PR (same-commit later when S-0001 Rev2 is Approved).
+
+**DR-0006 / PR B** — deferred; **not** blocking One-Window critical path.
 
 ---
 
 ## Следующие шаги (требуют отдельных Authorization)
 
-- Independent review + CEO Merge Authorization for S-0003 PR A.
-- PR B: DR-0006 (Codex Operational Agent) + `governance/Roles.md`.
-- T-009 / T-010 → DONE — **not** authorized by S-0003 EA.
+- Independent review PR #22 (COO / ChatGPT) + CEO Merge Authorization for PR A.
+- Independent specification review + CEO Approval S-0001 Revision 2 (then INDEX same commit).
+- One-Window technical cycle.
+- PR B / DR-0006 (Codex) — after next One-Window cycle (deferred).
+- T-009 / T-010 → DONE — **not** authorized by S-0004 PR A EA.
 
 ---
 
@@ -65,7 +76,7 @@ S-0003 PR A — Source-of-Record synchronization (this change set): align S-0001
 - T-010 acceptance — separate CEO decision.
 - T-006 BLOCKED.
 - CI_NOT_CONFIGURED.
-- DR-0006 not yet created (PR B).
+- DR-0006 not created (deferred).
 
 ---
 
@@ -78,13 +89,14 @@ S-0003 PR A — Source-of-Record synchronization (this change set): align S-0001
 | Chief Architect | Grok | активен |
 | Lead Engineer | GitHub Copilot | активен (DR-0002) |
 | CTO (постоянный) | — | вакансия; T-002…T-005 BACKLOG |
-| Codex | — | не формализован до DR-0006 |
+| Codex | — | не формализован; DR-0006 deferred |
 
 ---
 
 ## Последнее значимое решение в Git
 
-- `specifications/S-0003-…` — Approved (PR #21).
+- `specifications/S-0004-…` — **Approved** (PR #23, squash `0c7ecbff…`).
+- S-0003 Revision 1 — **Superseded** by S-0004.
 - Stage 4 PARTIAL PASS evidence: Issue #19, PR #20, commit `99e6d153…`.
 
 ---
@@ -96,6 +108,6 @@ S-0003 PR A — Source-of-Record synchronization (this change set): align S-0001
 1. `ACTIVE.md`
 2. `governance/Constitution.md`
 3. `bridge/QUEUE.md` (если задача из Bridge)
-4. релевантную Approved Specification
+4. релевантную **Approved** Specification (сейчас SoR path: **S-0004**)
 
 После значимой работы — обновить Bridge и при необходимости ACTIVE/MEMORY **отдельным** auth, если требуется write.

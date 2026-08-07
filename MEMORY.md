@@ -12,9 +12,23 @@
 - **Название:** Genesis AI
 - **Фаза:** 2 — Архитектура / One-Window spike
 - **SoR:** GitHub `kubzik96/genesis-ai`
-- **Контрольная точка main (после PR #21):** `fced49eff5fd88cece5159a4902bd14e989e390d`
+- **Контрольная точка main:** `0c7ecbff2487ef09a36f1156dbced722ab62a114` (после PR #23)
 - **Stage 4 encoding squash (PR #20):** `99e6d153ac91b2bf25f9604d58fe51c387ba3d28`
 - **Главная цель:** управляемая ИИ-команда для проектирования, разработки и сопровождения продуктов
+- **Практический приоритет:** рабочий One-Window
+
+---
+
+## Specifications (устойчивые факты)
+
+| ID | Status | Revision | Note |
+|---|---|---|---|
+| S-0001 | **In Review** (candidate Rev 2) | 2 candidate | Revision 1 remains historically Approved; Rev 2 not Approved until independent review + CEO Approval |
+| S-0002 | Approved | 1 | Broker MVP |
+| S-0003 | **Superseded** | 1 | Superseded by S-0004 |
+| S-0004 | **Approved** | 1 | Authoritative Specification for Post-Stage-4 SoR synchronization |
+
+Next specification number: **S-0005**.
 
 ---
 
@@ -27,7 +41,7 @@
 | Chief Architect | Grok — архитектура, dissent, GitHub execution по CEO auth |
 | Lead Engineer | GitHub Copilot — реализация через Issue → PR (DR-0002) |
 | CTO (постоянный) | **Вакансия** — отбор T-002…T-005 (BACKLOG) |
-| Codex | **Не формализован** — кандидат на DR-0006 (S-0003); без постоянных write/EA/merge |
+| Codex | **Не формализован** — DR-0006 **deferred** until after next One-Window technical cycle; без постоянных write/EA/merge |
 
 Устаревшее: «ChatGPT временно CTO» — **снято** (DR-0005).
 
@@ -41,7 +55,7 @@
 4. **Broker MVP (T-010)** — Stage 1 CODE_ONLY + Stage 2 DEPLOY_READONLY → Bridge **REVIEW** (не DONE).
 5. **One-Window (T-009)** — Stages 1–3 Dify/Broker; Stage 3 PARTIAL PASS (Issue #15); Stage 4 **PARTIAL PASS** (Issue #19 CLOSED, PR #20 MERGED `99e6d153…`); T-009 → **REVIEW** (не DONE).
 6. **DR-0005** — Operational AI Team Roles (2026-07-27).
-7. **S-0003** — Approved in main (PR #21, 2026-08-07): Post-Stage-4 SoR synchronization + Codex role definition (implementation via separate PRs; EA conditional).
+7. **S-0004** — Approved in main (PR #23, 2026-08-07): Post-Stage-4 SoR synchronization governance correction; S-0003 Superseded.
 
 ### Историческая пометка PR #16
 
@@ -63,7 +77,8 @@
 
 - T-009 **REVIEW** — Stage 4 PARTIAL PASS recorded; not DONE.
 - T-010 **REVIEW** — Broker deployed read path; PR #11 Draft; not DONE.
-- S-0003 implementation: PR A (SoR sync) then PR B (DR-0006 + Roles).
+- S-0004 PR A (SoR sync) in progress under EA; S-0001 Rev2 = In Review candidate.
+- DR-0006 **deferred** (not blocking One-Window critical path).
 - T-006 BLOCKED.
 - T-002…T-005 BACKLOG (CTO selection).
 

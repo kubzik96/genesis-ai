@@ -37,7 +37,10 @@ QUEUE.md содержит очередь всех активных и ожида
 | T-009 | Genesis One-Window Execution Spike | REVIEW | Integration Engineer |
 | T-010 | Genesis Secure GitHub Broker MVP | REVIEW | Integration Engineer |
 
-T-009 выполняется по Approved Specification S-0001 **Revision 2**. Status: **REVIEW** (not DONE).
+T-009: **REVIEW** (not DONE). Stage 4 = **PARTIAL PASS**.  
+SoR synchronization after Stage 4 выполняется по **Approved S-0004 Revision 1**.  
+S-0001 **Revision 2** = **candidate / In Review** (не Approved).  
+T-009 **не** считается выполняемым по Approved S-0001 Revision 2.
 
 #### Stages 1–3 (история)
 
