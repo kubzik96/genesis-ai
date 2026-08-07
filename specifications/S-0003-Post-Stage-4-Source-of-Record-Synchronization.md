@@ -6,19 +6,24 @@
 |---|---|
 | **ID** | S-0003 |
 | **Название** | Post-Stage-4 Source of Record Synchronization and Codex Role Definition |
-| **Статус** | Approved |
+| **Статус** | **Superseded** |
 | **Revision** | 1 |
 | **Автор Draft** | Codex — по ограниченному разрешению CEO |
 | **Дата создания** | 2026-08-07 |
 | **Дата утверждения** | 2026-08-07 |
 | **Утвердил** | CEO Genesis AI |
-| **Execution Authorization** | **NOT_GRANTED** |
+| **Superseded by** | [S-0004](S-0004-Post-Stage-4-Source-of-Record-Synchronization-Governance-Correction.md) |
+| **Дата supersession** | 2026-08-07 |
+| **Execution Authorization (Revision 1)** | **TERMINATED** (governance conflict; Workflow §9) |
 | **Связанные задачи** | T-009, T-010 |
 | **Связанные Decision Records** | DR-0004, DR-0005; DR-0006 — требуется при реализации роли Codex |
 
-> Этот документ — **Approved Specification** (Revision 1).  
-> Approval не изменяет статусы T-009/T-010, не создаёт DR-0006, не назначает Codex на официальную роль и не разрешает реализацию или merge.  
-> Execution Authorization является отдельным решением CEO.
+> Этот документ — **Superseded Specification** (Revision 1).  
+> Исторический CEO Approval Revision 1 (2026-08-07) сохранён.  
+> **Superseded by S-0004** после CEO Approval S-0004 Revision 1.  
+> Execution Authorization Revision 1 = **TERMINATED**. Новый EA по S-0003 не выдаётся.  
+> Действующая Specification для implementation scope: **S-0004**.  
+> Содержание Revision 1 не переписывается задним числом.
 
 ---
 
@@ -265,3 +270,5 @@ DR-0006 должен **дополнять**, а не заменять DR-0005.
 | Revision | Дата | Автор | Что изменено |
 |---|---|---|---|
 | 1 | 2026-08-07 | Codex — по разрешению CEO | Создан Draft для синхронизации SoR после Stage 4 и определения роли Codex; реализация и DR-0006 не разрешены |
+| 1 | 2026-08-07 | CEO Genesis AI | **Approved** (исторический Approval Revision 1) |
+| 1 | 2026-08-07 | CEO Genesis AI | **Superseded by S-0004** после CEO Approval S-0004 Revision 1; EA Revision 1 = TERMINATED; содержание Revision 1 не переписано |
