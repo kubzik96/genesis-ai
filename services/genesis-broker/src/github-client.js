@@ -74,6 +74,18 @@ export function createGithubClient({ pat, fetchImpl = fetch }) {
       return gh('GET', `/repos/${FIXED_OWNER}/${FIXED_REPO}/issues/${issueNumber}`);
     },
 
+    /**
+     * Read-only Issue timeline for structured PR discovery (cross-referenced events).
+     * per_page=100. Caller must fail-closed if incompletePages is true and it cannot continue.
+     */
+    async getIssueTimeline(issueNumber, { page = 1, perPage = 100 } = {}) {
+      const q = `per_page=${perPage}&page=${page}`;
+      return gh(
+        'GET',
+        `/repos/${FIXED_OWNER}/${FIXED_REPO}/issues/${issueNumber}/timeline?${q}`,
+      );
+    },
+
     async getPull(pullNumber) {
       return gh('GET', `/repos/${FIXED_OWNER}/${FIXED_REPO}/pulls/${pullNumber}`);
     },
@@ -121,4 +133,20 @@ export function mapGithubError(status, data) {
     error: `GITHUB_${status}`,
     message: String(message).slice(0, 300),
   };
+}
+
+/**
+ * Parse GitHub Link header for rel="next".
+ * @param {Headers | { get?: Function } | null | undefined} headers
+ * @returns {string | null}
+ */
+export function parseLinkNext(headers) {
+  if (!headers || typeof headers.get !== 'function') return null;
+  const link = headers.get('link') || headers.get('Link');
+  if (!link || typeof link !== 'string') return null;
+  for (const part of link.split(',')) {
+    const m = part.trim().match(/^<([^>]+)>\s*;\s*rel="?next"?/i);
+    if (m) return m[1];
+  }
+  return null;
 }
