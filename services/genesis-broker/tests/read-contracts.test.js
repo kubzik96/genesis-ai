@@ -14,7 +14,7 @@ function makeRequest(method, path, { headers = {}, body } = {}) {
   return new Request(`https://broker.test${path}`, init);
 }
 
-function buildGithub({ issue, timelinePages, pulls }) {
+function buildGithub({ issue, timelinePages, pulls, pullErrors = {} }) {
   return {
     async getIssue(n) {
       if (!issue || issue.number !== n) {
@@ -39,6 +39,15 @@ function buildGithub({ issue, timelinePages, pulls }) {
       };
     },
     async getPull(n) {
+      if (pullErrors[n]) {
+        const err = pullErrors[n];
+        return {
+          ok: false,
+          status: err.status || 500,
+          data: { message: err.message || 'error' },
+          headers: new Headers(),
+        };
+      }
       const p = pulls[n];
       if (!p) return { ok: false, status: 404, data: { message: 'Not Found' } };
       return { ok: true, status: 200, data: p, headers: new Headers() };
@@ -70,6 +79,40 @@ function xref(prNumber, fullName = FIXED_FULL_NAME) {
           html_url: `https://github.com/${FIXED_FULL_NAME}/pull/${prNumber}`,
         },
         repository: { full_name: fullName },
+      },
+    },
+  };
+}
+
+/** Cross-referenced PR event with no confirmable repository field. */
+function xrefMissingRepo(prNumber) {
+  return {
+    event: 'cross-referenced',
+    source: {
+      type: 'issue',
+      issue: {
+        number: prNumber,
+        pull_request: {
+          url: `https://api.github.com/repos/${FIXED_FULL_NAME}/pulls/${prNumber}`,
+          html_url: `https://github.com/${FIXED_FULL_NAME}/pull/${prNumber}`,
+        },
+      },
+    },
+  };
+}
+
+/** Cross-referenced PR event with incomplete repository (no full_name / owner / name). */
+function xrefIncompleteRepo(prNumber) {
+  return {
+    event: 'cross-referenced',
+    source: {
+      type: 'issue',
+      issue: {
+        number: prNumber,
+        pull_request: {
+          url: `https://api.github.com/repos/${FIXED_FULL_NAME}/pulls/${prNumber}`,
+        },
+        repository: {},
       },
     },
   };
@@ -244,6 +287,47 @@ describe('read contracts — status pr_number', () => {
         return { ok: true, status: 200, data: pullFixture(7) };
       },
     };
+    const { status, body } = await statusWith(github);
+    assert.equal(status, 200);
+    assert.equal(body.pr_number, null);
+  });
+
+  it('two candidates: one valid, getPull of second fails → pr_number null', async () => {
+    const github = buildGithub({
+      issue: issueBase,
+      timelinePages: [{ events: [xref(7), xref(8)] }],
+      pulls: {
+        7: pullFixture(7),
+      },
+      pullErrors: {
+        8: { status: 500, message: 'upstream error' },
+      },
+    });
+    const { status, body } = await statusWith(github);
+    assert.equal(status, 200);
+    assert.equal(body.pr_number, null);
+  });
+
+  it('PR cross-reference without confirmable repository → pr_number null', async () => {
+    const github = buildGithub({
+      issue: issueBase,
+      timelinePages: [{ events: [xrefMissingRepo(7)] }],
+      pulls: { 7: pullFixture(7) },
+    });
+    const { status, body } = await statusWith(github);
+    assert.equal(status, 200);
+    assert.equal(body.pr_number, null);
+  });
+
+  it('PR cross-reference with incomplete repository → pr_number null', async () => {
+    const github = buildGithub({
+      issue: issueBase,
+      timelinePages: [{ events: [xrefIncompleteRepo(7), xref(9)] }],
+      pulls: {
+        7: pullFixture(7),
+        9: pullFixture(9, { created_at: '2026-08-07T13:00:00Z' }),
+      },
+    });
     const { status, body } = await statusWith(github);
     assert.equal(status, 200);
     assert.equal(body.pr_number, null);

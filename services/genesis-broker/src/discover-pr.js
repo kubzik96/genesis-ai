@@ -2,8 +2,35 @@ import { COPILOT_BOT, FIXED_BASE_BRANCH, FIXED_FULL_NAME } from './constants.js'
 import { parseLinkNext } from './github-client.js';
 
 /**
+ * Positively resolve repository full_name from a timeline source.issue.
+ * Returns the full_name string only when owner/repo is proven; otherwise null.
+ * Never guesses from number, title, or other heuristics.
+ */
+function resolveRepoFullName(sourceIssue) {
+  const repo = sourceIssue?.repository;
+  if (!repo || typeof repo !== 'object') return null;
+  if (typeof repo.full_name === 'string' && repo.full_name.length > 0) {
+    return repo.full_name;
+  }
+  const owner =
+    typeof repo.owner === 'string'
+      ? repo.owner
+      : repo.owner && typeof repo.owner.login === 'string'
+        ? repo.owner.login
+        : null;
+  const name = typeof repo.name === 'string' ? repo.name : null;
+  if (owner && name) return `${owner}/${name}`;
+  return null;
+}
+
+/**
  * Fail-closed structured PR discovery from Issue timeline cross-referenced events.
  * Returns number | null. Never guesses from title/body/branch names.
+ *
+ * Uniqueness rules:
+ * - Any getPull failure for a structural candidate → null (cannot prove uniqueness).
+ * - Cross-reference accepted only with positively confirmed same repository;
+ *   missing/incomplete/unrecognized repository on a PR event → null for entire discovery.
  */
 export async function discoverLinkedPullNumber(github, issueNumber, issueCreatedAt) {
   try {
@@ -30,13 +57,14 @@ export async function discoverLinkedPullNumber(github, issueNumber, issueCreated
       if (!ev || ev.event !== 'cross-referenced') continue;
       const sourceIssue = ev.source?.issue;
       if (!sourceIssue || !sourceIssue.pull_request) continue;
-      const repoFull = sourceIssue.repository?.full_name;
-      const repoName = typeof repoFull === 'string' && repoFull.length > 0
-        ? repoFull
-        : (sourceIssue.repository?.owner && sourceIssue.repository?.name
-          ? `${sourceIssue.repository.owner.login || sourceIssue.repository.owner}/${sourceIssue.repository.name}`
-          : null);
-      if (repoName && repoName !== FIXED_FULL_NAME) continue;
+
+      const repoName = resolveRepoFullName(sourceIssue);
+      if (repoName === null) {
+        // PR cross-reference without confirmable repository → fail closed
+        return null;
+      }
+      if (repoName !== FIXED_FULL_NAME) continue;
+
       const n = Number(sourceIssue.number);
       if (!Number.isFinite(n) || n <= 0) continue;
       candidateNums.add(n);
@@ -48,7 +76,10 @@ export async function discoverLinkedPullNumber(github, issueNumber, issueCreated
     const valid = [];
     for (const prNum of candidateNums) {
       const pr = await github.getPull(prNum);
-      if (!pr.ok || !pr.data) continue;
+      // Any getPull failure for a structural candidate invalidates uniqueness proof
+      if (!pr.ok || !pr.data) {
+        return null;
+      }
       const data = pr.data;
       if (data.base?.ref !== FIXED_BASE_BRANCH) continue;
       const prTs = data.created_at ? Date.parse(data.created_at) : NaN;
