@@ -1,26 +1,39 @@
-import { COPILOT_BOT, FIXED_BASE_BRANCH, FIXED_FULL_NAME } from './constants.js';
+import { COPILOT_BOT, FIXED_BASE_BRANCH, FIXED_OWNER, FIXED_REPO, GITHUB_API_HOST } from './constants.js';
 import { parseLinkNext } from './github-client.js';
 
 /**
- * Positively resolve repository full_name from a timeline source.issue.
- * Returns the full_name string only when owner/repo is proven; otherwise null.
+ * Positively confirm repository from documented REST timeline field
+ * source.issue.repository_url (e.g. https://api.github.com/repos/kubzik96/genesis-ai).
+ *
+ * Structural parse only: exact host api.github.com and exact path /repos/{owner}/{repo}.
+ * Returns:
+ *   'same'    — proven FIXED_OWNER/FIXED_REPO
+ *   'foreign' — proven different owner/repo
+ *   null      — missing, malformed, or unconfirmable
+ *
+ * Never uses source.issue.repository (not a guaranteed REST timeline field).
  * Never guesses from number, title, or other heuristics.
  */
-function resolveRepoFullName(sourceIssue) {
-  const repo = sourceIssue?.repository;
-  if (!repo || typeof repo !== 'object') return null;
-  if (typeof repo.full_name === 'string' && repo.full_name.length > 0) {
-    return repo.full_name;
+function classifyRepositoryUrl(repositoryUrl) {
+  if (typeof repositoryUrl !== 'string' || repositoryUrl.length === 0) {
+    return null;
   }
-  const owner =
-    typeof repo.owner === 'string'
-      ? repo.owner
-      : repo.owner && typeof repo.owner.login === 'string'
-        ? repo.owner.login
-        : null;
-  const name = typeof repo.name === 'string' ? repo.name : null;
-  if (owner && name) return `${owner}/${name}`;
-  return null;
+  let url;
+  try {
+    url = new URL(repositoryUrl);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'https:') return null;
+  if (url.hostname !== GITHUB_API_HOST) return null;
+  // Exact path: /repos/{owner}/{repo} — no trailing slash, no extra segments
+  const m = url.pathname.match(/^\/repos\/([^/]+)\/([^/]+)$/);
+  if (!m) return null;
+  const owner = decodeURIComponent(m[1]);
+  const repo = decodeURIComponent(m[2]);
+  if (!owner || !repo) return null;
+  if (owner === FIXED_OWNER && repo === FIXED_REPO) return 'same';
+  return 'foreign';
 }
 
 /**
@@ -29,8 +42,9 @@ function resolveRepoFullName(sourceIssue) {
  *
  * Uniqueness rules:
  * - Any getPull failure for a structural candidate → null (cannot prove uniqueness).
- * - Cross-reference accepted only with positively confirmed same repository;
- *   missing/incomplete/unrecognized repository on a PR event → null for entire discovery.
+ * - Cross-reference accepted only with positively confirmed same repository via
+ *   source.issue.repository_url; missing/malformed/unconfirmable → null for entire discovery.
+ * - Foreign repository_url → skip candidate only.
  */
 export async function discoverLinkedPullNumber(github, issueNumber, issueCreatedAt) {
   try {
@@ -58,12 +72,12 @@ export async function discoverLinkedPullNumber(github, issueNumber, issueCreated
       const sourceIssue = ev.source?.issue;
       if (!sourceIssue || !sourceIssue.pull_request) continue;
 
-      const repoName = resolveRepoFullName(sourceIssue);
-      if (repoName === null) {
-        // PR cross-reference without confirmable repository → fail closed
+      const classification = classifyRepositoryUrl(sourceIssue.repository_url);
+      if (classification === null) {
+        // PR cross-reference without confirmable repository_url → fail closed
         return null;
       }
-      if (repoName !== FIXED_FULL_NAME) continue;
+      if (classification === 'foreign') continue;
 
       const n = Number(sourceIssue.number);
       if (!Number.isFinite(n) || n <= 0) continue;

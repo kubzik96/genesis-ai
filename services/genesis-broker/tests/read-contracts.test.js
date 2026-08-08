@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { handleRequest } from '../src/router.js';
 import { MemoryBrokerStore } from '../src/memory-store.js';
-import { createGithubClient, parseLinkNext } from '../src/github-client.js';
+import { parseLinkNext } from '../src/github-client.js';
 import { COPILOT_BOT, FIXED_FULL_NAME } from '../src/constants.js';
 
 function makeRequest(method, path, { headers = {}, body } = {}) {
@@ -67,26 +67,15 @@ const issueBase = {
   created_at: '2026-08-07T10:00:00Z',
 };
 
-function xref(prNumber, fullName = FIXED_FULL_NAME) {
-  return {
-    event: 'cross-referenced',
-    source: {
-      type: 'issue',
-      issue: {
-        number: prNumber,
-        pull_request: {
-          url: `https://api.github.com/repos/${FIXED_FULL_NAME}/pulls/${prNumber}`,
-          html_url: `https://github.com/${FIXED_FULL_NAME}/pull/${prNumber}`,
-        },
-        repository: { full_name: fullName },
-      },
-    },
-  };
-}
+const SAME_REPO_URL = `https://api.github.com/repos/${FIXED_FULL_NAME}`;
+const FOREIGN_REPO_URL = 'https://api.github.com/repos/other/repo';
 
-/** Cross-referenced PR event with no confirmable repository field. */
-function xrefMissingRepo(prNumber) {
-  return {
+/**
+ * Cross-referenced PR event matching documented GitHub REST timeline shape.
+ * Uses repository_url only (not repository.full_name).
+ */
+function xref(prNumber, repositoryUrl = SAME_REPO_URL) {
+  const event = {
     event: 'cross-referenced',
     source: {
       type: 'issue',
@@ -99,10 +88,31 @@ function xrefMissingRepo(prNumber) {
       },
     },
   };
+  if (repositoryUrl !== undefined && repositoryUrl !== null) {
+    event.source.issue.repository_url = repositoryUrl;
+  }
+  return event;
 }
 
-/** Cross-referenced PR event with incomplete repository (no full_name / owner / name). */
-function xrefIncompleteRepo(prNumber) {
+/** PR cross-reference with repository_url intentionally absent. */
+function xrefMissingRepoUrl(prNumber) {
+  return {
+    event: 'cross-referenced',
+    source: {
+      type: 'issue',
+      issue: {
+        number: prNumber,
+        pull_request: {
+          url: `https://api.github.com/repos/${FIXED_FULL_NAME}/pulls/${prNumber}`,
+          html_url: `https://github.com/${FIXED_FULL_NAME}/pull/${prNumber}`,
+        },
+      },
+    },
+  };
+}
+
+/** PR cross-reference with malformed repository_url. */
+function xrefMalformedRepoUrl(prNumber, repositoryUrl) {
   return {
     event: 'cross-referenced',
     source: {
@@ -112,7 +122,7 @@ function xrefIncompleteRepo(prNumber) {
         pull_request: {
           url: `https://api.github.com/repos/${FIXED_FULL_NAME}/pulls/${prNumber}`,
         },
-        repository: {},
+        repository_url: repositoryUrl,
       },
     },
   };
@@ -171,10 +181,10 @@ describe('read contracts — status pr_number', () => {
     assert.equal(body.number, 42);
   });
 
-  it('one valid linked PR → its number', async () => {
+  it('same-repo repository_url → PR found', async () => {
     const github = buildGithub({
       issue: issueBase,
-      timelinePages: [{ events: [xref(7)] }],
+      timelinePages: [{ events: [xref(7, SAME_REPO_URL)] }],
       pulls: { 7: pullFixture(7) },
     });
     const { status, body } = await statusWith(github);
@@ -240,7 +250,7 @@ describe('read contracts — status pr_number', () => {
     assert.equal(body.pr_number, null);
   });
 
-  it('malformed and non-PR timeline events ignored', async () => {
+  it('foreign repository_url → candidate excluded; same-repo still found', async () => {
     const github = buildGithub({
       issue: issueBase,
       timelinePages: [{
@@ -248,11 +258,11 @@ describe('read contracts — status pr_number', () => {
           null,
           { event: 'labeled' },
           { event: 'cross-referenced', source: { issue: { number: 9 } } },
-          { event: 'cross-referenced', source: { issue: { number: 10, pull_request: {}, repository: { full_name: 'other/repo' } } } },
-          xref(7),
+          xref(10, FOREIGN_REPO_URL),
+          xref(7, SAME_REPO_URL),
         ],
       }],
-      pulls: { 7: pullFixture(7) },
+      pulls: { 7: pullFixture(7), 10: pullFixture(10) },
     });
     const { status, body } = await statusWith(github);
     assert.equal(status, 200);
@@ -308,10 +318,10 @@ describe('read contracts — status pr_number', () => {
     assert.equal(body.pr_number, null);
   });
 
-  it('PR cross-reference without confirmable repository → pr_number null', async () => {
+  it('missing repository_url on PR cross-reference → pr_number null', async () => {
     const github = buildGithub({
       issue: issueBase,
-      timelinePages: [{ events: [xrefMissingRepo(7)] }],
+      timelinePages: [{ events: [xrefMissingRepoUrl(7)] }],
       pulls: { 7: pullFixture(7) },
     });
     const { status, body } = await statusWith(github);
@@ -319,10 +329,31 @@ describe('read contracts — status pr_number', () => {
     assert.equal(body.pr_number, null);
   });
 
-  it('PR cross-reference with incomplete repository → pr_number null', async () => {
+  it('malformed repository_url on PR cross-reference → pr_number null', async () => {
+    const cases = [
+      'not-a-url',
+      'https://evil.example/repos/kubzik96/genesis-ai',
+      'https://api.github.com/repos/kubzik96/genesis-ai/extra',
+      'https://api.github.com/repos/kubzik96',
+      'http://api.github.com/repos/kubzik96/genesis-ai',
+      '',
+    ];
+    for (const bad of cases) {
+      const github = buildGithub({
+        issue: issueBase,
+        timelinePages: [{ events: [xrefMalformedRepoUrl(7, bad)] }],
+        pulls: { 7: pullFixture(7) },
+      });
+      const { status, body } = await statusWith(github);
+      assert.equal(status, 200, `status for ${bad}`);
+      assert.equal(body.pr_number, null, `pr_number for ${bad}`);
+    }
+  });
+
+  it('missing repository_url among other candidates → entire discovery null', async () => {
     const github = buildGithub({
       issue: issueBase,
-      timelinePages: [{ events: [xrefIncompleteRepo(7), xref(9)] }],
+      timelinePages: [{ events: [xrefMissingRepoUrl(7), xref(9)] }],
       pulls: {
         7: pullFixture(7),
         9: pullFixture(9, { created_at: '2026-08-07T13:00:00Z' }),
