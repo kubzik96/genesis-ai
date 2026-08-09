@@ -1,4 +1,4 @@
-import { COPILOT_BOT, FIXED_BASE_BRANCH, FIXED_OWNER, FIXED_REPO, GITHUB_API_HOST } from './constants.js';
+import { COPILOT_PR_AUTHOR_LOGINS, FIXED_BASE_BRANCH, FIXED_OWNER, FIXED_REPO, GITHUB_API_HOST } from './constants.js';
 import { parseLinkNext } from './github-client.js';
 
 /**
@@ -45,6 +45,7 @@ function classifyRepositoryUrl(repositoryUrl) {
  * - Cross-reference accepted only with positively confirmed same repository via
  *   source.issue.repository_url; missing/malformed/unconfirmable → null for entire discovery.
  * - Foreign repository_url → skip candidate only.
+ * - PR author login must be in COPILOT_PR_AUTHOR_LOGINS when present.
  */
 export async function discoverLinkedPullNumber(github, issueNumber, issueCreatedAt) {
   try {
@@ -99,7 +100,7 @@ export async function discoverLinkedPullNumber(github, issueNumber, issueCreated
       const prTs = data.created_at ? Date.parse(data.created_at) : NaN;
       if (!Number.isFinite(issueTs) || !Number.isFinite(prTs) || !(prTs > issueTs)) continue;
       const login = data.user?.login;
-      if (typeof login === 'string' && login.length > 0 && login !== COPILOT_BOT) continue;
+      if (typeof login === 'string' && login.length > 0 && !COPILOT_PR_AUTHOR_LOGINS.includes(login)) continue;
       valid.push(prNum);
     }
 

@@ -8,6 +8,18 @@ export const GITHUB_API_HOST = 'api.github.com';
 /** Copilot coding agent bot login for Issue Assignment API (Path B2). */
 export const COPILOT_BOT = 'copilot-swe-agent[bot]';
 
+/**
+ * Allowed user.login values for official Copilot coding-agent PRs (discovery only).
+ * Observed GitHub REST pull.user.login values:
+ *   - 'copilot-swe-agent[bot]' — assignee / bot identity used by Issue Assignment API
+ *   - 'Copilot' — author of PRs opened by the Copilot coding agent (e.g. PR #20, user id 198982749)
+ * Strict exact-match allowlist; arbitrary authors remain rejected.
+ */
+export const COPILOT_PR_AUTHOR_LOGINS = Object.freeze([
+  COPILOT_BOT,
+  'Copilot',
+]);
+
 /** Gate TTL window (minutes). */
 export const GATE_TTL_MINUTES = 10;
 
