@@ -70,10 +70,6 @@ const issueBase = {
 const SAME_REPO_URL = `https://api.github.com/repos/${FIXED_FULL_NAME}`;
 const FOREIGN_REPO_URL = 'https://api.github.com/repos/other/repo';
 
-/**
- * Cross-referenced PR event matching documented GitHub REST timeline shape.
- * Uses repository_url only (not repository.full_name).
- */
 function xref(prNumber, repositoryUrl = SAME_REPO_URL) {
   const event = {
     event: 'cross-referenced',
@@ -94,7 +90,6 @@ function xref(prNumber, repositoryUrl = SAME_REPO_URL) {
   return event;
 }
 
-/** PR cross-reference with repository_url intentionally absent. */
 function xrefMissingRepoUrl(prNumber) {
   return {
     event: 'cross-referenced',
@@ -111,7 +106,6 @@ function xrefMissingRepoUrl(prNumber) {
   };
 }
 
-/** PR cross-reference with malformed repository_url. */
 function xrefMalformedRepoUrl(prNumber, repositoryUrl) {
   return {
     event: 'cross-referenced',
@@ -432,10 +426,6 @@ describe('read contracts — status pr_number', () => {
     assert.equal(body.pr_number, null);
   });
 
-  /**
-   * Real Issue #19 scenario: timeline has PR #20 (Copilot) + human PRs #21/#22.
-   * Only the official Copilot PR must survive filters → pr_number 20.
-   */
   it('Issue #19 equivalent: Copilot PR #20 discovered among human xrefs', async () => {
     const issue19 = {
       number: 19,
@@ -501,6 +491,54 @@ describe('read contracts — status pr_number', () => {
     assert.equal(body.pr_number, 20);
   });
 
+  it('sole PR with missing login → pr_number null', async () => {
+    const github = buildGithub({
+      issue: issueBase,
+      timelinePages: [{ events: [xref(7)] }],
+      pulls: { 7: pullFixture(7, { login: null }) },
+    });
+    const { status, body } = await statusWith(github);
+    assert.equal(status, 200);
+    assert.equal(body.pr_number, null);
+  });
+
+  it('valid Copilot PR plus second candidate with missing login → pr_number null', async () => {
+    const github = buildGithub({
+      issue: issueBase,
+      timelinePages: [{ events: [xref(7), xref(8)] }],
+      pulls: {
+        7: pullFixture(7, { login: 'Copilot' }),
+        8: pullFixture(8, { login: null, created_at: '2026-08-07T13:00:00Z' }),
+      },
+    });
+    const { status, body } = await statusWith(github);
+    assert.equal(status, 200);
+    assert.equal(body.pr_number, null);
+  });
+
+  it('empty string login → pr_number null', async () => {
+    const github = buildGithub({
+      issue: issueBase,
+      timelinePages: [{ events: [xref(7)] }],
+      pulls: { 7: pullFixture(7, { login: '' }) },
+    });
+    const { status, body } = await statusWith(github);
+    assert.equal(status, 200);
+    assert.equal(body.pr_number, null);
+  });
+
+  it('non-string login → pr_number null', async () => {
+    const badPull = pullFixture(7, { login: 'Copilot' });
+    badPull.user = { login: 12345 };
+    const github = buildGithub({
+      issue: issueBase,
+      timelinePages: [{ events: [xref(7)] }],
+      pulls: { 7: badPull },
+    });
+    const { status, body } = await statusWith(github);
+    assert.equal(status, 200);
+    assert.equal(body.pr_number, null);
+  });
 });
 
 describe('read contracts — pulls draft', () => {
