@@ -45,7 +45,9 @@ function classifyRepositoryUrl(repositoryUrl) {
  * - Cross-reference accepted only with positively confirmed same repository via
  *   source.issue.repository_url; missing/malformed/unconfirmable → null for entire discovery.
  * - Foreign repository_url → skip candidate only.
- * - PR author login must be in COPILOT_PR_AUTHOR_LOGINS when present.
+ * - PR author login is required and must be in COPILOT_PR_AUTHOR_LOGINS;
+ *   missing/empty/non-string login → entire discovery null;
+ *   non-allowlisted non-empty login → skip that candidate only.
  */
 export async function discoverLinkedPullNumber(github, issueNumber, issueCreatedAt) {
   try {
@@ -100,7 +102,12 @@ export async function discoverLinkedPullNumber(github, issueNumber, issueCreated
       const prTs = data.created_at ? Date.parse(data.created_at) : NaN;
       if (!Number.isFinite(issueTs) || !Number.isFinite(prTs) || !(prTs > issueTs)) continue;
       const login = data.user?.login;
-      if (typeof login === 'string' && login.length > 0 && !COPILOT_PR_AUTHOR_LOGINS.includes(login)) continue;
+      // Official Copilot identity must be positively proven; missing/empty/non-string login
+      // makes uniqueness of an official Copilot PR unprovable → fail closed for entire discovery.
+      if (typeof login !== 'string' || login.length === 0) {
+        return null;
+      }
+      if (!COPILOT_PR_AUTHOR_LOGINS.includes(login)) continue;
       valid.push(prNum);
     }
 
