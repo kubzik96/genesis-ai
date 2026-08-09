@@ -363,6 +363,144 @@ describe('read contracts — status pr_number', () => {
     assert.equal(status, 200);
     assert.equal(body.pr_number, null);
   });
+
+  it('Copilot login in correct repo is recognized', async () => {
+    const github = buildGithub({
+      issue: issueBase,
+      timelinePages: [{ events: [xref(7)] }],
+      pulls: { 7: pullFixture(7, { login: 'Copilot' }) },
+    });
+    const { status, body } = await statusWith(github);
+    assert.equal(status, 200);
+    assert.equal(body.pr_number, 7);
+  });
+
+  it('copilot-swe-agent[bot] continues to be recognized', async () => {
+    const github = buildGithub({
+      issue: issueBase,
+      timelinePages: [{ events: [xref(7)] }],
+      pulls: { 7: pullFixture(7, { login: COPILOT_BOT }) },
+    });
+    const { status, body } = await statusWith(github);
+    assert.equal(status, 200);
+    assert.equal(body.pr_number, 7);
+  });
+
+  it('other author is rejected', async () => {
+    const github = buildGithub({
+      issue: issueBase,
+      timelinePages: [{ events: [xref(7)] }],
+      pulls: { 7: pullFixture(7, { login: 'human-contributor' }) },
+    });
+    const { status, body } = await statusWith(github);
+    assert.equal(status, 200);
+    assert.equal(body.pr_number, null);
+  });
+
+  it('cross-reference from foreign repo is rejected', async () => {
+    const github = buildGithub({
+      issue: issueBase,
+      timelinePages: [{ events: [xref(7, FOREIGN_REPO_URL)] }],
+      pulls: { 7: pullFixture(7, { login: 'Copilot' }) },
+    });
+    const { status, body } = await statusWith(github);
+    assert.equal(status, 200);
+    assert.equal(body.pr_number, null);
+  });
+
+  it('non-PR cross-reference is not accepted', async () => {
+    const github = buildGithub({
+      issue: issueBase,
+      timelinePages: [{
+        events: [
+          {
+            event: 'cross-referenced',
+            source: {
+              type: 'issue',
+              issue: {
+                number: 99,
+                repository_url: SAME_REPO_URL,
+              },
+            },
+          },
+        ],
+      }],
+      pulls: { 99: pullFixture(99, { login: 'Copilot' }) },
+    });
+    const { status, body } = await statusWith(github);
+    assert.equal(status, 200);
+    assert.equal(body.pr_number, null);
+  });
+
+  /**
+   * Real Issue #19 scenario: timeline has PR #20 (Copilot) + human PRs #21/#22.
+   * Only the official Copilot PR must survive filters → pr_number 20.
+   */
+  it('Issue #19 equivalent: Copilot PR #20 discovered among human xrefs', async () => {
+    const issue19 = {
+      number: 19,
+      state: 'closed',
+      title: 'T-009: Fix encoding artifact in bridge/QUEUE.md (Stage 4 test)',
+      assignees: [],
+      html_url: 'https://github.com/kubzik96/genesis-ai/issues/19',
+      created_at: '2026-07-27T08:08:53Z',
+    };
+    const github = {
+      async getIssue(n) {
+        if (n !== 19) return { ok: false, status: 404, data: { message: 'Not Found' } };
+        return { ok: true, status: 200, data: issue19, headers: new Headers() };
+      },
+      async getIssueTimeline() {
+        return {
+          ok: true,
+          status: 200,
+          data: [
+            xref(20, SAME_REPO_URL),
+            xref(21, SAME_REPO_URL),
+            xref(22, SAME_REPO_URL),
+          ],
+          headers: new Headers(),
+        };
+      },
+      async getPull(n) {
+        const pulls = {
+          20: pullFixture(20, {
+            login: 'Copilot',
+            created_at: '2026-08-06T17:33:01Z',
+            draft: false,
+          }),
+          21: pullFixture(21, {
+            login: 'kubzik96',
+            created_at: '2026-08-06T20:42:49Z',
+            draft: false,
+          }),
+          22: pullFixture(22, {
+            login: 'kubzik96',
+            created_at: '2026-08-07T04:42:11Z',
+            draft: false,
+          }),
+        };
+        const p = pulls[n];
+        if (!p) return { ok: false, status: 404, data: { message: 'Not Found' } };
+        return { ok: true, status: 200, data: p, headers: new Headers() };
+      },
+      async getCombinedStatus() {
+        return { ok: true, status: 200, data: { state: 'success' }, headers: new Headers() };
+      },
+    };
+    const res = await handleRequest(makeRequest('GET', '/v1/issues/19/status', {
+      headers: { authorization: 'Bearer secret' },
+    }), {
+      BROKER_SERVICE_TOKEN: 'secret',
+      GITHUB_PAT: 'pat',
+      store: new MemoryBrokerStore(),
+      github,
+    });
+    assert.equal(res.status, 200);
+    const body = JSON.parse(res.body);
+    assert.equal(body.pr_number, 20);
+  });
+
 });
 
 describe('read contracts — pulls draft', () => {
