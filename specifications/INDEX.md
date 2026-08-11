@@ -16,11 +16,14 @@
 
 | ID | Название | Статус | Revision | Задачи | Дата |
 |---|---|---|---|---|---|
-| [S-0001](S-0001-Genesis-One-Window-Execution-Spike.md) | Genesis One-Window Execution Spike | Approved | 2 | T-009 | 2026-08-07 |
+| [S-0001](S-0001-Genesis-One-Window-Execution-Spike.md) | Genesis One-Window Execution Spike | Draft | 3 | T-009 | 2026-08-11 |
 | [S-0002](S-0002-Genesis-Secure-GitHub-Broker-MVP.md) | Genesis Secure GitHub Broker MVP | Approved | 1 | T-010 | 2026-07-24 |
 | [S-0003](S-0003-Post-Stage-4-Source-of-Record-Synchronization.md) | Post-Stage-4 Source of Record Synchronization and Codex Role Definition | Superseded | 1 | T-009, T-010 | 2026-08-07 |
 | [S-0004](S-0004-Post-Stage-4-Source-of-Record-Synchronization-Governance-Correction.md) | Post-Stage-4 Source of Record Synchronization (Governance Correction) | Approved | 1 | T-009, T-010 | 2026-08-07 |
+| [S-0005](S-0005-Genesis-Limited-Grok-Executor-Path.md) | Genesis Limited Grok Executor Path | Draft | 1 | NOT_REGISTERED | 2026-08-11 |
+
+> S-0001 Revision 3 остаётся Draft. До отдельного CEO Approval действующей утверждённой базой S-0001 является Revision 2.
 
 ## Следующий номер
 
-`S-0005`
+`S-0006`
