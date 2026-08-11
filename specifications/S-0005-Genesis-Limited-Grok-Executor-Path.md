@@ -12,21 +12,62 @@
 | **Дата создания** | 2026-08-11 |
 | **Дата утверждения** | 2026-08-11 |
 | **Утвердил** | CEO Genesis AI |
-| **Execution Authorization** | **NOT_GRANTED** |
-| **Связанные задачи** | Новая задача — NOT_REGISTERED |
+| **Execution Authorization** | **GRANTED — Stage 1 CODE_AND_TESTS_ONLY** |
+| **Связанные задачи** | **T-011** |
 | **Связанные Decision Records** | DR-0007 (Accepted) |
-| **Родительская Specification** | S-0001 Revision 3 (Approved); Execution Authorization остаётся NOT_GRANTED |
+| **Родительская Specification** | S-0001 Revision 3 (Approved) |
 | **Исполнитель (после Authorization)** | Integration Engineer; Grok/xAI как limited executor |
 
 > Этот документ утверждён CEO 2026-08-11.
 >
-> **Approval не является Execution Authorization.**
+> **Первоначальное Approval само по себе не являлось Execution Authorization.**
 >
-> Approval не разрешает реализацию, deployment, изменение secrets, live GitHub write или smoke.
+> Approval не разрешал реализацию, deployment, изменение secrets, live GitHub write или smoke.
 >
-> Первый live smoke требует отдельного ограниченного CEO Gate после code/tests/deploy-readonly review.
+> 2026-08-11 CEO Genesis AI выдал отдельный staged **Execution Authorization: GRANTED — Stage 1 CODE_AND_TESTS_ONLY** (см. раздел Stage 1 EA ниже).
 >
-> Execution Authorization остаётся NOT_GRANTED.
+> Stage 1 не разрешает deployment, secrets operations, Dify changes, live xAI calls, live GitHub writes или smoke.
+>
+> Первый live smoke требует отдельного ограниченного CEO Gate после code/tests review и независимого review draft PR.
+
+---
+
+## Stage 1 EA (CODE_AND_TESTS_ONLY) — 2026-08-11
+
+**Status:** GRANTED by CEO Genesis AI 2026-08-11 for Bridge task **T-011**.
+
+### Разрешено Stage 1
+
+- source code для одного composite endpoint `POST /v1/executions/grok/draft-pr`;
+- local unit / contract / negative / mock tests;
+- docs в разрешённых путях;
+- feature branch;
+- **draft PR** (обязателен);
+- только **mocked** xAI и **mocked** GitHub integrations.
+
+### Разрешённые пути Stage 1
+
+- `services/genesis-broker/`
+- `services/genesis-broker/tests/`
+- `docs/genesis-broker/`
+
+### Запрещено этим Stage 1 EA
+
+- deployment;
+- Cloudflare changes;
+- secrets operations (включая перенос `XAI_API_KEY`);
+- Dify changes;
+- live xAI calls;
+- live GitHub writes;
+- smoke любого вида;
+- merge;
+- ослабление hard limits Revision 1 (§4.4).
+
+### Завершение Stage 1
+
+Stage 1 заканчивается на **draft PR**, ожидающем независимого (non-Grok) review. Дальнейшие stages требуют **отдельного** CEO Authorization.
+
+Hard limits Revision 1 **не** ослаблены этим EA.
 
 ---
 
@@ -186,7 +227,7 @@ Grok возвращает данные, но не выполняет GitHub writ
 - Dify не хранит `XAI_API_KEY` для executor path.
 - Grok получает задачу и allowlisted context, но не получает GitHub credentials или service token.
 - Secrets запрещены в request/response body, audit, logs, Git, Issue, commit и PR.
-- Перенос уже существующего xAI key в Broker является отдельной secret operation и не разрешён этим Draft.
+- Перенос уже существующего xAI key в Broker является отдельной secret operation и не разрешён этим Draft и не разрешён Stage 1 EA.
 
 ### 4.6 Idempotency и partial failure
 
@@ -252,9 +293,9 @@ Grok возвращает данные, но не выполняет GitHub writ
 
 ## 8. Критерии готовности
 
-- [ ] S-0005 и DR-0007 утверждены CEO и опубликованы в Git.
-- [ ] Отдельная Bridge task зарегистрирована.
-- [ ] Отдельный staged Execution Authorization выдан.
+- [x] S-0005 и DR-0007 утверждены CEO и опубликованы в Git.
+- [x] Отдельная Bridge task зарегистрирована.
+- [x] Отдельный staged Execution Authorization выдан.
 - [ ] Один endpoint реализован без generic proxy/merge route.
 - [ ] `XAI_API_KEY` находится только в Broker secret storage.
 - [ ] Все hard limits §4.4 enforced server-side.
@@ -327,3 +368,4 @@ Grok возвращает данные, но не выполняет GitHub writ
 |---|---|---|---|
 | 1 | 2026-08-11 | ChatGPT — COO | Создан Draft limited Grok/xAI executor path; EA NOT_GRANTED |
 | 1 | 2026-08-11 | CEO Genesis AI | **Approved**. Execution Authorization остаётся NOT_GRANTED. Реализация, deployment, secrets operations и smoke не разрешены этим Approval. |
+| 1 | 2026-08-11 | CEO Genesis AI | granted Stage 1 CODE_AND_TESTS_ONLY EA for T-011; source + local unit/contract/negative/mock tests + docs only; feature branch + draft PR; deployment, secrets, live xAI/GitHub writes и smoke запрещены. |
