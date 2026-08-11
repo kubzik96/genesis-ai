@@ -6,29 +6,50 @@
 |---|---|
 | **ID** | S-0001 |
 | **Название** | Genesis One-Window Execution Spike |
-| **Статус** | **Approved** |
-| **Revision** | **2** |
+| **Статус** | **Approved** (Revision 3) |
+| **Revision** | **3** |
 | **Автор Revision 1** | Grok — Chief Architect |
 | **Автор Revision 2** | Grok — execution agent under S-0004 PR A EA |
+| **Автор Revision 3** | ChatGPT — COO, по поручению CEO и итогам архитектурного review Grok |
 | **Дата создания** | 2026-07-24 |
 | **Дата утверждения Revision 1** | 2026-07-24 |
 | **Дата утверждения Revision 2** | 2026-08-07 |
+| **Дата подготовки Revision 3 Draft** | 2026-08-11 |
+| **Дата утверждения Revision 3** | 2026-08-11 |
 | **Утвердил Revision 1** | CEO Genesis AI |
 | **Утвердил Revision 2** | CEO Genesis AI |
-| **Execution Authorization** | **STAGED** (no blanket grant). Stages 1–4 each required separate CEO Authorization. CEO Approval Revision 2 is **not** a new blanket EA for One-Window implementation. |
+| **Утвердил Revision 3** | CEO Genesis AI |
+| **Execution Authorization** | **NOT_GRANTED для Revision 3**. Исторические Stages 1–4 Revision 1/2 сохраняются; нового blanket EA нет. |
 | **Связанные задачи** | T-009 — Genesis One-Window Execution Spike |
-| **Связанные Decision Records** | DR-0004 |
-| **Related Specifications** | [S-0004](S-0004-Post-Stage-4-Source-of-Record-Synchronization-Governance-Correction.md) (Approved R1 — authoritative for SoR sync); [S-0003](S-0003-Post-Stage-4-Source-of-Record-Synchronization.md) (Revision 1 — **Superseded**) |
+| **Связанные Decision Records** | DR-0004; DR-0007 (Accepted) |
+| **Related Specifications** | [S-0005](S-0005-Genesis-Limited-Grok-Executor-Path.md) (Approved — limited Grok/xAI executor path); [S-0004](S-0004-Post-Stage-4-Source-of-Record-Synchronization-Governance-Correction.md) (Approved R1 — authoritative for SoR sync); [S-0003](S-0003-Post-Stage-4-Source-of-Record-Synchronization.md) (Revision 1 — **Superseded**) |
 | **Исполнитель (после Authorization)** | Integration Engineer / Lead Engineer (по stage; см. §13) |
 
-> **Revision 2 = Approved** (2026-08-07) after independent specification review (BLOCKERS NONE) and CEO Approval.  
-> CEO Approval Revision 1 (2026-07-24) сохранён в истории.  
+> **Revision 3 = Approved** (2026-08-11) CEO Genesis AI.
+>
+> **Execution Authorization для Revision 3 остаётся NOT_GRANTED.**
+>
+> Approval документации не разрешает реализацию, deployment, secrets operations или smoke.
+>
+> Revision 2 history and Stage 4 PARTIAL PASS preserved.
+>
 > **Не было** и **нет** единого общего Execution Authorization «на весь S-0001».  
-> Каждый Stage выполнялся только после **отдельного** CEO Authorization.  
+> Каждый Stage / live write выполняется только после **отдельного** CEO Authorization.  
 > **Stage 4 result:** **PARTIAL PASS** — см. §13.  
-> Историческое состояние «Stage 4 NOT_AUTHORIZED» сохранено в истории Revision 1 и не выдаётся за текущий статус.  
 > SoR synchronization после Stage 4 выполняется по **Approved S-0004 Revision 1**.  
-> Revision 2 **не ослабляет** исходные критерии успеха One-Window: PARTIAL PASS — фактический итог Stage 4, не новый более слабый definition of done.
+> Revision 3 фиксирует границу продолжения через S-0005; исходные критерии One-Window не ослаблены.
+
+### Предлагаемое изменение Revision 3
+
+Revision 3 не переписывает исторический Copilot spike и не выдаёт его за PASS. Она фиксирует границу продолжения:
+
+- Copilot Cloud Agent path недоступен на текущем бесплатном плане и остаётся историческим `PARTIAL PASS`;
+- цель CEO — убрать ручное копирование между ChatGPT, Grok и GitHub — сохраняется;
+- новый ограниченный Grok/xAI executor path описывается отдельно в **S-0005**, потому что это major scope change;
+- S-0002 Revision 1 не расширяется молча: новый write-contract требует отдельной Specification, тестов, review, CEO Approval и staged Execution Authorization;
+- первый Grok smoke обязан остановиться на `DRAFT_PR_CREATED_AWAITING_INDEPENDENT_REVIEW` и не считается полным One-Window PASS;
+- Grok не может быть единственным independent reviewer собственной реализации;
+- никакого merge endpoint, auto-merge, direct `main` write или постоянного разрешения на GitHub write не появляется.
 
 ---
 
@@ -313,6 +334,7 @@ Workflow **обязан** останавливаться:
 - [x] **Отдельный DR для временного spike не требуется.**
 - [ ] После результатов spike **требуется отдельное решение** о долгосрочной Interaction / Execution Platform.
 - [ ] DR-0006 (Codex role) — отдельный артефакт, **deferred**; не часть S-0001 scope и не блокирует One-Window critical path.
+- [x] DR-0007 (Limited Grok Executor Path) — **Accepted** 2026-08-11; Execution Authorization остаётся NOT_GRANTED.
 
 Возможные варианты будущего решения:
 
@@ -342,6 +364,7 @@ Workflow **обязан** останавливаться:
 1. Точный механизм устойчивого назначения Issue → Copilot без ручных шагов.
 2. Primary reviewer (OpenAI **или** xAI) для воспроизводимого One-Window цикла.
 3. Долгосрочная Interaction / Execution Platform — отдельное решение после spike.
+4. Независимый API-reviewer для полностью автоматического One-Window цикла: OpenAI API сейчас недоступен; Grok не может review собственную реализацию как sole reviewer.
 
 ---
 
@@ -356,6 +379,8 @@ Workflow **обязан** останавливаться:
 | 1 | 2026-07-27 | Grok — Chief Architect | §13 clarification: Stage 4 scope = assign Copilot / PR observation / independent live review; **Stage 4 ends at Gate 3**; merge of encoding PR requires **separate CEO Gate 4 / Merge Authorization** (outside Stage 4) |
 | 2 | 2026-08-07 | Grok — under S-0004 PR A EA | Revision 2 prepared as In Review. Stage 4 **PARTIAL PASS** recorded as evidence. Original One-Window acceptance criteria **preserved** (not weakened). Related Specs: S-0004 authoritative, S-0003 Superseded. |
 | 2 | 2026-08-07 | CEO Genesis AI | **Approved** Revision 2 after independent specification review (BLOCKERS NONE). INDEX synchronized in same commit. **No** new blanket Execution Authorization. |
+| 3 | 2026-08-11 | ChatGPT — COO | Подготовлен Draft: исторический Copilot path сохранён; предложен отдельный S-0005 Grok/xAI path; полного One-Window PASS и нового EA нет. |
+| 3 | 2026-08-11 | CEO Genesis AI | **Approved** Revision 3. Execution Authorization остаётся **NOT_GRANTED**. Реализация, deployment, secrets operations и smoke не разрешены этим Approval. |
 
 ### Stage 4 — текущий итог (Revision 2)
 
