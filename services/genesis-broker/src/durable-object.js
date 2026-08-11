@@ -10,6 +10,7 @@ import { evaluateIdempotency, markFailed, markSucceeded, markUnknown, isDetermin
 import { checkHourlyWriteLimit, checkRunBounds, assertAssignIssueBelongsToRun } from './rate-limit.js';
 import { createGithubClient, mapGithubError } from './github-client.js';
 import { FIXED_FULL_NAME, IDEM_STATES } from './constants.js';
+import { executeGrokDraftPrOperation } from './grok-draft-pr.js';
 
 export class BrokerDurableObject {
   constructor(state, env) {
@@ -113,6 +114,7 @@ export class BrokerDurableObject {
     const runState = (await storage.get(`run:${runId}`)) ?? {
       create_issue: false,
       assign_copilot: false,
+      create_branch_commit_draft_pr: false,
       created_issue_number: null,
     };
     const bounds = checkRunBounds(runState, operation);
@@ -150,7 +152,7 @@ export class BrokerDurableObject {
     };
     await storage.put(`idem:${idempotencyKey}`, pending);
 
-    const githubCall = buildGithubCall(operation, operationData, github);
+    const githubCall = buildGithubCall(operation, operationData, github, this.env?.xai || this.env?._xai);
     let result;
     try {
       result = await githubCall();
@@ -184,6 +186,8 @@ export class BrokerDurableObject {
         }]);
       } else if (operation === 'assign_copilot') {
         batchEntries.push([`run:${runId}`, { ...runState, assign_copilot: true }]);
+      } else if (operation === 'create_branch_commit_draft_pr') {
+        batchEntries.push([`run:${runId}`, { ...runState, create_branch_commit_draft_pr: true }]);
       }
       await storage.put(Object.fromEntries(batchEntries));
       return this._json({
@@ -228,7 +232,7 @@ export class BrokerDurableObject {
   }
 }
 
-function buildGithubCall(operation, operationData, github) {
+function buildGithubCall(operation, operationData, github, xai) {
   if (operation === 'create_issue') {
     return async () => {
       const res = await github.createIssue({
@@ -272,6 +276,17 @@ function buildGithubCall(operation, operationData, github) {
         },
       };
     };
+  }
+  if (operation === 'create_branch_commit_draft_pr') {
+    return async () => executeGrokDraftPrOperation({
+      github,
+      xai,
+      runId: operationData?.runId,
+      gate: operationData?.gate,
+      confirmedAt: operationData?.confirmedAt,
+      baseSha: operationData?.baseSha,
+      task: operationData?.task,
+    });
   }
   return async () => ({
     ok: false,

@@ -18,6 +18,7 @@ describe('allowlist', () => {
     assert.equal(matchRoute('GET', '/v1/health'), true);
     assert.equal(matchRoute('POST', '/v1/issues'), true);
     assert.equal(matchRoute('POST', '/v1/issues/12/assign-copilot'), true);
+    assert.equal(matchRoute('POST', '/v1/executions/grok/draft-pr'), true);
     assert.equal(matchRoute('POST', '/v1/merge'), false);
     assert.equal(matchRoute('DELETE', '/v1/issues/1'), false);
     assert.equal(matchRoute('POST', '/v1/proxy'), false);

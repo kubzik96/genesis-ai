@@ -42,6 +42,16 @@ export const GATES = Object.freeze({
   ASSIGN_COPILOT: 'G2',
 });
 
+export const GROK_DRAFT_PR_OPERATION = 'create_branch_commit_draft_pr';
+
+export const GROK_DRAFT_PR_LIMITS = Object.freeze({
+  BRANCH_PREFIX: 'genesis/grok/',
+  MAX_FILES: 1,
+  ALLOWED_FILE: 'MEMORY.md',
+  MAX_CHANGED_LINES: 3,
+  MAX_UNIFIED_DIFF_BYTES: 2 * 1024,
+});
+
 export const IDEM_STATES = Object.freeze({
   PENDING: 'PENDING',
   SUCCEEDED: 'SUCCEEDED',

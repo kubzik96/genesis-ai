@@ -99,6 +99,7 @@ export class MemoryBrokerStore {
       const runState = this.getRun(runId) || {
         create_issue: false,
         assign_copilot: false,
+        create_branch_commit_draft_pr: false,
         created_issue_number: null,
       };
       const bounds = checkRunBounds(runState, operation);
@@ -165,6 +166,8 @@ export class MemoryBrokerStore {
           });
         } else if (operation === 'assign_copilot') {
           this.setRun(runId, { ...runState, assign_copilot: true });
+        } else if (operation === 'create_branch_commit_draft_pr') {
+          this.setRun(runId, { ...runState, create_branch_commit_draft_pr: true });
         }
         this.setIdem(idempotencyKey, markSucceeded(pending, result.safeResult));
         return {
