@@ -26,7 +26,7 @@
 >
 > 2026-08-11 CEO Genesis AI выдал отдельный staged **Execution Authorization: GRANTED — Stage 1 CODE_AND_TESTS_ONLY** (см. раздел Stage 1 EA ниже).
 >
-> Stage 1 не разрешает deployment, secrets operations, Dify changes, live xAI calls, live GitHub writes или smoke.
+> Stage 1 не разрешает deployment, secrets operations, Dify changes, live xAI calls, runtime live GitHub writes или smoke.
 >
 > Первый live smoke требует отдельного ограниченного CEO Gate после code/tests review и независимого review draft PR.
 
@@ -41,9 +41,8 @@
 - source code для одного composite endpoint `POST /v1/executions/grok/draft-pr`;
 - local unit / contract / negative / mock tests;
 - docs в разрешённых путях;
-- feature branch;
-- **draft PR** (обязателен);
-- только **mocked** xAI и **mocked** GitHub integrations.
+- feature branch + implementation commits + **draft PR** — разрешены авторизованному GitHub-исполнителю (чат Grok) как артефакты разработки;
+- только **mocked** xAI и **mocked** GitHub integrations (runtime path).
 
 ### Разрешённые пути Stage 1
 
@@ -58,9 +57,9 @@
 - secrets operations (включая перенос `XAI_API_KEY`);
 - Dify changes;
 - live xAI calls;
-- live GitHub writes;
+- runtime live GitHub writes: новый Broker endpoint, xAI-модель и Dify **не** выполняют live GitHub writes на Stage 1;
 - smoke любого вида;
-- merge;
+- direct `main`, merge, auto-merge;
 - ослабление hard limits Revision 1 (§4.4).
 
 ### Завершение Stage 1
@@ -227,7 +226,7 @@ Grok возвращает данные, но не выполняет GitHub writ
 - Dify не хранит `XAI_API_KEY` для executor path.
 - Grok получает задачу и allowlisted context, но не получает GitHub credentials или service token.
 - Secrets запрещены в request/response body, audit, logs, Git, Issue, commit и PR.
-- Перенос уже существующего xAI key в Broker является отдельной secret operation и не разрешён этим Draft и не разрешён Stage 1 EA.
+- Перенос уже существующего xAI key в Broker является отдельной secret operation и не разрешён Stage 1 EA.
 
 ### 4.6 Idempotency и partial failure
 
@@ -271,8 +270,8 @@ Grok возвращает данные, но не выполняет GitHub writ
 
 ## 6. Dependencies
 
-- S-0001 Revision 3 — после отдельного CEO Approval;
-- DR-0007 — после отдельного CEO Approval;
+- S-0001 Revision 3 — **Approved**;
+- DR-0007 — **Accepted**;
 - S-0002 Revision 1 — существующие auth/idempotency/audit foundations, без молчаливого расширения его allowlist;
 - действующий Genesis Broker deployment;
 - xAI API balance и `XAI_API_KEY`;
@@ -354,7 +353,7 @@ Grok возвращает данные, но не выполняет GitHub writ
 | Smoke ошибочно объявлен полным One-Window PASS | Отдельный статус awaiting independent review |
 | Бюджет xAI | Model/token hard limits и fail-closed budget ceiling |
 
-Открытые вопросы до Approval:
+Открытые вопросы до следующих live/deployment stages:
 
 1. Точный xAI model и максимальный token budget.
 2. Минимальные GitHub permissions для ref/commit/draft PR в текущем credential.

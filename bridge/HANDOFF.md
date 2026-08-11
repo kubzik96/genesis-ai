@@ -140,10 +140,11 @@ operation = create_branch_commit_draft_pr
 
 **Ограничения Stage 1 EA (CODE_AND_TESTS_ONLY):**
 - только source + local unit/contract/negative/mock tests + docs;
-- только mocked xAI и mocked GitHub integrations;
-- feature branch обязательна;
-- результат Stage 1 — отдельный **draft PR**, ожидающий независимого review;
-- **запрещены:** deployment, Cloudflare changes, secrets operations, Dify changes, live xAI calls, live GitHub writes, smoke;
+- только mocked xAI и mocked GitHub integrations (runtime);
+- feature branch + implementation commits + **draft PR** разрешены авторизованному GitHub-исполнителю (чат Grok) как артефакты разработки;
+- результат Stage 1 — отдельный **draft PR**, ожидающий независимого (non-Grok) review;
+- **запрещены runtime live GitHub writes:** новый Broker endpoint, xAI-модель и Dify **не** выполняют live GitHub writes на Stage 1;
+- **запрещены:** direct `main`, merge, auto-merge, deployment, Cloudflare changes, secrets operations, live xAI calls, live smoke;
 - hard limits Revision 1 S-0005 **не** ослаблять.
 
 **Что менять нельзя:**
@@ -181,10 +182,10 @@ operation = create_branch_commit_draft_pr
 
 **Что должно быть создано или изменено:**
 - source/tests/docs для `POST /v1/executions/grok/draft-pr`
-- feature branch + **draft PR** (не merge)
+- feature branch + implementation commits + **draft PR** (не merge) как артефакты разработки
 
 **Формат результата:**
-Draft PR с unit/contract/negative/mock evidence; статус ожидания независимого review. Live path и smoke — вне Stage 1.
+Draft PR с unit/contract/negative/mock evidence; статус ожидания независимого review. Runtime live path и smoke — вне Stage 1.
 
 ---
 

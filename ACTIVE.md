@@ -36,9 +36,10 @@
 
 ### T-011 Stage 1 EA bounds
 
-- **GRANTED:** source + local unit/contract/negative/mock tests + docs в `services/genesis-broker/`, `tests/`, `docs/genesis-broker/`
-- **Feature branch + draft PR** обязательны
-- **FORBIDDEN:** deployment, Cloudflare, secrets operations, Dify, live xAI, live GitHub writes, smoke
+- **GRANTED:** source + local unit/contract/negative/mock tests + docs в `services/genesis-broker/`, `services/genesis-broker/tests/`, `docs/genesis-broker/`
+- **Feature branch + implementation commits + draft PR** — разрешены авторизованному GitHub-исполнителю (чат Grok) как артефакты разработки Stage 1
+- **FORBIDDEN for runtime:** новый Broker endpoint, xAI-модель и Dify **не** могут выполнять live GitHub writes на Stage 1
+- **FORBIDDEN:** direct `main`, merge, auto-merge, deployment, Cloudflare, secrets operations, live xAI calls, live smoke
 - Stage 1 ends at draft PR awaiting independent (non-Grok) review
 
 ---
@@ -65,8 +66,8 @@
 **T-011 Stage 1** — CODE_AND_TESTS_ONLY:
 
 - implement `POST /v1/executions/grok/draft-pr` under S-0005 hard limits;
-- mocked xAI/GitHub only;
-- feature branch + draft PR;
+- mocked xAI/GitHub only (runtime path);
+- feature branch + implementation commits + draft PR as development artifacts by authorized GitHub executor (Grok chat);
 - independent non-Grok review before any further stage.
 
 T-009 / T-010 remain **REVIEW** (not DONE).
@@ -100,7 +101,7 @@ T-009 / T-010 remain **REVIEW** (not DONE).
 - T-006 BLOCKED.
 - CI_NOT_CONFIGURED.
 - DR-0006 not created (deferred).
-- Stage 1 EA does **not** allow live path.
+- Stage 1 EA does **not** allow runtime live GitHub writes, deployment or smoke.
 
 ---
 

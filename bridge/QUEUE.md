@@ -94,9 +94,10 @@ T-010 выполняется по Approved Specification S-0002 Revision 1. Stat
 - **Исполнитель:** Grok / Integration Engineer
 - **Основание:** S-0005 Revision 1 **Approved** (2026-08-11); DR-0007 **Accepted** (2026-08-11)
 - **CEO Execution Authorization (2026-08-11):** **GRANTED — Stage 1 CODE_AND_TESTS_ONLY**
-- **Разрешено Stage 1:** source code, local unit/contract/negative/mock tests, docs в `services/genesis-broker/`, `services/genesis-broker/tests/`, `docs/genesis-broker/`; feature branch + draft PR
-- **Запрещено этим EA:** deployment, Cloudflare changes, secrets operations, Dify changes, live xAI calls, live GitHub writes, smoke
-- **Stage 1 ends at:** draft PR awaiting independent review
+- **Разрешено Stage 1:** source code, local unit/contract/negative/mock tests, docs в `services/genesis-broker/`, `services/genesis-broker/tests/`, `docs/genesis-broker/`; feature branch + implementation commits + draft PR как артефакты разработки авторизованным GitHub-исполнителем (чат Grok)
+- **Запрещено runtime на Stage 1:** новый Broker endpoint, xAI-модель и Dify **не** выполняют live GitHub writes
+- **Запрещено этим EA:** direct `main`, merge, auto-merge, deployment, Cloudflare changes, secrets operations, live xAI calls, live smoke
+- **Stage 1 ends at:** draft PR awaiting independent (non-Grok) review
 - **HANDOFF:** see `bridge/HANDOFF.md` (T-011)
 
 Restrictions:
@@ -105,7 +106,7 @@ Restrictions:
 - T-010 is **not** DONE;
 - T-009 is **REVIEW**, not DONE;
 - T-006 remains BLOCKED;
-- T-011 Stage 1 does **not** authorize deployment, secrets, live writes or smoke;
+- T-011 Stage 1 does **not** authorize runtime live GitHub writes, deployment, secrets or smoke;
 - further stages of T-011 require **separate** CEO authorization.
 
 ---
