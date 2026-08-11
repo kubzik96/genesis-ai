@@ -195,6 +195,16 @@ describe('POST /v1/executions/grok/draft-pr', () => {
   });
 
   it('enforces changed lines and diff size hard limits', async () => {
+    const noChanges = await handleRequest(
+      makeRequest({ headers: { 'idempotency-key': 'k-no-change' }, body: baseBody() }),
+      envWith({
+        github: githubMock(),
+        xai: { calls: 0, fn: async () => xaiResponse('line1\nline2\nline3\n') },
+      }),
+    );
+    assert.equal(noChanges.status, 422);
+    assert.equal(JSON.parse(noChanges.body).error, 'NO_CHANGES_DETECTED');
+
     const tooManyLines = await handleRequest(
       makeRequest({ headers: { 'idempotency-key': 'k-lines' }, body: baseBody() }),
       envWith({

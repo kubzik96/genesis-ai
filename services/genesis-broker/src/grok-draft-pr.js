@@ -205,17 +205,26 @@ function diffStats(oldContent, newContent, path) {
     if (op.type === 'delete') deletions += 1;
   }
   const changedLines = additions + deletions;
-  const hunkOps = ops.filter((op) => op.type !== 'equal');
   let unified = `--- a/${path}\n+++ b/${path}\n`;
-  if (hunkOps.length > 0) {
-    const first = hunkOps[0];
-    const last = hunkOps[hunkOps.length - 1];
-    const oldStart = first.oldIndex;
-    const newStart = first.newIndex;
-    const oldCount = hunkOps.filter((op) => op.type === 'delete').length;
-    const newCount = hunkOps.filter((op) => op.type === 'add').length;
-    unified += `@@ -${oldStart},${oldCount} +${newStart},${newCount} @@\n`;
-    for (const op of hunkOps) {
+  const hunks = [];
+  let current = [];
+  for (const op of ops) {
+    if (op.type === 'equal') {
+      if (current.length > 0) {
+        hunks.push(current);
+        current = [];
+      }
+      continue;
+    }
+    current.push(op);
+  }
+  if (current.length > 0) hunks.push(current);
+  for (const hunk of hunks) {
+    const first = hunk[0];
+    const oldCount = hunk.filter((op) => op.type === 'delete').length;
+    const newCount = hunk.filter((op) => op.type === 'add').length;
+    unified += `@@ -${first.oldIndex},${oldCount} +${first.newIndex},${newCount} @@\n`;
+    for (const op of hunk) {
       if (op.type === 'delete') unified += `-${op.line}\n`;
       if (op.type === 'add') unified += `+${op.line}\n`;
     }
@@ -297,12 +306,20 @@ export async function executeGrokDraftPrOperation({ github, xai, runId, baseSha,
     return { ok: false, status: 422, githubStatus: source.status, safeResult: safeResult('INVALID_BLOB_SHA', 'expected_blob_sha mismatch') };
   }
   const stats = diffStats(sourceContent, change.newContent, change.path);
-  if (stats.changedLines < 1 || stats.changedLines > GROK_DRAFT_PR_LIMITS.MAX_CHANGED_LINES) {
+  if (stats.changedLines < 1) {
     return {
       ok: false,
       status: 422,
       githubStatus: null,
-      safeResult: safeResult('CHANGED_LINES_EXCEEDED', `Changed lines must be 1..${GROK_DRAFT_PR_LIMITS.MAX_CHANGED_LINES}`),
+      safeResult: safeResult('NO_CHANGES_DETECTED', 'xAI response must produce a non-empty diff'),
+    };
+  }
+  if (stats.changedLines > GROK_DRAFT_PR_LIMITS.MAX_CHANGED_LINES) {
+    return {
+      ok: false,
+      status: 422,
+      githubStatus: null,
+      safeResult: safeResult('CHANGED_LINES_EXCEEDED', `Changed lines must be <= ${GROK_DRAFT_PR_LIMITS.MAX_CHANGED_LINES}`),
     };
   }
   if (stats.diffBytes > GROK_DRAFT_PR_LIMITS.MAX_UNIFIED_DIFF_BYTES) {

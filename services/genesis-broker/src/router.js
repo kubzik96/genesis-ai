@@ -580,7 +580,7 @@ async function handleGrokDraftPr(request, env, github) {
 
   const gateCheck = validateGate({
     gate: payload.gate,
-    expectedGate: GATES.ASSIGN_COPILOT,
+    expectedGate: GATES.GROK_DRAFT_PR,
     confirmed_at: payload.confirmedAt,
     run_id: payload.runId,
   });

@@ -40,6 +40,8 @@ export const CONTEXT_ALLOWLIST = Object.freeze([
 export const GATES = Object.freeze({
   CREATE_ISSUE: 'G1',
   ASSIGN_COPILOT: 'G2',
+  // S-0005 Stage 1 reuses Gate 2 confirmation for the grok draft-pr composite write.
+  GROK_DRAFT_PR: 'G2',
 });
 
 export const GROK_DRAFT_PR_OPERATION = 'create_branch_commit_draft_pr';
