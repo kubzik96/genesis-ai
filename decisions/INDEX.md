@@ -18,7 +18,7 @@
 | [DR-0002](DR-0002-GitHub-Copilot.md) | Назначение GitHub Copilot на должность GitHub Engineer | Принято | 2026-07-22 |
 | [DR-0004](DR-0004.md) | Repository of Approved Specifications | Принято | 2026-07-24 |
 | [DR-0005](DR-0005-Operational-AI-Team-Roles.md) | Operational AI Team Roles | Принято | 2026-07-27 |
-| [DR-0007](DR-0007-Grok-Limited-Executor.md) | Grok Limited Executor through Genesis Broker | Предложено | 2026-08-11 |
+| [DR-0007](DR-0007-Grok-Limited-Executor.md) | Grok Limited Executor through Genesis Broker | Принято | 2026-08-11 |
 
 ## Следующий номер
 
