@@ -6,23 +6,27 @@
 |---|---|
 | **ID** | S-0005 |
 | **Название** | Genesis Limited Grok Executor Path |
-| **Статус** | Draft |
+| **Статус** | **Approved** |
 | **Revision** | 1 |
 | **Автор** | ChatGPT — COO, по поручению CEO и итогам архитектурного review Grok |
 | **Дата создания** | 2026-08-11 |
-| **Дата утверждения** | — |
-| **Утвердил** | — |
-| **Execution Authorization** | NOT_GRANTED |
+| **Дата утверждения** | 2026-08-11 |
+| **Утвердил** | CEO Genesis AI |
+| **Execution Authorization** | **NOT_GRANTED** |
 | **Связанные задачи** | Новая задача — NOT_REGISTERED |
-| **Связанные Decision Records** | DR-0007 (Proposed) |
-| **Родительская Specification** | S-0001 Revision 3 Draft; до Approval действует S-0001 Revision 2 |
+| **Связанные Decision Records** | DR-0007 (Accepted) |
+| **Родительская Specification** | S-0001 Revision 3 (Approved); Execution Authorization остаётся NOT_GRANTED |
 | **Исполнитель (после Authorization)** | Integration Engineer; Grok/xAI как limited executor |
 
-> Этот Draft не разрешает реализацию, deployment, изменение secrets или live GitHub write.
+> Этот документ утверждён CEO 2026-08-11.
 >
-> Approval этой Specification не является Execution Authorization.
+> **Approval не является Execution Authorization.**
+>
+> Approval не разрешает реализацию, deployment, изменение secrets, live GitHub write или smoke.
 >
 > Первый live smoke требует отдельного ограниченного CEO Gate после code/tests/deploy-readonly review.
+>
+> Execution Authorization остаётся NOT_GRANTED.
 
 ---
 
@@ -322,3 +326,4 @@ Grok возвращает данные, но не выполняет GitHub writ
 | Revision | Дата | Автор | Что изменено |
 |---|---|---|---|
 | 1 | 2026-08-11 | ChatGPT — COO | Создан Draft limited Grok/xAI executor path; EA NOT_GRANTED |
+| 1 | 2026-08-11 | CEO Genesis AI | **Approved**. Execution Authorization остаётся NOT_GRANTED. Реализация, deployment, secrets operations и smoke не разрешены этим Approval. |
