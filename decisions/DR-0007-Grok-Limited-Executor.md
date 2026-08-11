@@ -10,7 +10,7 @@ Grok Limited Executor through Genesis Broker
 
 ## Статус
 
-Предложено
+**Принято**
 
 ## Дата
 
@@ -166,3 +166,4 @@ DR-0005 уже разрешает Grok выполнять GitHub execution то�
 # История изменений
 
 - 2026-08-11 — создано предложение; CEO Approval и Execution Authorization не выданы.
+- 2026-08-11 — **CEO Approval (Принято)**. Execution Authorization **не выдан**. Реализация, deployment, secrets operations и smoke не разрешены этим Approval.
