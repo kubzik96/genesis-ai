@@ -36,11 +36,12 @@ QUEUE.md содержит очередь всех активных и ожида
 |---|---|---|---|
 | T-009 | Genesis One-Window Execution Spike | REVIEW | Integration Engineer |
 | T-010 | Genesis Secure GitHub Broker MVP | REVIEW | Integration Engineer |
+| T-011 | Genesis Limited Grok Executor | READY | Grok / Integration Engineer |
 
 T-009: **REVIEW** (not DONE). Stage 4 = **PARTIAL PASS**.  
 SoR synchronization after Stage 4 выполняется по **Approved S-0004 Revision 1**.  
-S-0001 **Revision 2** = **Approved** (2026-08-07).  
-CEO Approval S-0001 Revision 2 **не** является новым blanket Execution Authorization на One-Window implementation.
+S-0001 **Revision 3** = **Approved** (2026-08-11).  
+CEO Approval S-0001 Revision 3 **не** является blanket Execution Authorization на One-Window implementation.
 
 #### Stages 1–3 (история)
 
@@ -60,7 +61,7 @@ CEO Approval S-0001 Revision 2 **не** является новым blanket Exec
 - **Execution PR:** [#20](https://github.com/kubzik96/genesis-ai/pull/20) — **MERGED** (squash)
 - **Squash commit in main:** [`99e6d153ac91b2bf25f9604d58fe51c387ba3d28`](https://github.com/kubzik96/genesis-ai/commit/99e6d153ac91b2bf25f9604d58fe51c387ba3d28)
 - **Changed files in PR #20:** only `bridge/QUEUE.md`
-- **Change:** reserved encoding artifact `��` → Cyrillic `в` in the QUEUE update-rule line
+- **Change:** reserved encoding artifact → Cyrillic `в` in the QUEUE update-rule line
 - **Encoding fix:** **applied in main** (verified post-merge)
 - **Auto-merge:** not used
 - **CI:** `CI_NOT_CONFIGURED`
@@ -87,13 +88,26 @@ T-010 выполняется по Approved Specification S-0002 Revision 1. Stat
 - **PR #11:** Draft, open, unmerged; HEAD `6393c434d139657ea1deb8835cf8e6d523334a74`
 - **Merge of PR #11:** NOT_AUTHORIZED
 
+#### T-011 — Genesis Limited Grok Executor
+
+- **Status:** **READY**
+- **Исполнитель:** Grok / Integration Engineer
+- **Основание:** S-0005 Revision 1 **Approved** (2026-08-11); DR-0007 **Accepted** (2026-08-11)
+- **CEO Execution Authorization (2026-08-11):** **GRANTED — Stage 1 CODE_AND_TESTS_ONLY**
+- **Разрешено Stage 1:** source code, local unit/contract/negative/mock tests, docs в `services/genesis-broker/`, `services/genesis-broker/tests/`, `docs/genesis-broker/`; feature branch + implementation commits + draft PR как артефакты разработки авторизованным GitHub-исполнителем (чат Grok)
+- **Запрещено runtime на Stage 1:** новый Broker endpoint, xAI-модель и Dify **не** выполняют live GitHub writes
+- **Запрещено этим EA:** direct `main`, merge, auto-merge, deployment, Cloudflare changes, secrets operations, live xAI calls, live smoke
+- **Stage 1 ends at:** draft PR awaiting independent (non-Grok) review
+- **HANDOFF:** see `bridge/HANDOFF.md` (T-011)
+
 Restrictions:
 
 - T-010 remains **REVIEW** until separate CEO acceptance;
 - T-010 is **not** DONE;
 - T-009 is **REVIEW**, not DONE;
 - T-006 remains BLOCKED;
-- further GitHub writes, merge of other PRs, and DONE transitions require **separate** CEO authorization.
+- T-011 Stage 1 does **not** authorize runtime live GitHub writes, deployment, secrets or smoke;
+- further stages of T-011 require **separate** CEO authorization.
 
 ---
 

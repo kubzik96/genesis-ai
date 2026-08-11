@@ -94,6 +94,101 @@ HANDOFF.md описывает стандартный формат передач
 
 ---
 
+## Активные HANDOFF
+
+## HANDOFF: T-011 — Genesis Limited Grok Executor
+
+Статус: READY  
+Исполнитель: Grok / Integration Engineer  
+Создано: 2026-08-11  
+CEO Execution Authorization: **GRANTED — Stage 1 CODE_AND_TESTS_ONLY** (2026-08-11)
+
+### Контекст
+
+**Что было сделано до этого:**
+- S-0005 Revision 1 Approved (2026-08-11, PR #27)
+- DR-0007 Accepted (2026-08-11, PR #27)
+- S-0001 Revision 3 Approved (документационная граница продолжения через S-0005)
+- Copilot Cloud Agent path недоступен на Free plan → выбран limited Grok/xAI executor через Broker
+- Genesis Broker уже поддерживает Issue create, Assign Copilot, context/read, PR/diff read; не имеет route для branch/commit/draft-PR
+
+**Зачем это нужно:**
+Убрать ручное копирование задания между окнами; реализовать один fail-closed composite endpoint, который позволит Grok формировать ограниченное изменение, а Broker — создавать отдельную ветку, один commit и draft PR под жёсткими server-side limits.
+
+**Связь с другими задачами:**
+- T-009 остаётся REVIEW (PARTIAL PASS); не DONE
+- T-010 остаётся REVIEW; не DONE
+- T-006 остаётся BLOCKED
+- S-0002 Revision 1 — foundations auth/idempotency/audit; allowlist не расширяется молча
+
+### Задача (Stage 1 only)
+
+**Что нужно сделать:**
+Реализовать и покрыть тестами **один** composite endpoint:
+
+```text
+POST /v1/executions/grok/draft-pr
+operation = create_branch_commit_draft_pr
+```
+
+в соответствии с Approved S-0005 Revision 1 (hard limits, schema, base SHA checks, idempotency, partial-failure → UNKNOWN).
+
+**Разрешённые пути для Stage 1:**
+- `services/genesis-broker/`
+- `services/genesis-broker/tests/`
+- `docs/genesis-broker/`
+
+**Ограничения Stage 1 EA (CODE_AND_TESTS_ONLY):**
+- только source + local unit/contract/negative/mock tests + docs;
+- только mocked xAI и mocked GitHub integrations (runtime);
+- feature branch + implementation commits + **draft PR** разрешены авторизованному GitHub-исполнителю (чат Grok) как артефакты разработки;
+- результат Stage 1 — отдельный **draft PR**, ожидающий независимого (non-Grok) review;
+- **запрещены runtime live GitHub writes:** новый Broker endpoint, xAI-модель и Dify **не** выполняют live GitHub writes на Stage 1;
+- **запрещены:** direct `main`, merge, auto-merge, deployment, Cloudflare changes, secrets operations, live xAI calls, live smoke;
+- hard limits Revision 1 S-0005 **не** ослаблять.
+
+**Что менять нельзя:**
+- `governance/Constitution.md`
+- действующие Decision Records без отдельного DR
+- S-0002 allowlist без новой Revision
+- runtime Broker deployment / secrets
+- `main` напрямую
+
+### Критерии готовности Stage 1
+
+Задача Stage 1 считается готовой к независимому review, если:
+- [ ] Один endpoint реализован без generic proxy/merge route
+- [ ] Server-side enforce: repo, base SHA, branch prefix, max 1 file, MEMORY.md smoke scope, ≤3 lines, ≤2 KiB, UTF-8 only, draft PR only
+- [ ] Unit/contract/negative/mock tests зелёные
+- [ ] Partial failure → UNKNOWN, no auto-retry
+- [ ] Docs обновлены в `docs/genesis-broker/`
+- [ ] Отдельный draft PR открыт на feature branch
+- [ ] Grok не sole reviewer собственной реализации
+
+Проверка:
+- [ ] Independent non-Grok review фактического diff draft PR
+- [ ] CEO Gate перед любым следующим stage
+
+### Входные данные
+
+**Файлы для справки:**
+- `specifications/S-0005-Genesis-Limited-Grok-Executor-Path.md` (Approved R1)
+- `decisions/DR-0007-Grok-Limited-Executor.md` (Accepted)
+- `specifications/S-0002-Genesis-Secure-GitHub-Broker-MVP.md` (Approved R1)
+- `services/genesis-broker/` (существующий код)
+- `MEMORY.md`, `bridge/QUEUE.md`
+
+### Выходные данные Stage 1
+
+**Что должно быть создано или изменено:**
+- source/tests/docs для `POST /v1/executions/grok/draft-pr`
+- feature branch + implementation commits + **draft PR** (не merge) как артефакты разработки
+
+**Формат результата:**
+Draft PR с unit/contract/negative/mock evidence; статус ожидания независимого review. Runtime live path и smoke — вне Stage 1.
+
+---
+
 ## Пример HANDOFF
 
 ```
