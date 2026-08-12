@@ -98,7 +98,7 @@ HANDOFF.md описывает стандартный формат передач
 
 ## HANDOFF: T-011 — Genesis Limited Grok Executor
 
-Статус: READY  
+Статус: REVIEW
 Исполнитель: Grok / Integration Engineer  
 Создано: 2026-08-11  
 CEO Execution Authorization: **GRANTED — Stage 1 CODE_AND_TESTS_ONLY** (2026-08-11)
@@ -110,7 +110,9 @@ CEO Execution Authorization: **GRANTED — Stage 1 CODE_AND_TESTS_ONLY** (2026-0
 - DR-0007 Accepted (2026-08-11, PR #27)
 - S-0001 Revision 3 Approved (документационная граница продолжения через S-0005)
 - Copilot Cloud Agent path недоступен на Free plan → выбран limited Grok/xAI executor через Broker
-- Genesis Broker уже поддерживает Issue create, Assign Copilot, context/read, PR/diff read; не имеет route для branch/commit/draft-PR
+- До Stage 1 Genesis Broker поддерживал Issue create, Assign Copilot, context/read, PR/diff read и не имел route для branch/commit/draft-PR
+- Stage 1 реализован в PR [#29](https://github.com/kubzik96/genesis-ai/pull/29), независимо проверен и отдельно разрешён CEO к Ready, Approve и squash merge
+- Проверенный HEAD PR #29: `348729a9cebe98476d00bc62c963aa4c0163efe4`; squash commit в `main`: `4c7677fcb0a84557888171c5c54cad8974e1e6be`
 
 **Зачем это нужно:**
 Убрать ручное копирование задания между окнами; реализовать один fail-closed composite endpoint, который позволит Grok формировать ограниченное изменение, а Broker — создавать отдельную ветку, один commit и draft PR под жёсткими server-side limits.
@@ -157,17 +159,17 @@ operation = create_branch_commit_draft_pr
 ### Критерии готовности Stage 1
 
 Задача Stage 1 считается готовой к независимому review, если:
-- [ ] Один endpoint реализован без generic proxy/merge route
-- [ ] Server-side enforce: repo, base SHA, branch prefix, max 1 file, MEMORY.md smoke scope, ≤3 lines, ≤2 KiB, UTF-8 only, draft PR only
-- [ ] Unit/contract/negative/mock tests зелёные
-- [ ] Partial failure → UNKNOWN, no auto-retry
-- [ ] Docs обновлены в `docs/genesis-broker/`
-- [ ] Отдельный draft PR открыт на feature branch
-- [ ] Grok не sole reviewer собственной реализации
+- [x] Один endpoint реализован без generic proxy/merge route
+- [x] Server-side enforce: repo, base SHA, branch prefix, max 1 file, MEMORY.md smoke scope, ≤3 lines, ≤2 KiB, UTF-8 only, draft PR only
+- [x] Unit/contract/negative/mock tests зелёные
+- [x] Partial failure → UNKNOWN, no auto-retry
+- [x] Docs обновлены в `docs/genesis-broker/`
+- [x] Отдельный draft PR открыт на feature branch
+- [x] Grok не sole reviewer собственной реализации
 
 Проверка:
-- [ ] Independent non-Grok review фактического diff draft PR
-- [ ] CEO Gate перед любым следующим stage
+- [x] Independent non-Grok review фактического diff draft PR — PASS на HEAD `348729a9cebe98476d00bc62c963aa4c0163efe4`
+- [ ] Отдельный CEO Gate перед любым следующим stage — Stage 2 и runtime пока не авторизованы
 
 ### Входные данные
 
@@ -185,7 +187,7 @@ operation = create_branch_commit_draft_pr
 - feature branch + implementation commits + **draft PR** (не merge) как артефакты разработки
 
 **Формат результата:**
-Draft PR с unit/contract/negative/mock evidence; статус ожидания независимого review. Runtime live path и smoke — вне Stage 1.
+Stage 1 завершил предусмотренный путь draft PR и independent review. PR #29 затем был переведён в Ready, APPROVED и объединён squash только по отдельным решениям CEO. T-011 остаётся **REVIEW**, не DONE. Runtime live path, deployment, secrets, Dify и smoke не выполнялись и не авторизованы.
 
 ---
 

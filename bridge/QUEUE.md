@@ -36,7 +36,7 @@ QUEUE.md содержит очередь всех активных и ожида
 |---|---|---|---|
 | T-009 | Genesis One-Window Execution Spike | REVIEW | Integration Engineer |
 | T-010 | Genesis Secure GitHub Broker MVP | REVIEW | Integration Engineer |
-| T-011 | Genesis Limited Grok Executor | READY | Grok / Integration Engineer |
+| T-011 | Genesis Limited Grok Executor | REVIEW | Grok / Integration Engineer |
 
 T-009: **REVIEW** (not DONE). Stage 4 = **PARTIAL PASS**.  
 SoR synchronization after Stage 4 выполняется по **Approved S-0004 Revision 1**.  
@@ -90,7 +90,7 @@ T-010 выполняется по Approved Specification S-0002 Revision 1. Stat
 
 #### T-011 — Genesis Limited Grok Executor
 
-- **Status:** **READY**
+- **Status:** **REVIEW** (not DONE)
 - **Исполнитель:** Grok / Integration Engineer
 - **Основание:** S-0005 Revision 1 **Approved** (2026-08-11); DR-0007 **Accepted** (2026-08-11)
 - **CEO Execution Authorization (2026-08-11):** **GRANTED — Stage 1 CODE_AND_TESTS_ONLY**
@@ -98,6 +98,14 @@ T-010 выполняется по Approved Specification S-0002 Revision 1. Stat
 - **Запрещено runtime на Stage 1:** новый Broker endpoint, xAI-модель и Dify **не** выполняют live GitHub writes
 - **Запрещено этим EA:** direct `main`, merge, auto-merge, deployment, Cloudflare changes, secrets operations, live xAI calls, live smoke
 - **Stage 1 ends at:** draft PR awaiting independent (non-Grok) review
+- **Stage 1 implementation PR:** [#29](https://github.com/kubzik96/genesis-ai/pull/29) — **MERGED** (squash) after independent non-Grok review and separate CEO Ready / Approve / Merge decisions
+- **Reviewed PR HEAD:** `348729a9cebe98476d00bc62c963aa4c0163efe4`
+- **Squash commit in `main`:** [`4c7677fcb0a84557888171c5c54cad8974e1e6be`](https://github.com/kubzik96/genesis-ai/commit/4c7677fcb0a84557888171c5c54cad8974e1e6be)
+- **Verification:** focused Grok endpoint tests 33/33; Durable Object tests 14/14; full Broker suite 128/128; expanded Git diff oracle 1,985 comparisons with zero undercounts or accepted oversize cases
+- **Independent review:** PASS on exact PR HEAD; formal GitHub review **APPROVED**
+- **CI:** `CI_NOT_CONFIGURED`
+- **Runtime status:** no deployment, Cloudflare change, Dify change, secrets operation, live xAI call, live GitHub write or smoke was performed
+- **Authorization boundary:** merge was a separate CEO decision after Stage 1 review; it does not grant Stage 2 or any runtime authorization
 - **HANDOFF:** see `bridge/HANDOFF.md` (T-011)
 
 Restrictions:
