@@ -434,10 +434,19 @@ export async function executeGrokDraftPrOperation({ github, xai, runId, baseSha,
     return { ok: false, status: mapped.status, githubStatus: branchRes.status, safeResult: mapped };
   }
 
+  const encodedContent = encodeUtf8ToBase64(change.newContent);
+  if (!encodedContent.ok) {
+    return {
+      ok: false,
+      status: encodedContent.status,
+      githubStatus: null,
+      safeResult: safeResult(encodedContent.error, encodedContent.message),
+    };
+  }
   const commitRes = await github.updateFile({
     path: change.path,
     message: `grok: ${runId}`,
-    contentBase64: encodeUtf8ToBase64(change.newContent).value,
+    contentBase64: encodedContent.value,
     branch,
     sha: sourceSha,
   });
