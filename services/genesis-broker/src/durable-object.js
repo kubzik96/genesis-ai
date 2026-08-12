@@ -1,282 +1,110 @@
 /**
- * Cloudflare Durable Object class (SQLite-backed via DO storage).
- * Authoritative idempotency + rate/run state for kubzik96/genesis-ai.
- * Workers KV is NOT used (S-0002).
- *
- * Result contract includes githubStatus + idempotencyState for S-0002 §4.8 audit.
- * CONFLICT returns the authoritative existing record state as idempotencyState.
+ * Durable Object — authoritative SQLite store for idempotency, run bounds, audit.
+ * Fail-closed on any storage error.
  */
-import { evaluateIdempotency, markFailed, markSucceeded, markUnknown, isDeterministicClientError } from './idempotency.js';
-import { checkHourlyWriteLimit, checkRunBounds, assertAssignIssueBelongsToRun } from './rate-limit.js';
-import { createGithubClient, mapGithubError } from './github-client.js';
-import { FIXED_FULL_NAME, IDEM_STATES } from './constants.js';
 
-export class BrokerDurableObject {
+import { OP_GROK_DRAFT_PR, RUN_BOUNDS } from './constants.js';
+
+export class GenesisStore {
   constructor(state, env) {
     this.state = state;
     this.env = env;
-    this._queue = Promise.resolve();
+    this.sql = state.storage.sql;
+    this.#initSchema();
   }
 
-  _withLock(fn) {
-    const run = this._queue.then(fn, fn);
-    this._queue = run.then(
-      () => undefined,
-      () => undefined,
-    );
-    return run;
+  #initSchema() {
+    this.sql.exec(`
+      CREATE TABLE IF NOT EXISTS idempotency (
+        request_hash TEXT PRIMARY KEY,
+        response_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS run_counts (
+        run_id TEXT NOT NULL,
+        operation TEXT NOT NULL,
+        count INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (run_id, operation)
+      );
+      CREATE TABLE IF NOT EXISTS audit_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts INTEGER NOT NULL,
+        event_type TEXT NOT NULL,
+        run_id TEXT,
+        payload_json TEXT NOT NULL
+      );
+    `);
   }
 
   async fetch(request) {
-    if (!this.state?.storage) {
-      return this._json({
-        status: 503,
-        body: { error: 'BLOCKED', message: 'DO storage unavailable; write blocked' },
-        githubCalled: false,
-        githubStatus: null,
-        idempotencyState: null,
-      });
-    }
+    const url = new URL(request.url);
+    const path = url.pathname;
 
-    const github = createGithubClient({ pat: this.env?.GITHUB_PAT, fetchImpl: this.env?._fetchImpl });
-    if (!github) {
-      return this._json({
-        status: 503,
-        body: { error: 'PAT_NOT_CONFIGURED', message: 'GITHUB_PAT not available in Durable Object' },
-        githubCalled: false,
-        githubStatus: null,
-        idempotencyState: null,
-      });
-    }
-
-    let payload;
     try {
-      payload = await request.json();
-    } catch {
-      return this._json({
-        status: 400,
-        body: { error: 'INVALID_REQUEST', message: 'Request body must be valid JSON' },
-        githubCalled: false,
-        githubStatus: null,
-        idempotencyState: null,
-      });
-    }
-    return this._withLock(() => this._processWrite(payload, github));
-  }
-
-  async _processWrite({ idempotencyKey, requestHash, operation, runId, gate, operationData }, github) {
-    const storage = this.state.storage;
-
-    const existing = (await storage.get(`idem:${idempotencyKey}`)) ?? null;
-    const decision = evaluateIdempotency(existing, requestHash);
-
-    if (decision.action === 'CONFLICT' || decision.action === 'BLOCKED' || decision.action === 'IN_FLIGHT') {
-      let idempotencyState = null;
-      if (decision.action === 'CONFLICT') {
-        idempotencyState = existing?.state ?? null;
-      } else if (decision.action === 'IN_FLIGHT') {
-        idempotencyState = IDEM_STATES.PENDING;
-      } else if (decision.action === 'BLOCKED' && decision.error === 'BLOCKED_RECONCILIATION_REQUIRED') {
-        idempotencyState = IDEM_STATES.UNKNOWN;
+      if (path === '/idempotency/get' && request.method === 'POST') {
+        const { requestHash } = await request.json();
+        const row = this.sql.exec(
+          'SELECT response_json FROM idempotency WHERE request_hash = ?',
+          requestHash
+        ).toArray()[0];
+        return Response.json({ hit: !!row, response: row ? JSON.parse(row.response_json) : null });
       }
-      return this._json({
-        status: decision.status,
-        body: { error: decision.error, message: decision.message },
-        githubCalled: false,
-        githubStatus: null,
-        idempotencyState,
-      });
-    }
-    if (decision.action === 'REPLAY') {
-      return this._json({
-        status: decision.state === IDEM_STATES.FAILED ? decision.result?.status || 400 : 200,
-        body: decision.result,
-        githubCalled: false,
-        githubStatus: null,
-        idempotencyState: decision.state,
-        replay: true,
-      });
-    }
 
-    const timestamps = (await storage.get('rate:timestamps')) ?? [];
-    const rate = checkHourlyWriteLimit(timestamps);
-    if (!rate.ok) {
-      return this._json({
-        status: rate.status,
-        body: { error: rate.error, message: rate.message },
-        githubCalled: false,
-        githubStatus: null,
-        idempotencyState: null,
-      });
-    }
-
-    const runState = (await storage.get(`run:${runId}`)) ?? {
-      create_issue: false,
-      assign_copilot: false,
-      created_issue_number: null,
-    };
-    const bounds = checkRunBounds(runState, operation);
-    if (!bounds.ok) {
-      return this._json({
-        status: bounds.status,
-        body: { error: bounds.error, message: bounds.message },
-        githubCalled: false,
-        githubStatus: null,
-        idempotencyState: null,
-      });
-    }
-
-    if (operation === 'assign_copilot') {
-      const belong = assertAssignIssueBelongsToRun(runState, operationData?.issueNumber);
-      if (!belong.ok) {
-        return this._json({
-          status: belong.status,
-          body: { error: belong.error, message: belong.message },
-          githubCalled: false,
-          githubStatus: null,
-          idempotencyState: null,
-        });
+      if (path === '/idempotency/put' && request.method === 'POST') {
+        const { requestHash, response } = await request.json();
+        this.sql.exec(
+          'INSERT OR REPLACE INTO idempotency (request_hash, response_json, created_at) VALUES (?, ?, ?)',
+          requestHash,
+          JSON.stringify(response),
+          Date.now()
+        );
+        return Response.json({ ok: true });
       }
-    }
 
-    const pending = {
-      idempotency_key: idempotencyKey,
-      request_hash: requestHash,
-      operation,
-      run_id: runId,
-      gate,
-      state: IDEM_STATES.PENDING,
-      safe_result: null,
-    };
-    await storage.put(`idem:${idempotencyKey}`, pending);
-
-    const githubCall = buildGithubCall(operation, operationData, github);
-    let result;
-    try {
-      result = await githubCall();
-    } catch {
-      const safe = {
-        error: 'BLOCKED_RECONCILIATION_REQUIRED',
-        message: 'GitHub call timed out or returned indeterminate result; auto-retry forbidden',
-      };
-      await storage.put(`idem:${idempotencyKey}`, markUnknown(pending, safe));
-      return this._json({
-        status: 409,
-        body: safe,
-        githubCalled: true,
-        githubStatus: null,
-        idempotencyState: IDEM_STATES.UNKNOWN,
-        unknown: true,
-      });
-    }
-
-    if (result.ok) {
-      const succeededRecord = markSucceeded(pending, result.safeResult);
-      const batchEntries = [
-        [`idem:${idempotencyKey}`, succeededRecord],
-        ['rate:timestamps', rate.nextTimestamps],
-      ];
-      if (operation === 'create_issue') {
-        batchEntries.push([`run:${runId}`, {
-          ...runState,
-          create_issue: true,
-          created_issue_number: result.safeResult?.issue_number ?? result.safeResult?.number ?? null,
-        }]);
-      } else if (operation === 'assign_copilot') {
-        batchEntries.push([`run:${runId}`, { ...runState, assign_copilot: true }]);
+      if (path === '/run-bounds/check' && request.method === 'POST') {
+        const { runId, operation } = await request.json();
+        const max = RUN_BOUNDS[operation]?.maxPerRun ?? 0;
+        const row = this.sql.exec(
+          'SELECT count FROM run_counts WHERE run_id = ? AND operation = ?',
+          runId,
+          operation
+        ).toArray()[0];
+        const count = row ? row.count : 0;
+        return Response.json({ allowed: count < max, count, max });
       }
-      await storage.put(Object.fromEntries(batchEntries));
-      return this._json({
-        status: 200,
-        body: result.safeResult,
-        githubCalled: true,
-        githubStatus: result.githubStatus ?? result.status ?? null,
-        idempotencyState: IDEM_STATES.SUCCEEDED,
-      });
-    }
 
-    if (isDeterministicClientError(result.status)) {
-      await storage.put(`idem:${idempotencyKey}`, markFailed(pending, result.safeResult));
-      return this._json({
-        status: result.status,
-        body: result.safeResult,
-        githubCalled: true,
-        githubStatus: result.githubStatus ?? result.status ?? null,
-        idempotencyState: IDEM_STATES.FAILED,
-      });
-    }
-
-    const safe = {
-      error: 'BLOCKED_RECONCILIATION_REQUIRED',
-      message: `GitHub upstream error — indeterminate result (status ${result.status}); auto-retry forbidden`,
-    };
-    await storage.put(`idem:${idempotencyKey}`, markUnknown(pending, safe));
-    return this._json({
-      status: 409,
-      body: safe,
-      githubCalled: true,
-      githubStatus: result.githubStatus ?? result.status ?? null,
-      idempotencyState: IDEM_STATES.UNKNOWN,
-      unknown: true,
-    });
-  }
-
-  _json(data) {
-    return new Response(JSON.stringify(data), {
-      headers: { 'content-type': 'application/json' },
-    });
-  }
-}
-
-function buildGithubCall(operation, operationData, github) {
-  if (operation === 'create_issue') {
-    return async () => {
-      const res = await github.createIssue({
-        title: operationData?.title,
-        body: operationData?.body,
-        labels: operationData?.labels,
-      });
-      if (!res.ok) {
-        const mapped = mapGithubError(res.status, res.data);
-        return { ok: false, status: mapped.status, githubStatus: res.status, safeResult: mapped };
+      if (path === '/run-bounds/increment' && request.method === 'POST') {
+        const { runId, operation } = await request.json();
+        this.sql.exec(
+          `INSERT INTO run_counts (run_id, operation, count) VALUES (?, ?, 1)
+           ON CONFLICT(run_id, operation) DO UPDATE SET count = count + 1`,
+          runId,
+          operation
+        );
+        return Response.json({ ok: true });
       }
-      return {
-        ok: true,
-        status: 200,
-        githubStatus: res.status,
-        safeResult: {
-          issue_number: res.data.number,
-          number: res.data.number,
-          html_url: res.data.html_url,
-          title: res.data.title,
-          repository: FIXED_FULL_NAME,
-        },
-      };
-    };
-  }
-  if (operation === 'assign_copilot') {
-    return async () => {
-      const res = await github.assignCopilot(operationData?.issueNumber);
-      if (!res.ok) {
-        const mapped = mapGithubError(res.status, res.data);
-        return { ok: false, status: mapped.status, githubStatus: res.status, safeResult: mapped };
+
+      if (path === '/audit' && request.method === 'POST') {
+        const { eventType, runId, payload } = await request.json();
+        // Never store secrets
+        const safe = { ...payload };
+        delete safe.token;
+        delete safe.pat;
+        delete safe.apiKey;
+        delete safe.authorization;
+        this.sql.exec(
+          'INSERT INTO audit_events (ts, event_type, run_id, payload_json) VALUES (?, ?, ?, ?)',
+          Date.now(),
+          eventType,
+          runId || null,
+          JSON.stringify(safe)
+        );
+        return Response.json({ ok: true });
       }
-      return {
-        ok: true,
-        status: 200,
-        githubStatus: res.status,
-        safeResult: {
-          issue_number: operationData?.issueNumber,
-          assigned: (res.data?.assignees || []).map((a) => a.login),
-          repository: FIXED_FULL_NAME,
-        },
-      };
-    };
+
+      return new Response('Not found', { status: 404 });
+    } catch (err) {
+      return Response.json({ error: 'store_error', message: String(err?.message || err) }, { status: 500 });
+    }
   }
-  return async () => ({
-    ok: false,
-    status: 400,
-    githubStatus: null,
-    safeResult: { error: 'UNKNOWN_OPERATION', message: `Unknown operation: ${operation}` },
-  });
 }

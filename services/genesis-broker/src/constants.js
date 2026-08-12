@@ -40,6 +40,7 @@ export const CONTEXT_ALLOWLIST = Object.freeze([
 export const GATES = Object.freeze({
   CREATE_ISSUE: 'G1',
   ASSIGN_COPILOT: 'G2',
+  GROK_DRAFT_PR: 'G_GROK_DRAFT_PR',
 });
 
 export const IDEM_STATES = Object.freeze({
@@ -48,3 +49,16 @@ export const IDEM_STATES = Object.freeze({
   FAILED: 'FAILED',
   UNKNOWN: 'UNKNOWN',
 });
+
+/** Operation identifiers (internal). */
+export const OP_CREATE_ISSUE = 'create_issue';
+export const OP_ASSIGN_COPILOT = 'assign_copilot';
+export const OP_GROK_DRAFT_PR = 'create_branch_commit_draft_pr';
+
+/** Grok hard limits (T-011 Stage 1 / S-0005). */
+export const GROK_MAX_FILES = 1;
+export const GROK_ALLOWED_FILE = 'MEMORY.md';
+export const GROK_MAX_LINES = 3;
+export const GROK_MAX_DIFF_BYTES = 2048; // 2 KiB
+export const GROK_DRAFT_ONLY = true;
+export const GROK_BRANCH_PREFIX = 'genesis/grok/';

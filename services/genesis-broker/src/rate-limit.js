@@ -20,10 +20,18 @@ export function checkHourlyWriteLimit(writeTimestamps, now = Date.now()) {
 }
 
 /**
- * Per-run_id bounds: at most one successful create_issue and one successful assign_copilot.
+ * Per-run_id bounds:
+ * - at most one successful create_issue
+ * - at most one successful assign_copilot
+ * - at most one successful create_branch_commit_draft_pr (Grok)
  */
 export function checkRunBounds(runState, operation) {
-  const state = runState || { create_issue: false, assign_copilot: false, created_issue_number: null };
+  const state = runState || {
+    create_issue: false,
+    assign_copilot: false,
+    create_branch_commit_draft_pr: false,
+    created_issue_number: null,
+  };
   if (operation === 'create_issue' && state.create_issue) {
     return {
       ok: false,
@@ -38,6 +46,14 @@ export function checkRunBounds(runState, operation) {
       status: 429,
       error: 'RATE_LIMITED',
       message: 'Only one successful assign-copilot per run_id',
+    };
+  }
+  if (operation === 'create_branch_commit_draft_pr' && state.create_branch_commit_draft_pr) {
+    return {
+      ok: false,
+      status: 429,
+      error: 'RATE_LIMITED',
+      message: 'Only one successful Grok draft-PR per run_id',
     };
   }
   return { ok: true, state };

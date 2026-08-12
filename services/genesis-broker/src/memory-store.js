@@ -59,7 +59,6 @@ export class MemoryBrokerStore {
       if (decision.action === 'CONFLICT' || decision.action === 'BLOCKED' || decision.action === 'IN_FLIGHT') {
         let idempotencyState = null;
         if (decision.action === 'CONFLICT') {
-          // Authoritative existing record state (e.g. SUCCEEDED + different hash → 409, state SUCCEEDED).
           idempotencyState = existing?.state ?? null;
         } else if (decision.action === 'IN_FLIGHT') {
           idempotencyState = IDEM_STATES.PENDING;
@@ -99,6 +98,7 @@ export class MemoryBrokerStore {
       const runState = this.getRun(runId) || {
         create_issue: false,
         assign_copilot: false,
+        create_branch_commit_draft_pr: false,
         created_issue_number: null,
       };
       const bounds = checkRunBounds(runState, operation);
@@ -165,6 +165,8 @@ export class MemoryBrokerStore {
           });
         } else if (operation === 'assign_copilot') {
           this.setRun(runId, { ...runState, assign_copilot: true });
+        } else if (operation === 'create_branch_commit_draft_pr') {
+          this.setRun(runId, { ...runState, create_branch_commit_draft_pr: true });
         }
         this.setIdem(idempotencyKey, markSucceeded(pending, result.safeResult));
         return {
@@ -202,4 +204,12 @@ export class MemoryBrokerStore {
       };
     });
   }
+}
+
+export function createInMemoryStore() {
+  return new MemoryBrokerStore();
+}
+
+export function createMemoryStore() {
+  return new MemoryBrokerStore();
 }

@@ -1,4 +1,4 @@
-import { CONTEXT_ALLOWLIST, FIXED_FULL_NAME, FIXED_OWNER, FIXED_REPO, GITHUB_API_HOST } from './constants.js';
+import { CONTEXT_ALLOWLIST, FIXED_FULL_NAME, FIXED_OWNER, FIXED_REPO, GITHUB_API_HOST, GROK_ALLOWED_FILE } from './constants.js';
 
 export function isAllowedContextPath(path) {
   if (typeof path !== 'string') return false;
@@ -20,6 +20,13 @@ export function assertGithubHost(hostname) {
   return { ok: true };
 }
 
+/** Allowed file for Grok draft-PR (hard limit — only MEMORY.md). */
+export function isAllowedGrokFile(path) {
+  if (typeof path !== 'string') return false;
+  const normalized = path.replace(/^\.\//, '').replace(/\\/g, '/').replace(/^\/+/, '');
+  return normalized === GROK_ALLOWED_FILE;
+}
+
 /** Reject unknown routes early — no generic proxy. */
 export const ALLOWED_ROUTES = Object.freeze([
   { method: 'GET', pattern: /^\/v1\/health$/ },
@@ -29,6 +36,7 @@ export const ALLOWED_ROUTES = Object.freeze([
   { method: 'GET', pattern: /^\/v1\/issues\/\d+\/status$/ },
   { method: 'GET', pattern: /^\/v1\/pulls\/\d+$/ },
   { method: 'GET', pattern: /^\/v1\/pulls\/\d+\/diff$/ },
+  { method: 'POST', pattern: /^\/v1\/executions\/grok\/draft-pr$/ },
 ]);
 
 export function matchRoute(method, pathname) {

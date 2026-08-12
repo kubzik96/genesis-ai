@@ -9,12 +9,12 @@ export function createGithubClient({ pat, fetchImpl = fetch }) {
     return null;
   }
 
-  async function gh(method, path, body) {
+  async function gh(method, path, body, accept) {
     const url = `https://${GITHUB_API_HOST}${path}`;
     const res = await fetchImpl(url, {
       method,
       headers: {
-        Accept: 'application/vnd.github+json',
+        Accept: accept || 'application/vnd.github+json',
         Authorization: `Bearer ${pat}`,
         'X-GitHub-Api-Version': '2022-11-28',
         'User-Agent': 'genesis-broker-mvp',
@@ -33,12 +33,12 @@ export function createGithubClient({ pat, fetchImpl = fetch }) {
   }
 
   return {
-    async getContent(path) {
+    async getContent(path, ref = FIXED_BASE_BRANCH) {
       const encoded = path
         .split('/')
         .map(encodeURIComponent)
         .join('/');
-      return gh('GET', `/repos/${FIXED_OWNER}/${FIXED_REPO}/contents/${encoded}?ref=${FIXED_BASE_BRANCH}`);
+      return gh('GET', `/repos/${FIXED_OWNER}/${FIXED_REPO}/contents/${encoded}?ref=${encodeURIComponent(ref)}`);
     },
 
     async createIssue({ title, body, labels }) {
@@ -49,10 +49,6 @@ export function createGithubClient({ pat, fetchImpl = fetch }) {
       });
     },
 
-    /**
-     * Path B2: Issue Assignment API — assign Copilot bot with agent_assignment (single call).
-     * Repository and base branch are fixed constants; clients cannot override (S-0002 §4.3).
-     */
     async assignCopilot(issueNumber) {
       return gh(
         'POST',
@@ -74,10 +70,6 @@ export function createGithubClient({ pat, fetchImpl = fetch }) {
       return gh('GET', `/repos/${FIXED_OWNER}/${FIXED_REPO}/issues/${issueNumber}`);
     },
 
-    /**
-     * Read-only Issue timeline for structured PR discovery (cross-referenced events).
-     * per_page=100. Caller must fail-closed if incompletePages is true and it cannot continue.
-     */
     async getIssueTimeline(issueNumber, { page = 1, perPage = 100 } = {}) {
       const q = `per_page=${perPage}&page=${page}`;
       return gh(
@@ -112,10 +104,58 @@ export function createGithubClient({ pat, fetchImpl = fetch }) {
     async getCombinedStatus(ref) {
       return gh('GET', `/repos/${FIXED_OWNER}/${FIXED_REPO}/commits/${encodeURIComponent(ref)}/status`);
     },
+
+    async getRef(ref) {
+      const encoded = encodeURIComponent(ref.startsWith('refs/') ? ref : `heads/${ref}`);
+      return gh('GET', `/repos/${FIXED_OWNER}/${FIXED_REPO}/git/ref/${encoded}`);
+    },
+
+    async getCommit(sha) {
+      return gh('GET', `/repos/${FIXED_OWNER}/${FIXED_REPO}/git/commits/${encodeURIComponent(sha)}`);
+    },
+
+    async createBlob(content, encoding = 'utf-8') {
+      return gh('POST', `/repos/${FIXED_OWNER}/${FIXED_REPO}/git/blobs`, {
+        content,
+        encoding,
+      });
+    },
+
+    async createTree(baseTreeSha, tree) {
+      return gh('POST', `/repos/${FIXED_OWNER}/${FIXED_REPO}/git/trees`, {
+        base_tree: baseTreeSha,
+        tree,
+      });
+    },
+
+    async createCommit({ message, tree, parents }) {
+      return gh('POST', `/repos/${FIXED_OWNER}/${FIXED_REPO}/git/commits`, {
+        message,
+        tree,
+        parents: parents || [],
+      });
+    },
+
+    async createRef(ref, sha) {
+      const fullRef = ref.startsWith('refs/') ? ref : `refs/heads/${ref}`;
+      return gh('POST', `/repos/${FIXED_OWNER}/${FIXED_REPO}/git/refs`, {
+        ref: fullRef,
+        sha,
+      });
+    },
+
+    async createPull({ title, head, base, body, draft }) {
+      return gh('POST', `/repos/${FIXED_OWNER}/${FIXED_REPO}/pulls`, {
+        title,
+        head,
+        base,
+        body: body || '',
+        draft: draft === true,
+      });
+    },
   };
 }
 
-/** Map GitHub HTTP status to safe client error without leaking headers/tokens. */
 export function mapGithubError(status, data) {
   const message =
     (data && (data.message || data.error)) ||
@@ -135,11 +175,6 @@ export function mapGithubError(status, data) {
   };
 }
 
-/**
- * Parse GitHub Link header for rel="next".
- * @param {Headers | { get?: Function } | null | undefined} headers
- * @returns {string | null}
- */
 export function parseLinkNext(headers) {
   if (!headers || typeof headers.get !== 'function') return null;
   const link = headers.get('link') || headers.get('Link');
