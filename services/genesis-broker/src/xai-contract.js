@@ -62,6 +62,9 @@ export const GROK_EXECUTOR_REVIEWED_CONFIG = Object.freeze({
   tools: false,
   monthly_limit_ticks: XAI_BUDGET_MONTHLY_LIMIT_TICKS,
   reservation_ticks: XAI_BUDGET_RESERVATION_TICKS,
+  reconciliation_key: 'budget:xai:reconciliation',
+  runtime_version_metadata_binding: 'CF_VERSION_METADATA',
+  runtime_version_tag: 'exact reviewed Git commit SHA',
   branch_prefix: GROK_DRAFT_PR_LIMITS.BRANCH_PREFIX,
   max_files: GROK_DRAFT_PR_LIMITS.MAX_FILES,
   allowed_file: GROK_DRAFT_PR_LIMITS.ALLOWED_FILE,
@@ -69,4 +72,4 @@ export const GROK_EXECUTOR_REVIEWED_CONFIG = Object.freeze({
   max_unified_diff_bytes: GROK_DRAFT_PR_LIMITS.MAX_UNIFIED_DIFF_BYTES,
 });
 
-export const GROK_EXECUTOR_CONFIG_SHA256 = '79983dde943300a6a4df31db2fe77cc8ca4ee89481c6ef24f4b4d68d81d6e21c';
+export const GROK_EXECUTOR_CONFIG_SHA256 = '613ad98634fae6824e135bf0fa845d60ab62e87191887bfe908d6a3bc5bb30da';

@@ -33,12 +33,28 @@ describe('xAI budget ledger', () => {
 
   it('blocks over ceiling and reconciliation states', () => {
     const nearLimit = XAI_BUDGET_MONTHLY_LIMIT_TICKS - XAI_BUDGET_RESERVATION_TICKS + 1;
-    assert.equal(reserveBudget({ spent_ticks: nearLimit }).error, 'XAI_BUDGET_EXCEEDED');
+    assert.equal(reserveBudget({ spent_ticks: nearLimit, blocked: false }).error, 'XAI_BUDGET_EXCEEDED');
     assert.equal(reserveBudget({ spent_ticks: 0, blocked: true }).error, 'XAI_BUDGET_RECONCILIATION_REQUIRED');
+    assert.equal(reserveBudget(undefined, { blocked: true }).error, 'XAI_BUDGET_RECONCILIATION_REQUIRED');
+  });
+
+  it('fails closed for malformed persisted ledgers and reconciliation records', () => {
+    for (const malformed of [
+      { spent_ticks: '50000000000', blocked: false },
+      { spent_ticks: -1, blocked: false },
+      { spent_ticks: Number.MAX_SAFE_INTEGER + 1, blocked: false },
+      { spent_ticks: 0, blocked: 'false' },
+      [],
+      'invalid',
+    ]) {
+      assert.equal(reserveBudget(malformed).error, 'XAI_BUDGET_RECONCILIATION_REQUIRED');
+    }
+    assert.equal(reserveBudget(undefined, {}).error, 'XAI_BUDGET_RECONCILIATION_REQUIRED');
+    assert.equal(reserveBudget(undefined, { blocked: 'false' }).error, 'XAI_BUDGET_RECONCILIATION_REQUIRED');
   });
 
   it('keeps the full reservation and blocks on invalid cost, and records over-reservation cost', () => {
-    const reserved = reserveBudget({ spent_ticks: 0 }).value;
+    const reserved = reserveBudget({ spent_ticks: 0, blocked: false }).value;
     assert.deepEqual(settleBudget(reserved, undefined), {
       value: { spent_ticks: XAI_BUDGET_RESERVATION_TICKS, blocked: true },
       valid: false,
@@ -51,7 +67,7 @@ describe('xAI budget ledger', () => {
   });
 
   it('releases a reservation only when the operation failed before xAI was called', () => {
-    const reserved = reserveBudget({ spent_ticks: 50 }).value;
+    const reserved = reserveBudget({ spent_ticks: 50, blocked: false }).value;
     assert.deepEqual(releaseUnusedReservation(reserved), { spent_ticks: 50, blocked: false });
   });
 });

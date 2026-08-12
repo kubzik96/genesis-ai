@@ -5,6 +5,7 @@ import {
 } from './xai-contract.js';
 
 const SHA_40 = /^[a-f0-9]{40}$/i;
+const VERSION_UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 const MAX_REVIEWED_SHAS = 20;
 
 function disabled(reason) {
@@ -29,8 +30,11 @@ export function evaluateExecutorActivation(env, { storageAvailable = false, requ
   if (requireDoBinding && !env?.BROKER_DO) return disabled('DURABLE_OBJECT_MISSING');
   if (!requireDoBinding && !storageAvailable) return disabled('BUDGET_LEDGER_MISSING');
 
-  const deployedSha = String(env?.GENESIS_DEPLOYED_SHA || '').toLowerCase();
-  if (!SHA_40.test(deployedSha)) return disabled('DEPLOYED_SHA_INVALID');
+  const versionMetadata = env?.CF_VERSION_METADATA;
+  if (!versionMetadata || typeof versionMetadata !== 'object') return disabled('VERSION_METADATA_MISSING');
+  const versionId = String(versionMetadata.id || '').toLowerCase();
+  const deployedSha = String(versionMetadata.tag || '').toLowerCase();
+  if (!VERSION_UUID.test(versionId) || !SHA_40.test(deployedSha)) return disabled('VERSION_METADATA_INVALID');
   const approved = reviewedShas(env?.GROK_EXECUTOR_REVIEWED_SHAS);
   if (!approved.includes(deployedSha)) return disabled('DEPLOYED_SHA_NOT_REVIEWED');
 
@@ -38,7 +42,7 @@ export function evaluateExecutorActivation(env, { storageAvailable = false, requ
   if (env?.GROK_EXECUTOR_SCHEMA_SHA256 !== XAI_RESPONSE_SCHEMA_SHA256) return disabled('SCHEMA_MISMATCH');
   if (env?.GROK_EXECUTOR_CONFIG_SHA256 !== GROK_EXECUTOR_CONFIG_SHA256) return disabled('CONFIG_MISMATCH');
 
-  return { ok: true, deployedSha };
+  return { ok: true, deployedSha, versionId };
 }
 
 export function isStage1TestAdapter(github, xai) {

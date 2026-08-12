@@ -45,7 +45,7 @@ npm test
 
 **Absent:** merge, push, delete, generic proxy, other repos.
 
-`/v1/executions/grok/draft-pr` supports Stage 1 test adapters and the Stage 2 production adapter. The production path activates only when every reviewed SHA/model/schema/config/secret/DO condition matches. Otherwise it returns `503 EXECUTOR_DISABLED` before xAI or GitHub calls.
+`/v1/executions/grok/draft-pr` supports Stage 1 test adapters and the Stage 2 production adapter. The production path activates only when the immutable Cloudflare version metadata tag and every reviewed SHA/model/schema/config/secret/DO condition match. Otherwise it returns `503 EXECUTOR_DISABLED` before xAI or GitHub calls.
 
 The production contract and future activation preflight are documented in [grok-production-adapter.md](grok-production-adapter.md).
 

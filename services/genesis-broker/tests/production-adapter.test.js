@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { BrokerDurableObject } from '../src/durable-object.js';
-import { budgetLedgerKey } from '../src/budget-ledger.js';
+import { budgetLedgerKey, XAI_BUDGET_RECONCILIATION_KEY } from '../src/budget-ledger.js';
 import { createGithubClient } from '../src/github-client.js';
 import {
   GROK_EXECUTOR_CONFIG_SHA256,
@@ -29,6 +29,7 @@ const BASE_SHA = 'a'.repeat(40);
 const BLOB_SHA = 'b'.repeat(40);
 const COMMIT_SHA = 'c'.repeat(40);
 const DEPLOYED_SHA = 'd'.repeat(40);
+const VERSION_ID = '123e4567-e89b-42d3-a456-426614174000';
 const NOW = '2026-08-12T12:00:00.000Z';
 
 function productionEnv({ github, xaiFetch, overrides = {} }) {
@@ -37,8 +38,12 @@ function productionEnv({ github, xaiFetch, overrides = {} }) {
     XAI_API_KEY: 'xai-test',
     BROKER_SERVICE_TOKEN: 'broker-test',
     GROK_EXECUTOR_LIVE_ENABLED: 'true',
-    GENESIS_DEPLOYED_SHA: DEPLOYED_SHA,
     GROK_EXECUTOR_REVIEWED_SHAS: DEPLOYED_SHA,
+    CF_VERSION_METADATA: {
+      id: VERSION_ID,
+      tag: DEPLOYED_SHA,
+      timestamp: NOW,
+    },
     GROK_EXECUTOR_MODEL: XAI_MODEL,
     GROK_EXECUTOR_SCHEMA_SHA256: XAI_RESPONSE_SCHEMA_SHA256,
     GROK_EXECUTOR_CONFIG_SHA256,
@@ -203,12 +208,37 @@ describe('Stage 2 production adapter through Durable Object', () => {
         spent_ticks: testCase.expectedSpent,
         blocked: true,
       });
+      assert.deepEqual(await storage.get(XAI_BUDGET_RECONCILIATION_KEY), { blocked: true });
       const second = await invoke(storage, env, payload({ key: `key-${testCase.name}-2`, runId: 'run-prod-2' }));
       assert.equal(second.status, 503);
       assert.equal(second.body.error, 'XAI_BUDGET_RECONCILIATION_REQUIRED');
       assert.equal(xaiCalls, 1);
+
+      env._now = '2026-09-01T00:00:01.000Z';
+      const afterRollover = await invoke(storage, env, payload({ key: `key-${testCase.name}-3`, runId: 'run-prod-3' }));
+      assert.equal(afterRollover.status, 503);
+      assert.equal(afterRollover.body.error, 'XAI_BUDGET_RECONCILIATION_REQUIRED');
+      assert.equal(xaiCalls, 1);
     });
   }
+
+  it('malformed persisted monthly ledger blocks before xAI and GitHub writes', async () => {
+    const key = budgetLedgerKey(new Date(NOW));
+    const storage = new MockStorage({
+      [key]: { spent_ticks: String(XAI_BUDGET_MONTHLY_LIMIT_TICKS), blocked: false },
+    });
+    const github = githubMock();
+    let xaiCalls = 0;
+    const result = await invoke(storage, productionEnv({
+      github,
+      xaiFetch: async () => { xaiCalls += 1; return xaiResponse(); },
+    }), payload({ key: 'key-malformed-ledger', runId: 'run-malformed-ledger' }));
+    assert.equal(result.status, 503);
+    assert.equal(result.body.error, 'XAI_BUDGET_RECONCILIATION_REQUIRED');
+    assert.equal(xaiCalls, 0);
+    assert.equal(writeCalls(github), 0);
+    assert.deepEqual(await storage.get(XAI_BUDGET_RECONCILIATION_KEY), { blocked: true });
+  });
 
   it('monthly ceiling blocks before xAI and GitHub writes', async () => {
     const key = budgetLedgerKey(new Date(NOW));

@@ -11,19 +11,48 @@ export function budgetLedgerKey(date = new Date()) {
   return `budget:xai:${utcBudgetMonth(date)}`;
 }
 
+export const XAI_BUDGET_RECONCILIATION_KEY = 'budget:xai:reconciliation';
+
+function isRecord(value) {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
 export function normalizeBudgetLedger(value) {
-  const spent = value?.spent_ticks;
+  if (value === undefined || value === null) {
+    return { ok: true, value: { spent_ticks: 0, blocked: false } };
+  }
+  if (
+    !isRecord(value) ||
+    !Number.isSafeInteger(value.spent_ticks) ||
+    value.spent_ticks < 0 ||
+    typeof value.blocked !== 'boolean'
+  ) {
+    return {
+      ok: false,
+      value: { spent_ticks: XAI_BUDGET_MONTHLY_LIMIT_TICKS, blocked: true },
+    };
+  }
   return {
-    spent_ticks: Number.isSafeInteger(spent) && spent >= 0 ? spent : 0,
-    blocked: value?.blocked === true,
+    ok: true,
+    value: { spent_ticks: value.spent_ticks, blocked: value.blocked },
   };
 }
 
-export function reserveBudget(value) {
-  const ledger = normalizeBudgetLedger(value);
-  if (ledger.blocked) {
+export function normalizeBudgetReconciliation(value) {
+  if (value === undefined || value === null) return { ok: true, value: { blocked: false } };
+  if (!isRecord(value) || typeof value.blocked !== 'boolean') {
+    return { ok: false, value: { blocked: true } };
+  }
+  return { ok: true, value: { blocked: value.blocked } };
+}
+
+export function reserveBudget(value, reconciliationValue) {
+  const reconciliation = normalizeBudgetReconciliation(reconciliationValue);
+  const normalized = normalizeBudgetLedger(value);
+  if (!reconciliation.ok || reconciliation.value.blocked || !normalized.ok || normalized.value.blocked) {
     return { ok: false, status: 503, error: 'XAI_BUDGET_RECONCILIATION_REQUIRED' };
   }
+  const ledger = normalized.value;
   if (ledger.spent_ticks + XAI_BUDGET_RESERVATION_TICKS > XAI_BUDGET_MONTHLY_LIMIT_TICKS) {
     return { ok: false, status: 429, error: 'XAI_BUDGET_EXCEEDED' };
   }
@@ -37,7 +66,9 @@ export function reserveBudget(value) {
 }
 
 export function releaseUnusedReservation(value) {
-  const ledger = normalizeBudgetLedger(value);
+  const normalized = normalizeBudgetLedger(value);
+  if (!normalized.ok) return normalized.value;
+  const ledger = normalized.value;
   return {
     spent_ticks: Math.max(0, ledger.spent_ticks - XAI_BUDGET_RESERVATION_TICKS),
     blocked: ledger.blocked,
@@ -45,7 +76,11 @@ export function releaseUnusedReservation(value) {
 }
 
 export function settleBudget(value, costTicks) {
-  const ledger = normalizeBudgetLedger(value);
+  const normalized = normalizeBudgetLedger(value);
+  if (!normalized.ok) {
+    return { value: normalized.value, valid: false, overReservation: false };
+  }
+  const ledger = normalized.value;
   if (!Number.isSafeInteger(costTicks) || costTicks < 0) {
     return { value: { ...ledger, blocked: true }, valid: false, overReservation: false };
   }

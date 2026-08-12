@@ -31,14 +31,14 @@ Chat Completions is currently documented by xAI as legacy. This implementation m
 The endpoint returns `503 EXECUTOR_DISABLED` before xAI/GitHub calls unless all conditions match:
 
 1. `GROK_EXECUTOR_LIVE_ENABLED` is exactly `true` under a later authorization;
-2. `GENESIS_DEPLOYED_SHA` is a 40-character SHA listed exactly in `GROK_EXECUTOR_REVIEWED_SHAS`;
+2. Cloudflare `CF_VERSION_METADATA` is present, has a valid immutable version ID, and its version tag is the exact reviewed 40-character Git SHA listed in `GROK_EXECUTOR_REVIEWED_SHAS`;
 3. `GROK_EXECUTOR_MODEL=grok-4.3`;
 4. `GROK_EXECUTOR_SCHEMA_SHA256=7d491c8bc6cced3742e1b04567cc158bbff8b771db4de44ae96e014f7c3758be`;
-5. `GROK_EXECUTOR_CONFIG_SHA256=79983dde943300a6a4df31db2fe77cc8ca4ee89481c6ef24f4b4d68d81d6e21c`;
+5. `GROK_EXECUTOR_CONFIG_SHA256=613ad98634fae6824e135bf0fa845d60ab62e87191887bfe908d6a3bc5bb30da`;
 6. `XAI_API_KEY`, `GITHUB_PAT`, and `BROKER_SERVICE_TOKEN` are present only as Worker Secrets;
 7. the fixed Durable Object storage and budget ledger are available and not reconciliation-blocked.
 
-The checked-in Wrangler value is `GROK_EXECUTOR_LIVE_ENABLED=false`. This Stage 2 PR does not set any other activation binding.
+The checked-in Wrangler value is `GROK_EXECUTOR_LIVE_ENABLED=false`. Wrangler declares the non-secret `CF_VERSION_METADATA` binding so the running version ID/tag, rather than a caller-supplied SHA string, is checked. A later separately authorized upload must use `wrangler versions upload --tag <exact-reviewed-git-sha>`; this PR does not upload or deploy anything.
 
 ## Budget ledger
 
@@ -49,6 +49,8 @@ The checked-in Wrangler value is `GROK_EXECUTOR_LIVE_ENABLED=false`. This Stage 
 - missing, negative, non-integer, or over-reservation cost blocks the live path before GitHub write;
 - missing/invalid cost keeps the full reservation charged;
 - over-reservation cost records the actual amount and blocks reconciliation;
+- reconciliation block is stored under the non-monthly `budget:xai:reconciliation` key and survives UTC month rollover until a separately authorized reconciliation clears it;
+- malformed persisted monthly or reconciliation state fails closed and cannot normalize to zero spend;
 - a failure before the network call releases the reservation;
 - a crash after reservation can safely leave the full reservation charged.
 
