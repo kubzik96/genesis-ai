@@ -39,7 +39,7 @@ export class BrokerDurableObject {
       });
     }
 
-    const github = createGithubClient({ pat: this.env?.GITHUB_PAT, fetchImpl: this.env?._fetchImpl });
+    const github = this.env?._github || createGithubClient({ pat: this.env?.GITHUB_PAT, fetchImpl: this.env?._fetchImpl });
     if (!github) {
       return this._json({
         status: 503,
@@ -115,6 +115,7 @@ export class BrokerDurableObject {
       create_issue: false,
       assign_copilot: false,
       create_branch_commit_draft_pr: false,
+      create_branch_commit_draft_pr_blocked: false,
       created_issue_number: null,
     };
     const bounds = checkRunBounds(runState, operation);
@@ -140,6 +141,18 @@ export class BrokerDurableObject {
         });
       }
     }
+    if (operation === 'create_branch_commit_draft_pr' && !stage1MocksConfigured(github, this.env?.xai || this.env?._xai)) {
+      return this._json({
+        status: 503,
+        body: {
+          error: 'STAGE1_MOCKS_REQUIRED',
+          message: 'Stage 1 grok draft-pr operation requires explicit test mocks',
+        },
+        githubCalled: false,
+        githubStatus: null,
+        idempotencyState: null,
+      });
+    }
 
     const pending = {
       idempotency_key: idempotencyKey,
@@ -161,7 +174,14 @@ export class BrokerDurableObject {
         error: 'BLOCKED_RECONCILIATION_REQUIRED',
         message: 'GitHub call timed out or returned indeterminate result; auto-retry forbidden',
       };
-      await storage.put(`idem:${idempotencyKey}`, markUnknown(pending, safe));
+      if (operation === 'create_branch_commit_draft_pr') {
+        await storage.put(Object.fromEntries([
+          [`idem:${idempotencyKey}`, markUnknown(pending, safe)],
+          [`run:${runId}`, { ...runState, create_branch_commit_draft_pr_blocked: true }],
+        ]));
+      } else {
+        await storage.put(`idem:${idempotencyKey}`, markUnknown(pending, safe));
+      }
       return this._json({
         status: 409,
         body: safe,
@@ -200,6 +220,24 @@ export class BrokerDurableObject {
     }
 
     if (isDeterministicClientError(result.status)) {
+      if (operation === 'create_branch_commit_draft_pr' && result.postBranchFailure) {
+        const safe = {
+          error: 'BLOCKED_RECONCILIATION_REQUIRED',
+          message: result.safeResult?.message || 'Post-branch failure requires reconciliation; auto-retry forbidden',
+        };
+        await storage.put(Object.fromEntries([
+          [`idem:${idempotencyKey}`, markUnknown(pending, safe)],
+          [`run:${runId}`, { ...runState, create_branch_commit_draft_pr_blocked: true }],
+        ]));
+        return this._json({
+          status: 409,
+          body: safe,
+          githubCalled: true,
+          githubStatus: result.githubStatus ?? result.status ?? null,
+          idempotencyState: IDEM_STATES.UNKNOWN,
+          unknown: true,
+        });
+      }
       await storage.put(`idem:${idempotencyKey}`, markFailed(pending, result.safeResult));
       return this._json({
         status: result.status,
@@ -214,7 +252,14 @@ export class BrokerDurableObject {
       error: 'BLOCKED_RECONCILIATION_REQUIRED',
       message: `GitHub upstream error — indeterminate result (status ${result.status}); auto-retry forbidden`,
     };
-    await storage.put(`idem:${idempotencyKey}`, markUnknown(pending, safe));
+    if (operation === 'create_branch_commit_draft_pr') {
+      await storage.put(Object.fromEntries([
+        [`idem:${idempotencyKey}`, markUnknown(pending, safe)],
+        [`run:${runId}`, { ...runState, create_branch_commit_draft_pr_blocked: true }],
+      ]));
+    } else {
+      await storage.put(`idem:${idempotencyKey}`, markUnknown(pending, safe));
+    }
     return this._json({
       status: 409,
       body: safe,
@@ -230,6 +275,21 @@ export class BrokerDurableObject {
       headers: { 'content-type': 'application/json' },
     });
   }
+}
+
+function stage1MocksConfigured(github, xai) {
+  return Boolean(
+    github &&
+    github.__stage1Mock === true &&
+    typeof github.getRef === 'function' &&
+    typeof github.getContentAtRef === 'function' &&
+    typeof github.createRef === 'function' &&
+    typeof github.updateFile === 'function' &&
+    typeof github.createPullRequest === 'function' &&
+    xai &&
+    xai.__stage1Mock === true &&
+    typeof xai.generateDraftPrChange === 'function',
+  );
 }
 
 function buildGithubCall(operation, operationData, github, xai) {

@@ -27,8 +27,17 @@ export function checkRunBounds(runState, operation) {
     create_issue: false,
     assign_copilot: false,
     create_branch_commit_draft_pr: false,
+    create_branch_commit_draft_pr_blocked: false,
     created_issue_number: null,
   };
+  if (operation === 'create_branch_commit_draft_pr' && state.create_branch_commit_draft_pr_blocked) {
+    return {
+      ok: false,
+      status: 409,
+      error: 'BLOCKED_RECONCILIATION_REQUIRED',
+      message: 'Prior post-branch draft-pr failure requires reconciliation; auto-retry forbidden',
+    };
+  }
   if (operation === 'create_issue' && state.create_issue) {
     return {
       ok: false,

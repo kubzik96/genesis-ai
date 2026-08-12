@@ -24,6 +24,8 @@ const TASK_KEYS = new Set(['title', 'instruction', 'allowed_files']);
 const RESPONSE_KEYS = new Set(['summary', 'changes', 'self_check']);
 const CHANGE_KEYS = new Set(['path', 'expected_blob_sha', 'new_content']);
 const SELF_CHECK_KEYS = new Set(['scope_ok']);
+const MAX_DIFF_INPUT_BYTES = 64 * 1024;
+const MAX_DIFF_INPUT_LINES = 4096;
 
 function hasOnlyKnownKeys(input, known) {
   return Object.keys(input).every((k) => known.has(k));
@@ -235,46 +237,119 @@ function splitLines(text) {
   return text === '' ? [] : text.split('\n');
 }
 
-function buildEditScript(oldLines, newLines) {
+function countLinesBounded(text, maxLines) {
+  let lines = 1;
+  for (let i = 0; i < text.length; i += 1) {
+    if (text.charCodeAt(i) === 0x0a) {
+      lines += 1;
+      if (lines > maxLines) return null;
+    }
+  }
+  return lines;
+}
+
+function annotateIndices(ops) {
+  let oldPos = 1;
+  let newPos = 1;
+  return ops.map((op) => {
+    const withIndices = { ...op, oldIndex: oldPos, newIndex: newPos };
+    if (op.type === 'equal') {
+      oldPos += 1;
+      newPos += 1;
+    } else if (op.type === 'delete') {
+      oldPos += 1;
+    } else {
+      newPos += 1;
+    }
+    return withIndices;
+  });
+}
+
+function buildEditScriptBounded(oldLines, newLines, maxEdits) {
   const n = oldLines.length;
   const m = newLines.length;
-  const dp = Array.from({ length: n + 1 }, () => Array(m + 1).fill(0));
-  for (let i = n - 1; i >= 0; i--) {
-    for (let j = m - 1; j >= 0; j--) {
-      dp[i][j] = oldLines[i] === newLines[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  if (Math.abs(n - m) > maxEdits) return null;
+  const dp = Array.from({ length: n + 1 }, () => new Map());
+  const parent = Array.from({ length: n + 1 }, () => new Map());
+  dp[0].set(0, 0);
+  for (let i = 0; i <= n; i += 1) {
+    const jMin = Math.max(0, i - maxEdits);
+    const jMax = Math.min(m, i + maxEdits);
+    for (let j = jMin; j <= jMax; j += 1) {
+      if (i === 0 && j === 0) continue;
+      let best = Number.POSITIVE_INFINITY;
+      let bestMove = null;
+      if (i > 0 && j > 0 && oldLines[i - 1] === newLines[j - 1]) {
+        const v = dp[i - 1].get(j - 1);
+        if (v !== undefined && v < best) {
+          best = v;
+          bestMove = 'equal';
+        }
+      }
+      if (i > 0) {
+        const v = dp[i - 1].get(j);
+        if (v !== undefined && v + 1 < best) {
+          best = v + 1;
+          bestMove = 'delete';
+        }
+      }
+      if (j > 0) {
+        const v = dp[i].get(j - 1);
+        if (v !== undefined && v + 1 < best) {
+          best = v + 1;
+          bestMove = 'add';
+        }
+      }
+      if (best <= maxEdits) {
+        dp[i].set(j, best);
+        parent[i].set(j, bestMove);
+      }
     }
   }
-  const ops = [];
-  let i = 0;
-  let j = 0;
-  while (i < n && j < m) {
-    if (oldLines[i] === newLines[j]) {
-      ops.push({ type: 'equal', line: oldLines[i], oldIndex: i + 1, newIndex: j + 1 });
-      i += 1;
-      j += 1;
-    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-      ops.push({ type: 'delete', line: oldLines[i], oldIndex: i + 1, newIndex: j + 1 });
-      i += 1;
+  const editDistance = dp[n].get(m);
+  if (editDistance === undefined || editDistance > maxEdits) return null;
+  let i = n;
+  let j = m;
+  const edits = [];
+  while (i > 0 || j > 0) {
+    const move = parent[i].get(j);
+    if (move === 'equal') {
+      edits.push({ type: 'equal', line: oldLines[i - 1] });
+      i -= 1;
+      j -= 1;
+    } else if (move === 'delete') {
+      edits.push({ type: 'delete', line: oldLines[i - 1] });
+      i -= 1;
+    } else if (move === 'add') {
+      edits.push({ type: 'add', line: newLines[j - 1] });
+      j -= 1;
     } else {
-      ops.push({ type: 'add', line: newLines[j], oldIndex: i + 1, newIndex: j + 1 });
-      j += 1;
+      return null;
     }
   }
-  while (i < n) {
-    ops.push({ type: 'delete', line: oldLines[i], oldIndex: i + 1, newIndex: j + 1 });
-    i += 1;
-  }
-  while (j < m) {
-    ops.push({ type: 'add', line: newLines[j], oldIndex: i + 1, newIndex: j + 1 });
-    j += 1;
-  }
-  return ops;
+  edits.reverse();
+  return annotateIndices(edits);
 }
 
 function diffStats(oldContent, newContent, path) {
+  const encoder = new TextEncoder();
+  const oldBytes = encoder.encode(oldContent).length;
+  const newBytes = encoder.encode(newContent).length;
+  if (oldBytes > MAX_DIFF_INPUT_BYTES || newBytes > MAX_DIFF_INPUT_BYTES) {
+    return fail(422, 'CONTENT_TOO_LARGE', `Content exceeds ${MAX_DIFF_INPUT_BYTES} UTF-8 bytes`);
+  }
+  if (
+    countLinesBounded(oldContent, MAX_DIFF_INPUT_LINES) === null ||
+    countLinesBounded(newContent, MAX_DIFF_INPUT_LINES) === null
+  ) {
+    return fail(422, 'CONTENT_TOO_LARGE', `Content exceeds ${MAX_DIFF_INPUT_LINES} lines`);
+  }
   const oldLines = splitLines(oldContent);
   const newLines = splitLines(newContent);
-  const ops = buildEditScript(oldLines, newLines);
+  const ops = buildEditScriptBounded(oldLines, newLines, GROK_DRAFT_PR_LIMITS.MAX_CHANGED_LINES);
+  if (!ops) {
+    return fail(422, 'CHANGED_LINES_EXCEEDED', `Changed lines must be <= ${GROK_DRAFT_PR_LIMITS.MAX_CHANGED_LINES}`);
+  }
   let additions = 0;
   let deletions = 0;
   for (const op of ops) {
@@ -306,12 +381,54 @@ function diffStats(oldContent, newContent, path) {
       if (op.type === 'add') unified += `+${op.line}\n`;
     }
   }
-  const diffBytes = new TextEncoder().encode(unified).length;
-  return { additions, deletions, changedLines, diffBytes, unified };
+  const diffBytes = encoder.encode(unified).length;
+  return { ok: true, additions, deletions, changedLines, diffBytes, unified };
 }
 
 function safeResult(status, message) {
   return { error: status, message };
+}
+
+function makePostBranchFailure(status, githubStatus, error, message) {
+  return {
+    ok: false,
+    status,
+    githubStatus,
+    postBranchFailure: true,
+    safeResult: safeResult(error, message),
+  };
+}
+
+function validateCommitSha(commitRes) {
+  const sha = String(commitRes?.data?.commit?.sha || '').toLowerCase();
+  if (!HEX_40.test(sha)) return null;
+  return sha;
+}
+
+function validatePullSuccessArtifacts(pullRes, { expectedBranch, expectedHeadSha }) {
+  const number = pullRes?.data?.number;
+  if (!Number.isInteger(number) || number <= 0) {
+    return fail(422, 'INVALID_PR_ARTIFACT', 'PR number must be a positive integer');
+  }
+  const expectedUrl = `https://github.com/${FIXED_FULL_NAME}/pull/${number}`;
+  if (pullRes?.data?.html_url !== expectedUrl) {
+    return fail(422, 'INVALID_PR_ARTIFACT', 'PR URL must match canonical repository pull URL');
+  }
+  const headRef = pullRes?.data?.head?.ref;
+  if (headRef !== expectedBranch) {
+    return fail(422, 'INVALID_PR_ARTIFACT', 'PR head ref mismatch');
+  }
+  const headSha = String(pullRes?.data?.head?.sha || '').toLowerCase();
+  if (!HEX_40.test(headSha) || headSha !== expectedHeadSha) {
+    return fail(422, 'INVALID_PR_ARTIFACT', 'PR head SHA mismatch');
+  }
+  if (pullRes?.data?.base?.ref !== FIXED_BASE_BRANCH) {
+    return fail(422, 'INVALID_PR_ARTIFACT', 'PR base ref mismatch');
+  }
+  if (pullRes?.data?.draft !== true) {
+    return fail(422, 'DRAFT_PR_REQUIRED', 'Pull request must be draft');
+  }
+  return { ok: true, value: { number, url: expectedUrl } };
 }
 
 export async function executeGrokDraftPrOperation({ github, xai, runId, baseSha, task, gate, confirmedAt }) {
@@ -387,6 +504,9 @@ export async function executeGrokDraftPrOperation({ github, xai, runId, baseSha,
     return { ok: false, status: 422, githubStatus: source.status, safeResult: safeResult('INVALID_BLOB_SHA', 'expected_blob_sha mismatch') };
   }
   const stats = diffStats(sourceContent.value, change.newContent, change.path);
+  if (!stats.ok) {
+    return { ok: false, status: stats.status, githubStatus: null, safeResult: safeResult(stats.error, stats.message) };
+  }
   if (stats.changedLines < 1) {
     return {
       ok: false,
@@ -451,8 +571,16 @@ export async function executeGrokDraftPrOperation({ github, xai, runId, baseSha,
     sha: sourceSha,
   });
   if (!commitRes.ok) {
-    const mapped = mapGithubError(commitRes.status, commitRes.data);
-    return { ok: false, status: mapped.status, githubStatus: commitRes.status, safeResult: mapped };
+    return makePostBranchFailure(
+      409,
+      commitRes.status,
+      'BLOCKED_RECONCILIATION_REQUIRED',
+      `Post-branch commit failed with status ${commitRes.status}; reconciliation required`,
+    );
+  }
+  const commitSha = validateCommitSha(commitRes);
+  if (!commitSha) {
+    return makePostBranchFailure(409, commitRes.status, 'BLOCKED_RECONCILIATION_REQUIRED', 'Commit response missing valid SHA; reconciliation required');
   }
 
   const pullRes = await github.createPullRequest({
@@ -468,16 +596,16 @@ export async function executeGrokDraftPrOperation({ github, xai, runId, baseSha,
     draft: true,
   });
   if (!pullRes.ok) {
-    const mapped = mapGithubError(pullRes.status, pullRes.data);
-    return { ok: false, status: mapped.status, githubStatus: pullRes.status, safeResult: mapped };
+    return makePostBranchFailure(
+      409,
+      pullRes.status,
+      'BLOCKED_RECONCILIATION_REQUIRED',
+      `Post-branch PR creation failed with status ${pullRes.status}; reconciliation required`,
+    );
   }
-  if (!pullRes.data?.draft) {
-    return {
-      ok: false,
-      status: 422,
-      githubStatus: pullRes.status,
-      safeResult: safeResult('DRAFT_PR_REQUIRED', 'Pull request must be draft'),
-    };
+  const prArtifacts = validatePullSuccessArtifacts(pullRes, { expectedBranch: branch, expectedHeadSha: commitSha });
+  if (!prArtifacts.ok) {
+    return makePostBranchFailure(409, pullRes.status, 'BLOCKED_RECONCILIATION_REQUIRED', `${prArtifacts.message}; reconciliation required`);
   }
 
   return {
@@ -491,10 +619,10 @@ export async function executeGrokDraftPrOperation({ github, xai, runId, baseSha,
       repository: FIXED_FULL_NAME,
       base_branch: FIXED_BASE_BRANCH,
       base_sha: baseSha,
-      head_sha: commitRes.data?.commit?.sha ?? null,
+      head_sha: commitSha,
       branch,
-      pr_number: pullRes.data?.number ?? null,
-      pr_url: pullRes.data?.html_url ?? null,
+      pr_number: prArtifacts.value.number,
+      pr_url: prArtifacts.value.url,
       changed_files: [change.path],
       diff_summary: {
         additions: stats.additions,

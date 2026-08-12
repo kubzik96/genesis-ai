@@ -100,6 +100,7 @@ export class MemoryBrokerStore {
         create_issue: false,
         assign_copilot: false,
         create_branch_commit_draft_pr: false,
+        create_branch_commit_draft_pr_blocked: false,
         created_issue_number: null,
       };
       const bounds = checkRunBounds(runState, operation);
@@ -145,6 +146,9 @@ export class MemoryBrokerStore {
           error: 'BLOCKED_RECONCILIATION_REQUIRED',
           message: 'GitHub call timed out or returned indeterminate result; auto-retry forbidden',
         };
+        if (operation === 'create_branch_commit_draft_pr') {
+          this.setRun(runId, { ...runState, create_branch_commit_draft_pr_blocked: true });
+        }
         this.setIdem(idempotencyKey, markUnknown(pending, safe));
         return {
           status: 409,
@@ -180,6 +184,22 @@ export class MemoryBrokerStore {
       }
 
       if (isDeterministicClientError(result.status)) {
+        if (operation === 'create_branch_commit_draft_pr' && result.postBranchFailure) {
+          const safe = {
+            error: 'BLOCKED_RECONCILIATION_REQUIRED',
+            message: result.safeResult?.message || 'Post-branch failure requires reconciliation; auto-retry forbidden',
+          };
+          this.setRun(runId, { ...runState, create_branch_commit_draft_pr_blocked: true });
+          this.setIdem(idempotencyKey, markUnknown(pending, safe));
+          return {
+            status: 409,
+            body: safe,
+            githubCalled: true,
+            githubStatus: result.githubStatus ?? result.status ?? null,
+            idempotencyState: IDEM_STATES.UNKNOWN,
+            unknown: true,
+          };
+        }
         this.setIdem(idempotencyKey, markFailed(pending, result.safeResult));
         return {
           status: result.status,
@@ -194,6 +214,9 @@ export class MemoryBrokerStore {
         error: 'BLOCKED_RECONCILIATION_REQUIRED',
         message: `GitHub upstream error — indeterminate result (status ${result.status}); auto-retry forbidden`,
       };
+      if (operation === 'create_branch_commit_draft_pr') {
+        this.setRun(runId, { ...runState, create_branch_commit_draft_pr_blocked: true });
+      }
       this.setIdem(idempotencyKey, markUnknown(pending, safe));
       return {
         status: 409,

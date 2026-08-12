@@ -63,7 +63,9 @@ function githubMock({
   sourceContentBase64 = null,
   createRefStatus = 201,
   updateFileStatus = 200,
+  updateFileResponse = null,
   pullStatus = 201,
+  pullResponse = null,
   throwAt = null,
 } = {}) {
   const calls = { getRef: 0, getContentAtRef: 0, createRef: 0, updateFile: 0, createPullRequest: 0 };
@@ -99,6 +101,7 @@ function githubMock({
       calls.updateFile += 1;
       calls.updateFileArgs = args;
       if (throwAt === 'updateFile') throw new Error('timeout');
+      if (updateFileResponse) return updateFileResponse;
       return updateFileStatus >= 400
         ? { ok: false, status: updateFileStatus, data: { message: 'fail' } }
         : { ok: true, status: updateFileStatus, data: { commit: { sha: 'c'.repeat(40) } } };
@@ -107,9 +110,20 @@ function githubMock({
       calls.createPullRequest += 1;
       calls.createPullRequestArgs = args;
       if (throwAt === 'createPullRequest') throw new Error('timeout');
+      if (pullResponse) return pullResponse;
       return pullStatus >= 400
         ? { ok: false, status: pullStatus, data: { message: 'fail' } }
-        : { ok: true, status: pullStatus, data: { number: 123, html_url: 'https://github.com/kubzik96/genesis-ai/pull/123', draft: true } };
+        : {
+          ok: true,
+          status: pullStatus,
+          data: {
+            number: 123,
+            html_url: 'https://github.com/kubzik96/genesis-ai/pull/123',
+            draft: true,
+            head: { ref: args.head, sha: 'c'.repeat(40) },
+            base: { ref: args.base },
+          },
+        };
     },
   };
 }
@@ -266,6 +280,21 @@ describe('POST /v1/executions/grok/draft-pr', () => {
     );
     assert.equal(tooLargeDiff.status, 422);
     assert.equal(JSON.parse(tooLargeDiff.body).error, 'DIFF_SIZE_EXCEEDED');
+  });
+
+  it('rejects oversized model output before branch write path', async () => {
+    const github = githubMock();
+    const huge = `line1\n${'x'.repeat(70 * 1024)}\nline3\n`;
+    const res = await handleRequest(
+      makeRequest({ headers: { 'idempotency-key': 'k-huge' }, body: baseBody() }),
+      envWith({
+        github,
+        xai: { calls: 0, fn: async () => xaiResponse(huge) },
+      }),
+    );
+    assert.equal(res.status, 422);
+    assert.equal(JSON.parse(res.body).error, 'CONTENT_TOO_LARGE');
+    assert.equal(github.calls.createRef, 0);
   });
 
   it('rejects binary content and existing branch', async () => {
@@ -449,6 +478,126 @@ describe('POST /v1/executions/grok/draft-pr', () => {
       const retry = await handleRequest(makeRequest({ headers: { 'idempotency-key': key }, body: baseBody({ run_id: runId }) }), env);
       assert.equal(retry.status, 409, `${stage} retry`);
       assert.equal(JSON.parse(retry.body).error, 'BLOCKED_RECONCILIATION_REQUIRED');
+    }
+  });
+
+  it('post-branch returned 4xx/5xx are authoritative UNKNOWN and block new keys for same run_id', async () => {
+    for (const stage of [
+      { name: 'commit-4xx', github: githubMock({ updateFileStatus: 422 }) },
+      { name: 'commit-5xx', github: githubMock({ updateFileStatus: 500 }) },
+      { name: 'pr-4xx', github: githubMock({ pullStatus: 422 }) },
+      { name: 'pr-5xx', github: githubMock({ pullStatus: 500 }) },
+    ]) {
+      const runId = `run-${stage.name}`;
+      const env = envWith({ github: stage.github, xai: { calls: 0, fn: async () => xaiResponse() } });
+      const first = await handleRequest(
+        makeRequest({ headers: { 'idempotency-key': `k-${stage.name}-1` }, body: baseBody({ run_id: runId }) }),
+        env,
+      );
+      assert.equal(first.status, 409, stage.name);
+      assert.equal(JSON.parse(first.body).error, 'BLOCKED_RECONCILIATION_REQUIRED');
+      const second = await handleRequest(
+        makeRequest({ headers: { 'idempotency-key': `k-${stage.name}-2` }, body: baseBody({ run_id: runId }) }),
+        env,
+      );
+      assert.equal(second.status, 409, `${stage.name} new-key`);
+      assert.equal(JSON.parse(second.body).error, 'BLOCKED_RECONCILIATION_REQUIRED');
+      assert.equal(stage.github.calls.createRef, 1);
+    }
+  });
+
+  it('post-branch thrown timeout is authoritative UNKNOWN and blocks new keys for same run_id', async () => {
+    for (const stage of ['updateFile', 'createPullRequest']) {
+      const runId = `run-timeout-${stage.toLowerCase()}`;
+      const github = githubMock({ throwAt: stage });
+      const env = envWith({ github, xai: { calls: 0, fn: async () => xaiResponse() } });
+      const first = await handleRequest(
+        makeRequest({ headers: { 'idempotency-key': `k-timeout-${stage}-1` }, body: baseBody({ run_id: runId }) }),
+        env,
+      );
+      assert.equal(first.status, 409, stage);
+      assert.equal(JSON.parse(first.body).error, 'BLOCKED_RECONCILIATION_REQUIRED');
+      const second = await handleRequest(
+        makeRequest({ headers: { 'idempotency-key': `k-timeout-${stage}-2` }, body: baseBody({ run_id: runId }) }),
+        env,
+      );
+      assert.equal(second.status, 409, `${stage} new-key`);
+      assert.equal(JSON.parse(second.body).error, 'BLOCKED_RECONCILIATION_REQUIRED');
+      assert.equal(github.calls.createRef, 1);
+    }
+  });
+
+  it('malformed post-branch success payloads become UNKNOWN and block retries', async () => {
+    const invalidCases = [
+      {
+        name: 'missing-commit-sha',
+        github: githubMock({ updateFileResponse: { ok: true, status: 200, data: { commit: {} } } }),
+      },
+      {
+        name: 'invalid-commit-sha',
+        github: githubMock({ updateFileResponse: { ok: true, status: 200, data: { commit: { sha: 'xyz' } } } }),
+      },
+      {
+        name: 'missing-pr-number',
+        github: githubMock({ pullResponse: { ok: true, status: 201, data: { html_url: 'https://github.com/kubzik96/genesis-ai/pull/123', draft: true, head: { ref: 'genesis/grok/run-1', sha: 'c'.repeat(40) }, base: { ref: 'main' } } } }),
+      },
+      {
+        name: 'zero-pr-number',
+        github: githubMock({ pullResponse: { ok: true, status: 201, data: { number: 0, html_url: 'https://github.com/kubzik96/genesis-ai/pull/0', draft: true, head: { ref: 'genesis/grok/run-1', sha: 'c'.repeat(40) }, base: { ref: 'main' } } } }),
+      },
+      {
+        name: 'negative-pr-number',
+        github: githubMock({ pullResponse: { ok: true, status: 201, data: { number: -2, html_url: 'https://github.com/kubzik96/genesis-ai/pull/-2', draft: true, head: { ref: 'genesis/grok/run-1', sha: 'c'.repeat(40) }, base: { ref: 'main' } } } }),
+      },
+      {
+        name: 'non-integer-pr-number',
+        github: githubMock({ pullResponse: { ok: true, status: 201, data: { number: 1.5, html_url: 'https://github.com/kubzik96/genesis-ai/pull/1.5', draft: true, head: { ref: 'genesis/grok/run-1', sha: 'c'.repeat(40) }, base: { ref: 'main' } } } }),
+      },
+      {
+        name: 'string-pr-number',
+        github: githubMock({ pullResponse: { ok: true, status: 201, data: { number: '123', html_url: 'https://github.com/kubzik96/genesis-ai/pull/123', draft: true, head: { ref: 'genesis/grok/run-1', sha: 'c'.repeat(40) }, base: { ref: 'main' } } } }),
+      },
+      {
+        name: 'wrong-pr-url',
+        github: githubMock({ pullResponse: { ok: true, status: 201, data: { number: 123, html_url: 'https://evil.example/pull/123', draft: true, head: { ref: 'genesis/grok/run-1', sha: 'c'.repeat(40) }, base: { ref: 'main' } } } }),
+      },
+      {
+        name: 'wrong-head-ref',
+        github: githubMock({ pullResponse: { ok: true, status: 201, data: { number: 123, html_url: 'https://github.com/kubzik96/genesis-ai/pull/123', draft: true, head: { ref: 'other/branch', sha: 'c'.repeat(40) }, base: { ref: 'main' } } } }),
+      },
+      {
+        name: 'missing-head-sha',
+        github: githubMock({ pullResponse: { ok: true, status: 201, data: { number: 123, html_url: 'https://github.com/kubzik96/genesis-ai/pull/123', draft: true, head: { ref: 'genesis/grok/run-1' }, base: { ref: 'main' } } } }),
+      },
+      {
+        name: 'wrong-head-sha',
+        github: githubMock({ pullResponse: { ok: true, status: 201, data: { number: 123, html_url: 'https://github.com/kubzik96/genesis-ai/pull/123', draft: true, head: { ref: 'genesis/grok/run-1', sha: 'd'.repeat(40) }, base: { ref: 'main' } } } }),
+      },
+      {
+        name: 'wrong-base-ref',
+        github: githubMock({ pullResponse: { ok: true, status: 201, data: { number: 123, html_url: 'https://github.com/kubzik96/genesis-ai/pull/123', draft: true, head: { ref: 'genesis/grok/run-1', sha: 'c'.repeat(40) }, base: { ref: 'develop' } } } }),
+      },
+      {
+        name: 'draft-false',
+        github: githubMock({ pullResponse: { ok: true, status: 201, data: { number: 123, html_url: 'https://github.com/kubzik96/genesis-ai/pull/123', draft: false, head: { ref: 'genesis/grok/run-1', sha: 'c'.repeat(40) }, base: { ref: 'main' } } } }),
+      },
+    ];
+    for (const testCase of invalidCases) {
+      const runId = 'run-1';
+      const env = envWith({ github: testCase.github, xai: { calls: 0, fn: async () => xaiResponse() } });
+      const first = await handleRequest(
+        makeRequest({ headers: { 'idempotency-key': `k-${testCase.name}-1` }, body: baseBody({ run_id: runId }) }),
+        env,
+      );
+      assert.equal(first.status, 409, testCase.name);
+      assert.equal(JSON.parse(first.body).error, 'BLOCKED_RECONCILIATION_REQUIRED');
+      const second = await handleRequest(
+        makeRequest({ headers: { 'idempotency-key': `k-${testCase.name}-2` }, body: baseBody({ run_id: runId }) }),
+        env,
+      );
+      assert.equal(second.status, 409, `${testCase.name} new-key`);
+      assert.equal(JSON.parse(second.body).error, 'BLOCKED_RECONCILIATION_REQUIRED');
+      assert.equal(testCase.github.calls.createRef, 1, `${testCase.name} no second write`);
     }
   });
 });

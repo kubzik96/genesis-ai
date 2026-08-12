@@ -93,6 +93,10 @@ function githubOk(overrides = {}) {
   );
 }
 
+const GROK_BASE_SHA = 'a'.repeat(40);
+const GROK_BLOB_SHA = 'b'.repeat(40);
+const GROK_COMMIT_SHA = 'c'.repeat(40);
+
 /* ── Tests ──────────────────────────────────────────────────────────────── */
 
 describe('BrokerDurableObject crash-safe idempotency', () => {
@@ -129,6 +133,230 @@ describe('BrokerDurableObject crash-safe idempotency', () => {
     // Final state must be SUCCEEDED after the call.
     const final = await storage.get('idem:key-pending-test');
     assert.equal(final.state, IDEM_STATES.SUCCEEDED, 'final state must be SUCCEEDED');
+  });
+
+  function makeStage1GithubMock({
+    updateFileStatus = 200,
+    pullStatus = 201,
+    updateFileResponse = null,
+    pullResponse = null,
+    throwAt = null,
+  } = {}) {
+    const calls = { getRef: 0, getContentAtRef: 0, createRef: 0, updateFile: 0, createPullRequest: 0 };
+    return {
+      __stage1Mock: true,
+      calls,
+      async getRef() {
+        calls.getRef += 1;
+        return { ok: true, status: 200, data: { object: { sha: GROK_BASE_SHA } } };
+      },
+      async getContentAtRef() {
+        calls.getContentAtRef += 1;
+        return {
+          ok: true,
+          status: 200,
+          data: { sha: GROK_BLOB_SHA, encoding: 'base64', content: btoa('line1\nline2\nline3\n') },
+        };
+      },
+      async createRef() {
+        calls.createRef += 1;
+        if (throwAt === 'createRef') throw new Error('timeout');
+        return { ok: true, status: 201, data: {} };
+      },
+      async updateFile() {
+        calls.updateFile += 1;
+        if (throwAt === 'updateFile') throw new Error('timeout');
+        if (updateFileResponse) return updateFileResponse;
+        if (updateFileStatus >= 400) return { ok: false, status: updateFileStatus, data: { message: 'fail' } };
+        return { ok: true, status: updateFileStatus, data: { commit: { sha: GROK_COMMIT_SHA } } };
+      },
+      async createPullRequest(args) {
+        calls.createPullRequest += 1;
+        if (throwAt === 'createPullRequest') throw new Error('timeout');
+        if (pullResponse) return pullResponse;
+        if (pullStatus >= 400) return { ok: false, status: pullStatus, data: { message: 'fail' } };
+        return {
+          ok: true,
+          status: 201,
+          data: {
+            number: 123,
+            html_url: 'https://github.com/kubzik96/genesis-ai/pull/123',
+            draft: true,
+            head: { ref: args.head, sha: GROK_COMMIT_SHA },
+            base: { ref: args.base },
+          },
+        };
+      },
+    };
+  }
+
+  function makeStage1XaiMock(change = 'line1\nline-two\nline3\n') {
+    return {
+      __stage1Mock: true,
+      calls: 0,
+      async generateDraftPrChange() {
+        this.calls += 1;
+        return {
+          summary: 'update',
+          self_check: { scope_ok: true },
+          changes: [{ path: 'MEMORY.md', expected_blob_sha: GROK_BLOB_SHA, new_content: change }],
+        };
+      },
+    };
+  }
+
+  function makeGrokDoPayload({ key, hash, runId = 'run-1' }) {
+    return {
+      idempotencyKey: key,
+      requestHash: hash,
+      operation: 'create_branch_commit_draft_pr',
+      runId,
+      gate: 'G2',
+      operationData: {
+        runId,
+        gate: 'G2',
+        confirmedAt: new Date().toISOString(),
+        baseSha: GROK_BASE_SHA,
+        task: {
+          title: 'Update memory',
+          instruction: 'Change one line',
+          allowedFiles: ['MEMORY.md'],
+        },
+      },
+    };
+  }
+
+  describe('BrokerDurableObject grok draft-pr authoritative state', () => {
+    it('persists PENDING before first possible Stage 1 write and replays after reconstruction', async () => {
+      const storage = new MockStorage();
+      const github = makeStage1GithubMock();
+      const xai = makeStage1XaiMock();
+      let pendingAtCreateRef = null;
+      const wrappedGithub = {
+        ...github,
+        async createRef(...args) {
+          pendingAtCreateRef = await storage.get('idem:key-grok-pending');
+          return github.createRef(...args);
+        },
+      };
+      const payload = makeGrokDoPayload({ key: 'key-grok-pending', hash: 'hash-grok-pending' });
+      const first = await new BrokerDurableObject(
+        { storage },
+        { GITHUB_PAT: 'pat', _github: wrappedGithub, _xai: xai },
+      ).fetch(makeDoRequest(payload)).then((r) => r.text()).then(JSON.parse);
+      assert.equal(first.status, 200);
+      assert.equal(pendingAtCreateRef?.state, IDEM_STATES.PENDING);
+
+      const replay = await new BrokerDurableObject(
+        { storage },
+        { GITHUB_PAT: 'pat', _github: wrappedGithub, _xai: xai },
+      ).fetch(makeDoRequest(payload)).then((r) => r.text()).then(JSON.parse);
+      assert.equal(replay.status, 200);
+      assert.equal(replay.replay, true);
+      assert.equal(github.calls.createRef, 1);
+    });
+
+    it('same key different hash conflicts after reconstruction without Stage 1 calls', async () => {
+      const storage = new MockStorage();
+      const github = makeStage1GithubMock();
+      const xai = makeStage1XaiMock();
+      const payload = makeGrokDoPayload({ key: 'key-grok-conflict', hash: 'hash-a' });
+      const first = await new BrokerDurableObject(
+        { storage },
+        { GITHUB_PAT: 'pat', _github: github, _xai: xai },
+      ).fetch(makeDoRequest(payload)).then((r) => r.text()).then(JSON.parse);
+      assert.equal(first.status, 200);
+
+      const conflict = await new BrokerDurableObject(
+        { storage },
+        { GITHUB_PAT: 'pat', _github: github, _xai: xai },
+      ).fetch(makeDoRequest({ ...payload, requestHash: 'hash-b' })).then((r) => r.text()).then(JSON.parse);
+      assert.equal(conflict.status, 409);
+      assert.equal(conflict.body?.error, 'IDEMPOTENCY_CONFLICT');
+      assert.equal(github.calls.createRef, 1);
+    });
+
+    it('post-branch UNKNOWN survives reconstruction and blocks new key without retry', async () => {
+      const storage = new MockStorage();
+      const github = makeStage1GithubMock({ updateFileStatus: 422 });
+      const xai = makeStage1XaiMock();
+      const firstPayload = makeGrokDoPayload({ key: 'key-grok-unknown', hash: 'hash-grok-unknown', runId: 'run-grok-unknown' });
+      const first = await new BrokerDurableObject(
+        { storage },
+        { GITHUB_PAT: 'pat', _github: github, _xai: xai },
+      ).fetch(makeDoRequest(firstPayload)).then((r) => r.text()).then(JSON.parse);
+      assert.equal(first.status, 409);
+      assert.equal(first.body?.error, 'BLOCKED_RECONCILIATION_REQUIRED');
+      assert.equal(github.calls.createRef, 1);
+      assert.equal(github.calls.updateFile, 1);
+
+      const retrySameKey = await new BrokerDurableObject(
+        { storage },
+        { GITHUB_PAT: 'pat', _github: github, _xai: xai },
+      ).fetch(makeDoRequest(firstPayload)).then((r) => r.text()).then(JSON.parse);
+      assert.equal(retrySameKey.status, 409);
+      assert.equal(retrySameKey.body?.error, 'BLOCKED_RECONCILIATION_REQUIRED');
+
+      const retryNewKey = await new BrokerDurableObject(
+        { storage },
+        { GITHUB_PAT: 'pat', _github: github, _xai: xai },
+      ).fetch(makeDoRequest(makeGrokDoPayload({ key: 'key-grok-unknown-2', hash: 'hash-grok-unknown-2', runId: 'run-grok-unknown' })))
+        .then((r) => r.text()).then(JSON.parse);
+      assert.equal(retryNewKey.status, 409);
+      assert.equal(retryNewKey.body?.error, 'BLOCKED_RECONCILIATION_REQUIRED');
+      assert.equal(github.calls.createRef, 1);
+      assert.equal(github.calls.updateFile, 1);
+      assert.equal(github.calls.createPullRequest, 0);
+    });
+
+    it('Stage 1 mock-only guard blocks operation on DO path when mocks are missing', async () => {
+      const storage = new MockStorage();
+      const result = await invokeDoFetch(
+        storage,
+        async () => new Response(JSON.stringify({ message: 'should-not-run' }), { status: 500 }),
+        makeGrokDoPayload({ key: 'key-grok-no-mocks', hash: 'hash-grok-no-mocks' }),
+      );
+      assert.equal(result.status, 503);
+      assert.equal(result.body?.error, 'STAGE1_MOCKS_REQUIRED');
+    });
+
+    it('existing S-0002 create/assign flow remains unchanged via DO fetch boundary', async () => {
+      const storage = new MockStorage();
+      const queue = [];
+      const fetchImpl = async (_url, init) => {
+        queue.push({ url: _url, method: init?.method });
+        if (queue.length === 1) {
+          return new Response(
+            JSON.stringify({ number: 42, html_url: 'https://github.com/kubzik96/genesis-ai/issues/42', title: 'Test', assignees: [] }),
+            { status: 201 },
+          );
+        }
+        return new Response(
+          JSON.stringify({ assignees: [{ login: 'copilot-swe-agent[bot]' }] }),
+          { status: 200 },
+        );
+      };
+      const create = await invokeDoFetch(storage, fetchImpl, {
+        idempotencyKey: 'key-create',
+        requestHash: 'hash-create',
+        operation: 'create_issue',
+        runId: 'run-create-assign',
+        gate: 'G1',
+        operationData: { title: 'T', body: 'B', labels: [] },
+      });
+      assert.equal(create.status, 200);
+      const assign = await invokeDoFetch(storage, fetchImpl, {
+        idempotencyKey: 'key-assign',
+        requestHash: 'hash-assign',
+        operation: 'assign_copilot',
+        runId: 'run-create-assign',
+        gate: 'G2',
+        operationData: { issueNumber: 42 },
+      });
+      assert.equal(assign.status, 200);
+      assert.equal(assign.body?.issue_number, 42);
+      assert.equal(queue.length, 2);
+    });
   });
 
   it('reconstructing a new DO from the same storage prevents duplicate GitHub call', async () => {
