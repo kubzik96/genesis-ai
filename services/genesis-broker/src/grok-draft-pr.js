@@ -337,21 +337,31 @@ function buildEditScriptBounded(oldLines, newLines, maxEdits) {
   return annotateIndices(edits);
 }
 
+function lineHasTerminator(index, lineCount, hasFinalNewline) {
+  if (index < 1 || index > lineCount) return false;
+  if (index < lineCount) return true;
+  return hasFinalNewline;
+}
+
 function applyFinalNewlineSemantics(ops, { oldLineCount, newLineCount, oldHasFinalNewline, newHasFinalNewline }) {
-  if (oldHasFinalNewline === newHasFinalNewline || oldLineCount === 0 || newLineCount === 0) return ops;
-  let finalEqualIndex = -1;
-  for (let i = 0; i < ops.length; i += 1) {
-    const op = ops[i];
-    if (op.type === 'equal' && op.oldIndex === oldLineCount && op.newIndex === newLineCount) {
-      finalEqualIndex = i;
-      break;
+  const rewritten = [];
+  let changed = false;
+  for (const op of ops) {
+    if (op.type !== 'equal') {
+      rewritten.push({ type: op.type, line: op.line });
+      continue;
     }
+    const oldTerminated = lineHasTerminator(op.oldIndex, oldLineCount, oldHasFinalNewline);
+    const newTerminated = lineHasTerminator(op.newIndex, newLineCount, newHasFinalNewline);
+    if (oldTerminated === newTerminated) {
+      rewritten.push({ type: 'equal', line: op.line });
+      continue;
+    }
+    rewritten.push({ type: 'delete', line: op.line }, { type: 'add', line: op.line });
+    changed = true;
   }
-  if (finalEqualIndex < 0) return ops;
-  const bareOps = ops.map((op) => ({ type: op.type, line: op.line }));
-  const [finalEqual] = bareOps.splice(finalEqualIndex, 1);
-  bareOps.splice(finalEqualIndex, 0, { type: 'delete', line: finalEqual.line }, { type: 'add', line: finalEqual.line });
-  return annotateIndices(bareOps);
+  if (!changed) return ops;
+  return annotateIndices(rewritten);
 }
 
 function buildUnifiedHunkRanges(ops, contextLines) {

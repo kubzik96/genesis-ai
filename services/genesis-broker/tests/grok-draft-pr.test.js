@@ -438,6 +438,57 @@ describe('POST /v1/executions/grok/draft-pr', () => {
     assert.equal(base64ToUtf8(addGithub.calls.updateFileArgs.contentBase64), addNew);
   });
 
+  it('rejects append after unterminated final line when GNU-visible unified diff exceeds 2 KiB', async () => {
+    const tail = 'x'.repeat(1000);
+    const oldContent = `head\n${tail}`;
+    const newContent = `head\n${tail}\nz`;
+    const oracle = gnuUnifiedDiffOracle(oldContent, newContent);
+    assert.equal(oracle.bytes, 2117);
+    assert.match(oracle.patch, /\\ No newline at end of file/);
+    const github = githubMock({ sourceContent: oldContent });
+    const xai = { calls: 0, fn: async () => xaiResponse(newContent) };
+    const res = await handleRequest(
+      makeRequest({ headers: { 'idempotency-key': 'k-unterminated-append-2k' }, body: baseBody({ run_id: 'run-unterminated-append-2k' }) }),
+      envWith({ github, xai }),
+    );
+    assert.equal(res.status, 422);
+    assert.equal(JSON.parse(res.body).error, 'DIFF_SIZE_EXCEEDED');
+    assert.equal(xai.calls, 1);
+    assert.equal(github.calls.getRef, 1);
+    assert.equal(github.calls.getContentAtRef, 1);
+    assert.equal(github.calls.createRef, 0);
+    assert.equal(github.calls.updateFile, 0);
+    assert.equal(github.calls.createPullRequest, 0);
+  });
+
+  it('counts terminated/unterminated line-identity transitions for append/remove around EOF', async () => {
+    const appendOld = 'x\ny';
+    const appendNew = 'x\ny\nz';
+    const appendOracle = gnuUnifiedDiffOracle(appendOld, appendNew);
+    assert.match(appendOracle.patch, /\\ No newline at end of file/);
+    const appendRes = await handleRequest(
+      makeRequest({ headers: { 'idempotency-key': 'k-append-after-unterminated' }, body: baseBody({ run_id: 'run-append-after-unterminated' }) }),
+      envWith({ github: githubMock({ sourceContent: appendOld }), xai: { calls: 0, fn: async () => xaiResponse(appendNew) } }),
+    );
+    assert.equal(appendRes.status, 200);
+    const appendBody = JSON.parse(appendRes.body);
+    assert.equal(appendBody.diff_summary.unified_diff_bytes, appendOracle.bytes);
+    assert.equal(appendBody.diff_summary.changed_lines, 3, 'unterminated y becomes terminated (+line identity change) plus +z');
+
+    const removeOld = 'x\ny\nz';
+    const removeNew = 'x\ny';
+    const removeOracle = gnuUnifiedDiffOracle(removeOld, removeNew);
+    assert.match(removeOracle.patch, /\\ No newline at end of file/);
+    const removeRes = await handleRequest(
+      makeRequest({ headers: { 'idempotency-key': 'k-remove-to-unterminated' }, body: baseBody({ run_id: 'run-remove-to-unterminated' }) }),
+      envWith({ github: githubMock({ sourceContent: removeOld }), xai: { calls: 0, fn: async () => xaiResponse(removeNew) } }),
+    );
+    assert.equal(removeRes.status, 200);
+    const removeBody = JSON.parse(removeRes.body);
+    assert.equal(removeBody.diff_summary.unified_diff_bytes, removeOracle.bytes);
+    assert.equal(removeBody.diff_summary.changed_lines, 3, 'removing z makes y unterminated (+line identity change)');
+  });
+
   it('rejects oversized model output before branch write path', async () => {
     const github = githubMock();
     const huge = `line1\n${'x'.repeat(70 * 1024)}\nline3\n`;
