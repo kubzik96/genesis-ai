@@ -2,11 +2,12 @@ import { authenticateService } from './auth.js';
 import { validateGate } from './gate.js';
 import { isAllowedContextPath, matchRoute } from './allowlist.js';
 import { requestHash } from './hash.js';
-import { GATES, FIXED_FULL_NAME, FIXED_BASE_BRANCH } from './constants.js';
+import { FIXED_FULL_NAME, FIXED_BASE_BRANCH, GROK_DRAFT_PR_OPERATION, GATES } from './constants.js';
 import { mapGithubError } from './github-client.js';
 import { discoverLinkedPullNumber } from './discover-pr.js';
 import { auditEvent } from './audit.js';
 import { normalizeCreateIssuePayload } from './normalize-payload.js';
+import { executeGrokDraftPrOperation, validateDraftPrRequest } from './grok-draft-pr.js';
 
 function json(status, body) {
   return {
@@ -159,6 +160,10 @@ export async function handleRequest(request, env) {
 
   if (method === 'POST' && path === '/v1/issues') {
     return handleCreateIssue(request, env, github);
+  }
+
+  if (method === 'POST' && path === '/v1/executions/grok/draft-pr') {
+    return handleGrokDraftPr(request, env, github);
   }
 
   const assignMatch = path.match(/^\/v1\/issues\/(\d+)\/assign-copilot$/);
@@ -533,4 +538,146 @@ async function handleAssign(request, env, github, issueNumber) {
     latency_ms: Date.now() - t0,
   });
   return json(result.status, result.body);
+}
+
+async function handleGrokDraftPr(request, env, github) {
+  const endpoint = '/v1/executions/grok/draft-pr';
+  const tStart = Date.now();
+  const idemKey = request.headers.get('idempotency-key');
+  if (!idemKey) {
+    auditReject({ endpoint, outcome: 400, error: 'MISSING_IDEMPOTENCY_KEY', latency_ms: Date.now() - tStart });
+    return json(400, { error: 'MISSING_IDEMPOTENCY_KEY', message: 'Idempotency-Key header required' });
+  }
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    auditReject({
+      endpoint,
+      outcome: 400,
+      error: 'INVALID_JSON',
+      idempotency_key: idemKey,
+      latency_ms: Date.now() - tStart,
+    });
+    return json(400, { error: 'INVALID_JSON', message: 'Body must be JSON' });
+  }
+
+  const validated = validateDraftPrRequest(body);
+  if (!validated.ok) {
+    auditReject({
+      endpoint,
+      outcome: validated.status,
+      error: validated.error,
+      run_id: body?.run_id,
+      gate: body?.gate,
+      idempotency_key: idemKey,
+      latency_ms: Date.now() - tStart,
+    });
+    return json(validated.status, { error: validated.error, message: validated.message });
+  }
+  const payload = validated.value;
+
+  const gateCheck = validateGate({
+    gate: payload.gate,
+    expectedGate: GATES.GROK_DRAFT_PR,
+    confirmed_at: payload.confirmedAt,
+    run_id: payload.runId,
+  });
+  if (!gateCheck.ok) {
+    auditReject({
+      endpoint,
+      outcome: gateCheck.status,
+      error: gateCheck.error,
+      run_id: payload.runId,
+      gate: payload.gate,
+      idempotency_key: idemKey,
+      latency_ms: Date.now() - tStart,
+    });
+    return json(gateCheck.status, { error: gateCheck.error, message: gateCheck.message });
+  }
+
+  if (!xaiConfigured(env?.xai)) {
+    auditReject({
+      endpoint,
+      outcome: 503,
+      error: 'XAI_NOT_CONFIGURED',
+      run_id: payload.runId,
+      gate: payload.gate,
+      idempotency_key: idemKey,
+      latency_ms: Date.now() - tStart,
+    });
+    return json(503, { error: 'XAI_NOT_CONFIGURED', message: 'xAI Stage 1 mock missing — fail-closed' });
+  }
+  if (!githubConfiguredForDraftPr(github)) {
+    auditReject({
+      endpoint,
+      outcome: 503,
+      error: 'GITHUB_DRAFT_PR_NOT_CONFIGURED',
+      run_id: payload.runId,
+      gate: payload.gate,
+      idempotency_key: idemKey,
+      latency_ms: Date.now() - tStart,
+    });
+    return json(503, {
+      error: 'GITHUB_DRAFT_PR_NOT_CONFIGURED',
+      message: 'GitHub Stage 1 mock missing draft-pr methods — fail-closed',
+    });
+  }
+
+  const hash = await requestHash({
+    op: GROK_DRAFT_PR_OPERATION,
+    run_id: payload.runId,
+    gate: payload.gate,
+    base_sha: payload.baseSha,
+    task: payload.task,
+  });
+
+  const result = await env.store.executeWrite({
+    idempotencyKey: idemKey,
+    requestHash: hash,
+    operation: GROK_DRAFT_PR_OPERATION,
+    runId: payload.runId,
+    gate: payload.gate,
+    operationData: payload,
+    githubCall: async () => executeGrokDraftPrOperation({
+      github,
+      xai: env.xai,
+      runId: payload.runId,
+      gate: payload.gate,
+      confirmedAt: payload.confirmedAt,
+      baseSha: payload.baseSha,
+      task: payload.task,
+    }),
+  });
+
+  auditWriteResult({
+    endpoint,
+    run_id: payload.runId,
+    gate: payload.gate,
+    idempotency_key: idemKey,
+    result,
+    latency_ms: Date.now() - tStart,
+  });
+  return json(result.status, result.body);
+}
+
+function xaiConfigured(xai) {
+  return Boolean(
+    xai &&
+    xai.__stage1Mock === true &&
+    typeof xai.generateDraftPrChange === 'function',
+  );
+}
+
+function githubConfiguredForDraftPr(github) {
+  return Boolean(
+    github &&
+    github.__stage1Mock === true &&
+    typeof github.getRef === 'function' &&
+    typeof github.getContentAtRef === 'function' &&
+    typeof github.createRef === 'function' &&
+    typeof github.updateFile === 'function' &&
+    typeof github.createPullRequest === 'function',
+  );
 }

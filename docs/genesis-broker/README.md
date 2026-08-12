@@ -38,11 +38,16 @@ npm test
 | POST | `/v1/context/read` | allowlisted paths only |
 | POST | `/v1/issues` | G1 + Idempotency-Key |
 | POST | `/v1/issues/{n}/assign-copilot` | G2; issue must belong to same run_id |
+| POST | `/v1/executions/grok/draft-pr` | `operation=create_branch_commit_draft_pr`, fail-closed Stage 1 limits |
 | GET | `/v1/issues/{n}/status` | read-only |
 | GET | `/v1/pulls/{n}` | metadata + CI hint |
 | GET | `/v1/pulls/{n}/diff` | files + unified diff |
 
 **Absent:** merge, push, delete, generic proxy, other repos.
+
+`/v1/executions/grok/draft-pr` is implemented for Stage 1 with mocked xAI and mocked GitHub writes in tests (no live API writes for Stage 1 evidence).
+
+Unified diff hard-limit enforcement (`<= 2048` UTF-8 bytes) is fail-closed before any write path and includes a per-hunk 81-byte Git-visible hunk-header section allowance (80-byte section text cap + 1 separator byte).
 
 ## Authoritative store
 

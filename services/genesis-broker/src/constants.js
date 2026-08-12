@@ -40,6 +40,18 @@ export const CONTEXT_ALLOWLIST = Object.freeze([
 export const GATES = Object.freeze({
   CREATE_ISSUE: 'G1',
   ASSIGN_COPILOT: 'G2',
+  // S-0005 Stage 1 reuses Gate 2 confirmation for the grok draft-pr composite write.
+  GROK_DRAFT_PR: 'G2',
+});
+
+export const GROK_DRAFT_PR_OPERATION = 'create_branch_commit_draft_pr';
+
+export const GROK_DRAFT_PR_LIMITS = Object.freeze({
+  BRANCH_PREFIX: 'genesis/grok/',
+  MAX_FILES: 1,
+  ALLOWED_FILE: 'MEMORY.md',
+  MAX_CHANGED_LINES: 3,
+  MAX_UNIFIED_DIFF_BYTES: 2 * 1024,
 });
 
 export const IDEM_STATES = Object.freeze({

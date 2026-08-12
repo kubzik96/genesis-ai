@@ -41,6 +41,14 @@ export function createGithubClient({ pat, fetchImpl = fetch }) {
       return gh('GET', `/repos/${FIXED_OWNER}/${FIXED_REPO}/contents/${encoded}?ref=${FIXED_BASE_BRANCH}`);
     },
 
+    async getContentAtRef(path, ref) {
+      const encoded = path
+        .split('/')
+        .map(encodeURIComponent)
+        .join('/');
+      return gh('GET', `/repos/${FIXED_OWNER}/${FIXED_REPO}/contents/${encoded}?ref=${encodeURIComponent(ref)}`);
+    },
+
     async createIssue({ title, body, labels }) {
       return gh('POST', `/repos/${FIXED_OWNER}/${FIXED_REPO}/issues`, {
         title,
@@ -111,6 +119,41 @@ export function createGithubClient({ pat, fetchImpl = fetch }) {
 
     async getCombinedStatus(ref) {
       return gh('GET', `/repos/${FIXED_OWNER}/${FIXED_REPO}/commits/${encodeURIComponent(ref)}/status`);
+    },
+
+    async getRef(ref) {
+      const encoded = ref
+        .split('/')
+        .map(encodeURIComponent)
+        .join('/');
+      return gh('GET', `/repos/${FIXED_OWNER}/${FIXED_REPO}/git/ref/${encoded}`);
+    },
+
+    async createRef({ ref, sha }) {
+      return gh('POST', `/repos/${FIXED_OWNER}/${FIXED_REPO}/git/refs`, { ref, sha });
+    },
+
+    async updateFile({ path, message, contentBase64, branch, sha }) {
+      const encoded = path
+        .split('/')
+        .map(encodeURIComponent)
+        .join('/');
+      return gh('PUT', `/repos/${FIXED_OWNER}/${FIXED_REPO}/contents/${encoded}`, {
+        message,
+        content: contentBase64,
+        branch,
+        sha,
+      });
+    },
+
+    async createPullRequest({ title, body, head, base, draft }) {
+      return gh('POST', `/repos/${FIXED_OWNER}/${FIXED_REPO}/pulls`, {
+        title,
+        body,
+        head,
+        base,
+        draft: Boolean(draft),
+      });
     },
   };
 }

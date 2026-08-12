@@ -17,6 +17,7 @@ Authoritative store: **SQLite-backed Durable Object** (not KV).
 - create_issue: `{ op, title, body, labels, run_id, gate }` after normalization
   (title trim non-empty; body string or ""; labels trimmed, de-duplicated, sorted)
 - assign_copilot: `{ op, issue_number, run_id, gate }`
+- create_branch_commit_draft_pr: `{ op, run_id, gate, base_sha, task }`
 
 **`confirmed_at` is NOT part of request_hash.** It is Gate freshness metadata,
 validated on every request before store access. A client retry with the same
@@ -26,7 +27,7 @@ REPLAY — not CONFLICT.
 ## Rate limits
 
 - Max 10 writes/hour per service token.
-- Per run_id: one successful create Issue + one successful assign.
+- Per run_id: one successful create Issue + one successful assign + one successful grok draft-pr composite write.
 - Assign only Issue created by Broker in that run_id.
 
 ## Stale PENDING after crash (fail-closed)

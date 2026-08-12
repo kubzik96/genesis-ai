@@ -10,6 +10,7 @@ import { evaluateIdempotency, markFailed, markSucceeded, markUnknown, isDetermin
 import { checkHourlyWriteLimit, checkRunBounds, assertAssignIssueBelongsToRun } from './rate-limit.js';
 import { createGithubClient, mapGithubError } from './github-client.js';
 import { FIXED_FULL_NAME, IDEM_STATES } from './constants.js';
+import { executeGrokDraftPrOperation } from './grok-draft-pr.js';
 
 export class BrokerDurableObject {
   constructor(state, env) {
@@ -38,7 +39,7 @@ export class BrokerDurableObject {
       });
     }
 
-    const github = createGithubClient({ pat: this.env?.GITHUB_PAT, fetchImpl: this.env?._fetchImpl });
+    const github = this.env?._github || createGithubClient({ pat: this.env?.GITHUB_PAT, fetchImpl: this.env?._fetchImpl });
     if (!github) {
       return this._json({
         status: 503,
@@ -113,6 +114,9 @@ export class BrokerDurableObject {
     const runState = (await storage.get(`run:${runId}`)) ?? {
       create_issue: false,
       assign_copilot: false,
+      create_branch_commit_draft_pr: false,
+      create_branch_commit_draft_pr_blocked: false,
+      create_branch_commit_draft_pr_pending: null,
       created_issue_number: null,
     };
     const bounds = checkRunBounds(runState, operation);
@@ -138,6 +142,18 @@ export class BrokerDurableObject {
         });
       }
     }
+    if (operation === 'create_branch_commit_draft_pr' && !stage1MocksConfigured(github, this.env?.xai || this.env?._xai)) {
+      return this._json({
+        status: 503,
+        body: {
+          error: 'STAGE1_MOCKS_REQUIRED',
+          message: 'Stage 1 grok draft-pr operation requires explicit test mocks',
+        },
+        githubCalled: false,
+        githubStatus: null,
+        idempotencyState: null,
+      });
+    }
 
     const pending = {
       idempotency_key: idempotencyKey,
@@ -148,9 +164,25 @@ export class BrokerDurableObject {
       state: IDEM_STATES.PENDING,
       safe_result: null,
     };
-    await storage.put(`idem:${idempotencyKey}`, pending);
+    const reservedRunState = operation === 'create_branch_commit_draft_pr'
+      ? {
+        ...runState,
+        create_branch_commit_draft_pr_pending: {
+          idempotency_key: idempotencyKey,
+          request_hash: requestHash,
+        },
+      }
+      : runState;
+    if (operation === 'create_branch_commit_draft_pr') {
+      await storage.put(Object.fromEntries([
+        [`idem:${idempotencyKey}`, pending],
+        [`run:${runId}`, reservedRunState],
+      ]));
+    } else {
+      await storage.put(`idem:${idempotencyKey}`, pending);
+    }
 
-    const githubCall = buildGithubCall(operation, operationData, github);
+    const githubCall = buildGithubCall(operation, operationData, github, this.env?.xai || this.env?._xai);
     let result;
     try {
       result = await githubCall();
@@ -159,7 +191,18 @@ export class BrokerDurableObject {
         error: 'BLOCKED_RECONCILIATION_REQUIRED',
         message: 'GitHub call timed out or returned indeterminate result; auto-retry forbidden',
       };
-      await storage.put(`idem:${idempotencyKey}`, markUnknown(pending, safe));
+      if (operation === 'create_branch_commit_draft_pr') {
+        await storage.put(Object.fromEntries([
+          [`idem:${idempotencyKey}`, markUnknown(pending, safe)],
+          [`run:${runId}`, {
+            ...runState,
+            create_branch_commit_draft_pr_blocked: true,
+            create_branch_commit_draft_pr_pending: null,
+          }],
+        ]));
+      } else {
+        await storage.put(`idem:${idempotencyKey}`, markUnknown(pending, safe));
+      }
       return this._json({
         status: 409,
         body: safe,
@@ -184,6 +227,12 @@ export class BrokerDurableObject {
         }]);
       } else if (operation === 'assign_copilot') {
         batchEntries.push([`run:${runId}`, { ...runState, assign_copilot: true }]);
+      } else if (operation === 'create_branch_commit_draft_pr') {
+        batchEntries.push([`run:${runId}`, {
+          ...runState,
+          create_branch_commit_draft_pr: true,
+          create_branch_commit_draft_pr_pending: null,
+        }]);
       }
       await storage.put(Object.fromEntries(batchEntries));
       return this._json({
@@ -196,7 +245,37 @@ export class BrokerDurableObject {
     }
 
     if (isDeterministicClientError(result.status)) {
-      await storage.put(`idem:${idempotencyKey}`, markFailed(pending, result.safeResult));
+      if (operation === 'create_branch_commit_draft_pr' && result.postBranchFailure) {
+        const safe = {
+          error: 'BLOCKED_RECONCILIATION_REQUIRED',
+          message: result.safeResult?.message || 'Post-branch failure requires reconciliation; auto-retry forbidden',
+        };
+        await storage.put(Object.fromEntries([
+          [`idem:${idempotencyKey}`, markUnknown(pending, safe)],
+          [`run:${runId}`, {
+            ...runState,
+            create_branch_commit_draft_pr_blocked: true,
+            create_branch_commit_draft_pr_pending: null,
+          }],
+        ]));
+        return this._json({
+          status: 409,
+          body: safe,
+          githubCalled: true,
+          githubStatus: result.githubStatus ?? result.status ?? null,
+          idempotencyState: IDEM_STATES.UNKNOWN,
+          unknown: true,
+        });
+      }
+      if (operation === 'create_branch_commit_draft_pr') {
+        const currentRunState = (await storage.get(`run:${runId}`)) ?? runState;
+        await storage.put(Object.fromEntries([
+          [`idem:${idempotencyKey}`, markFailed(pending, result.safeResult)],
+          [`run:${runId}`, { ...currentRunState, create_branch_commit_draft_pr_pending: null }],
+        ]));
+      } else {
+        await storage.put(`idem:${idempotencyKey}`, markFailed(pending, result.safeResult));
+      }
       return this._json({
         status: result.status,
         body: result.safeResult,
@@ -210,7 +289,18 @@ export class BrokerDurableObject {
       error: 'BLOCKED_RECONCILIATION_REQUIRED',
       message: `GitHub upstream error — indeterminate result (status ${result.status}); auto-retry forbidden`,
     };
-    await storage.put(`idem:${idempotencyKey}`, markUnknown(pending, safe));
+    if (operation === 'create_branch_commit_draft_pr') {
+      await storage.put(Object.fromEntries([
+        [`idem:${idempotencyKey}`, markUnknown(pending, safe)],
+        [`run:${runId}`, {
+          ...runState,
+          create_branch_commit_draft_pr_blocked: true,
+          create_branch_commit_draft_pr_pending: null,
+        }],
+      ]));
+    } else {
+      await storage.put(`idem:${idempotencyKey}`, markUnknown(pending, safe));
+    }
     return this._json({
       status: 409,
       body: safe,
@@ -228,7 +318,22 @@ export class BrokerDurableObject {
   }
 }
 
-function buildGithubCall(operation, operationData, github) {
+function stage1MocksConfigured(github, xai) {
+  return Boolean(
+    github &&
+    github.__stage1Mock === true &&
+    typeof github.getRef === 'function' &&
+    typeof github.getContentAtRef === 'function' &&
+    typeof github.createRef === 'function' &&
+    typeof github.updateFile === 'function' &&
+    typeof github.createPullRequest === 'function' &&
+    xai &&
+    xai.__stage1Mock === true &&
+    typeof xai.generateDraftPrChange === 'function',
+  );
+}
+
+function buildGithubCall(operation, operationData, github, xai) {
   if (operation === 'create_issue') {
     return async () => {
       const res = await github.createIssue({
@@ -272,6 +377,34 @@ function buildGithubCall(operation, operationData, github) {
         },
       };
     };
+  }
+  if (operation === 'create_branch_commit_draft_pr') {
+    if (
+      !github ||
+      github.__stage1Mock !== true ||
+      !xai ||
+      xai.__stage1Mock !== true ||
+      typeof xai.generateDraftPrChange !== 'function'
+    ) {
+      return async () => ({
+        ok: false,
+        status: 503,
+        githubStatus: null,
+        safeResult: {
+          error: 'STAGE1_MOCKS_REQUIRED',
+          message: 'Stage 1 grok draft-pr operation requires explicit test mocks',
+        },
+      });
+    }
+    return async () => executeGrokDraftPrOperation({
+      github,
+      xai,
+      runId: operationData?.runId,
+      gate: operationData?.gate,
+      confirmedAt: operationData?.confirmedAt,
+      baseSha: operationData?.baseSha,
+      task: operationData?.task,
+    });
   }
   return async () => ({
     ok: false,

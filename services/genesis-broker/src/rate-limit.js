@@ -20,10 +20,33 @@ export function checkHourlyWriteLimit(writeTimestamps, now = Date.now()) {
 }
 
 /**
- * Per-run_id bounds: at most one successful create_issue and one successful assign_copilot.
+ * Per-run_id bounds: at most one successful operation per write contract.
  */
 export function checkRunBounds(runState, operation) {
-  const state = runState || { create_issue: false, assign_copilot: false, created_issue_number: null };
+  const state = runState || {
+    create_issue: false,
+    assign_copilot: false,
+    create_branch_commit_draft_pr: false,
+    create_branch_commit_draft_pr_blocked: false,
+    create_branch_commit_draft_pr_pending: null,
+    created_issue_number: null,
+  };
+  if (operation === 'create_branch_commit_draft_pr' && state.create_branch_commit_draft_pr_pending) {
+    return {
+      ok: false,
+      status: 409,
+      error: 'BLOCKED_RECONCILIATION_REQUIRED',
+      message: 'Prior draft-pr operation is still reserved; reconciliation required before retry',
+    };
+  }
+  if (operation === 'create_branch_commit_draft_pr' && state.create_branch_commit_draft_pr_blocked) {
+    return {
+      ok: false,
+      status: 409,
+      error: 'BLOCKED_RECONCILIATION_REQUIRED',
+      message: 'Prior post-branch draft-pr failure requires reconciliation; auto-retry forbidden',
+    };
+  }
   if (operation === 'create_issue' && state.create_issue) {
     return {
       ok: false,
@@ -38,6 +61,14 @@ export function checkRunBounds(runState, operation) {
       status: 429,
       error: 'RATE_LIMITED',
       message: 'Only one successful assign-copilot per run_id',
+    };
+  }
+  if (operation === 'create_branch_commit_draft_pr' && state.create_branch_commit_draft_pr) {
+    return {
+      ok: false,
+      status: 429,
+      error: 'RATE_LIMITED',
+      message: 'Only one successful grok draft-pr operation per run_id',
     };
   }
   return { ok: true, state };
