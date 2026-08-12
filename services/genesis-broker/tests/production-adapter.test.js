@@ -154,11 +154,20 @@ describe('Stage 2 production adapter through Durable Object', () => {
     const github = githubMock();
     let xaiCalls = 0;
     let reservationAtCall = null;
-    const env = productionEnv({
+    let reconciliationAtCall = null;
+    let concurrentResult = null;
+    let env;
+    env = productionEnv({
       github,
       xaiFetch: async () => {
         xaiCalls += 1;
         reservationAtCall = await storage.get(budgetLedgerKey(new Date(NOW)));
+        reconciliationAtCall = await storage.get(XAI_BUDGET_RECONCILIATION_KEY);
+        concurrentResult = await invoke(
+          storage,
+          env,
+          payload({ key: 'key-unsettled-concurrent', runId: 'run-unsettled-concurrent' }),
+        );
         return xaiResponse(500_000_000);
       },
     });
@@ -167,7 +176,11 @@ describe('Stage 2 production adapter through Durable Object', () => {
     assert.equal(result.body.status, 'DRAFT_PR_CREATED_AWAITING_INDEPENDENT_REVIEW');
     assert.equal(xaiCalls, 1);
     assert.equal(reservationAtCall.spent_ticks, XAI_BUDGET_RESERVATION_TICKS);
+    assert.deepEqual(reconciliationAtCall, { blocked: true });
+    assert.equal(concurrentResult.status, 503);
+    assert.equal(concurrentResult.body.error, 'XAI_BUDGET_RECONCILIATION_REQUIRED');
     assert.deepEqual(await storage.get(budgetLedgerKey(new Date(NOW))), { spent_ticks: 500_000_000, blocked: false });
+    assert.deepEqual(await storage.get(XAI_BUDGET_RECONCILIATION_KEY), { blocked: false });
     assert.equal(github.calls.createRef, 1);
     assert.equal(github.calls.updateFile, 1);
     assert.equal(github.calls.createPullRequest, 1);
@@ -269,6 +282,7 @@ describe('Stage 2 production adapter through Durable Object', () => {
     assert.equal(result.body.error, 'XAI_CALL_FAILED');
     assert.equal(xaiCalls, 0);
     assert.deepEqual(await storage.get(budgetLedgerKey(new Date(NOW))), { spent_ticks: 0, blocked: false });
+    assert.deepEqual(await storage.get(XAI_BUDGET_RECONCILIATION_KEY), { blocked: false });
     assert.equal(writeCalls(github), 0);
   });
 
@@ -287,5 +301,6 @@ describe('Stage 2 production adapter through Durable Object', () => {
     assert.equal(xaiCalls, 0);
     assert.equal(writeCalls(github), 0);
     assert.deepEqual(await storage.get(budgetLedgerKey(new Date(NOW))), { spent_ticks: 0, blocked: false });
+    assert.deepEqual(await storage.get(XAI_BUDGET_RECONCILIATION_KEY), { blocked: false });
   });
 });

@@ -184,12 +184,17 @@ export class BrokerDurableObject {
         });
       }
       budgetKey = budgetLedgerKey(this.env?._now ? new Date(this.env._now) : new Date());
+      const budgetValue = await storage.get(budgetKey);
+      const reconciliationValue = await storage.get(XAI_BUDGET_RECONCILIATION_KEY);
       const reservation = reserveBudget(
-        await storage.get(budgetKey),
-        await storage.get(XAI_BUDGET_RECONCILIATION_KEY),
+        budgetValue,
+        reconciliationValue,
       );
       if (!reservation.ok) {
-        if (reservation.error === 'XAI_BUDGET_RECONCILIATION_REQUIRED') {
+        if (
+          reservation.error === 'XAI_BUDGET_RECONCILIATION_REQUIRED' &&
+          reconciliationValue?.blocked !== true
+        ) {
           await storage.put(XAI_BUDGET_RECONCILIATION_KEY, { blocked: true });
         }
         return this._json({
@@ -228,7 +233,12 @@ export class BrokerDurableObject {
         [`idem:${idempotencyKey}`, pending],
         [`run:${runId}`, reservedRunState],
       ];
-      if (budgetKey && reservedBudget) entries.push([budgetKey, reservedBudget]);
+      if (budgetKey && reservedBudget) {
+        entries.push(
+          [budgetKey, reservedBudget],
+          [XAI_BUDGET_RECONCILIATION_KEY, { blocked: true }],
+        );
+      }
       await storage.put(Object.fromEntries(entries));
     } else {
       await storage.put(`idem:${idempotencyKey}`, pending);
@@ -242,13 +252,18 @@ export class BrokerDurableObject {
       if (budgetKey && reservedBudget && xaiMeter) {
         if (xaiMeter.state.called) {
           const crashSettlement = settleBudget(reservedBudget, xaiMeter.state.costTicks);
-          const entries = [[budgetKey, crashSettlement.value]];
-          if (!crashSettlement.valid || crashSettlement.overReservation) {
-            entries.push([XAI_BUDGET_RECONCILIATION_KEY, { blocked: true }]);
-          }
+          const entries = [
+            [budgetKey, crashSettlement.value],
+            [XAI_BUDGET_RECONCILIATION_KEY, {
+              blocked: !crashSettlement.valid || crashSettlement.overReservation,
+            }],
+          ];
           await storage.put(Object.fromEntries(entries));
         } else {
-          await storage.put(budgetKey, releaseUnusedReservation(reservedBudget));
+          await storage.put(Object.fromEntries([
+            [budgetKey, releaseUnusedReservation(reservedBudget)],
+            [XAI_BUDGET_RECONCILIATION_KEY, { blocked: false }],
+          ]));
         }
       }
       const safe = {
@@ -279,13 +294,18 @@ export class BrokerDurableObject {
 
     if (budgetKey && reservedBudget && xaiMeter) {
       if (!xaiMeter.state.called) {
-        await storage.put(budgetKey, releaseUnusedReservation(reservedBudget));
+        await storage.put(Object.fromEntries([
+          [budgetKey, releaseUnusedReservation(reservedBudget)],
+          [XAI_BUDGET_RECONCILIATION_KEY, { blocked: false }],
+        ]));
       } else {
         const settlement = settleBudget(reservedBudget, xaiMeter.state.costTicks);
-        const entries = [[budgetKey, settlement.value]];
-        if (!settlement.valid || settlement.overReservation) {
-          entries.push([XAI_BUDGET_RECONCILIATION_KEY, { blocked: true }]);
-        }
+        const entries = [
+          [budgetKey, settlement.value],
+          [XAI_BUDGET_RECONCILIATION_KEY, {
+            blocked: !settlement.valid || settlement.overReservation,
+          }],
+        ];
         await storage.put(Object.fromEntries(entries));
         if (!settlement.valid || settlement.overReservation) {
           result = {

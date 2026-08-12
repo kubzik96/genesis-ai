@@ -49,6 +49,7 @@ The checked-in Wrangler value is `GROK_EXECUTOR_LIVE_ENABLED=false`. Wrangler de
 - missing, negative, non-integer, or over-reservation cost blocks the live path before GitHub write;
 - missing/invalid cost keeps the full reservation charged;
 - over-reservation cost records the actual amount and blocks reconciliation;
+- an in-flight reconciliation marker is persisted atomically with the reservation before xAI and is cleared only by a valid settlement or a proven pre-call release, so runtime termination cannot silently reopen the live path;
 - reconciliation block is stored under the non-monthly `budget:xai:reconciliation` key and survives UTC month rollover until a separately authorized reconciliation clears it;
 - malformed persisted monthly or reconciliation state fails closed and cannot normalize to zero spend;
 - a failure before the network call releases the reservation;
