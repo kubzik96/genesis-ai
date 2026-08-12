@@ -101,6 +101,29 @@ function maxGitUnifiedDiffOracleBytes(oldContent, newContent) {
   return maxBytes;
 }
 
+function maxGitUnifiedDiffOracle(oldContent, newContent) {
+  const algorithms = [null, 'myers', 'minimal', 'patience', 'histogram'];
+  let max = { bytes: 0, patch: '', algorithm: 'default' };
+  for (const algorithm of algorithms) {
+    const diff = gitUnifiedDiffOracle(oldContent, newContent, algorithm);
+    if (diff.bytes > max.bytes) {
+      max = { ...diff, algorithm: algorithm || 'default' };
+    }
+  }
+  return max;
+}
+
+function getHunkHeaderSections(patch) {
+  return patch
+    .split('\n')
+    .filter((line) => line.startsWith('@@ '))
+    .map((line) => {
+      const markerEnd = line.indexOf(' @@');
+      if (markerEnd < 0) return '';
+      return line.slice(markerEnd + 3);
+    });
+}
+
 function assertConservativeUnifiedDiffBytes(actualBytes, oracleBytes) {
   assert.ok(actualBytes >= oracleBytes, `expected ${actualBytes} >= oracle ${oracleBytes}`);
   assert.ok(
@@ -398,9 +421,9 @@ describe('POST /v1/executions/grok/draft-pr', () => {
         xai: { calls: 0, fn: async () => xaiResponse(nearbyNew) },
       }),
     );
-    assert.equal(gnuUnifiedDiffOracle(nearbyOld, nearbyNew).bytes, 72);
+    const nearbyMaxGitBytes = maxGitUnifiedDiffOracleBytes(nearbyOld, nearbyNew);
     assert.equal(nearby.status, 200);
-    assertConservativeUnifiedDiffBytes(JSON.parse(nearby.body).diff_summary.unified_diff_bytes, 72);
+    assertConservativeUnifiedDiffBytes(JSON.parse(nearby.body).diff_summary.unified_diff_bytes, nearbyMaxGitBytes);
 
     const separatedOld = '1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n';
     const separatedNew = '1\n2\n3\n4\nX\n6\n7\n8\n9\n10\n11\n12\n13\n';
@@ -411,9 +434,9 @@ describe('POST /v1/executions/grok/draft-pr', () => {
         xai: { calls: 0, fn: async () => xaiResponse(separatedNew) },
       }),
     );
-    assert.equal(gnuUnifiedDiffOracle(separatedOld, separatedNew).bytes, 106);
+    const separatedMaxGitBytes = maxGitUnifiedDiffOracleBytes(separatedOld, separatedNew);
     assert.equal(separated.status, 200);
-    assertConservativeUnifiedDiffBytes(JSON.parse(separated.body).diff_summary.unified_diff_bytes, 106);
+    assertConservativeUnifiedDiffBytes(JSON.parse(separated.body).diff_summary.unified_diff_bytes, separatedMaxGitBytes);
   });
 
   it('counts missing final newline marker bytes in unified diff', async () => {
@@ -427,9 +450,9 @@ describe('POST /v1/executions/grok/draft-pr', () => {
         xai: { calls: 0, fn: async () => xaiResponse(noEofNewlineNew) },
       }),
     );
-    assert.equal(gnuUnifiedDiffOracle(oldContent, noEofNewlineNew).bytes, 135);
+    const noEofNewlineMaxGitBytes = maxGitUnifiedDiffOracleBytes(oldContent, noEofNewlineNew);
     assert.equal(noEofNewline.status, 200);
-    assertConservativeUnifiedDiffBytes(JSON.parse(noEofNewline.body).diff_summary.unified_diff_bytes, 135);
+    assertConservativeUnifiedDiffBytes(JSON.parse(noEofNewline.body).diff_summary.unified_diff_bytes, noEofNewlineMaxGitBytes);
 
     const withEofNewline = await handleRequest(
       makeRequest({ headers: { 'idempotency-key': 'k-with-eof-newline' }, body: baseBody({ run_id: 'run-with-eof-newline' }) }),
@@ -438,9 +461,46 @@ describe('POST /v1/executions/grok/draft-pr', () => {
         xai: { calls: 0, fn: async () => xaiResponse(withEofNewlineNew) },
       }),
     );
-    assert.equal(gnuUnifiedDiffOracle(oldContent, withEofNewlineNew).bytes, 107);
+    const withEofNewlineMaxGitBytes = maxGitUnifiedDiffOracleBytes(oldContent, withEofNewlineNew);
     assert.equal(withEofNewline.status, 200);
-    assertConservativeUnifiedDiffBytes(JSON.parse(withEofNewline.body).diff_summary.unified_diff_bytes, 107);
+    assertConservativeUnifiedDiffBytes(JSON.parse(withEofNewline.body).diff_summary.unified_diff_bytes, withEofNewlineMaxGitBytes);
+  });
+
+  it('matches max real-git bytes for separated-hunk and EOF variants across algorithms', async () => {
+    const cases = [
+      {
+        idempotency: 'k-git-multi-hunk',
+        run: 'run-git-multi-hunk',
+        oldContent: '1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n',
+        newContent: '1\n2\nX\n4\n5\n6\n7\n8\n9\n10\n11\n12\nY\n14\n',
+      },
+      {
+        idempotency: 'k-git-eof-terminated',
+        run: 'run-git-eof-terminated',
+        oldContent: 'line1\nline2',
+        newContent: 'line1\nline-two\nline3\n',
+      },
+      {
+        idempotency: 'k-git-eof-unterminated',
+        run: 'run-git-eof-unterminated',
+        oldContent: 'line1\nline2\n',
+        newContent: 'line1\nline-two\nline3',
+      },
+    ];
+    for (const tc of cases) {
+      const maxGit = maxGitUnifiedDiffOracleBytes(tc.oldContent, tc.newContent);
+      const github = githubMock({ sourceContent: tc.oldContent });
+      const res = await handleRequest(
+        makeRequest({ headers: { 'idempotency-key': tc.idempotency }, body: baseBody({ run_id: tc.run }) }),
+        envWith({ github, xai: { calls: 0, fn: async () => xaiResponse(tc.newContent) } }),
+      );
+      assert.equal(res.status, 200);
+      const body = JSON.parse(res.body);
+      assertConservativeUnifiedDiffBytes(body.diff_summary.unified_diff_bytes, maxGit);
+      assert.equal(github.calls.createRef, 1);
+      assert.equal(github.calls.updateFile, 1);
+      assert.equal(github.calls.createPullRequest, 1);
+    }
   });
 
   it('rejects boundary case where EOF context marker makes unified UTF-8 diff exceed 2 KiB', async () => {
@@ -597,21 +657,35 @@ describe('POST /v1/executions/grok/draft-pr', () => {
     assert.equal(github.calls.createPullRequest, 1);
   });
 
-  it('git-oracle hunk section context is capped at 80 bytes', () => {
+  it('git-oracle hunk section context is present and capped at 80 UTF-8 bytes', () => {
     const x = 'x'.repeat(940);
     const noSection = '';
-    const shortSection = 'q'.repeat(80);
-    const longSection = 'q'.repeat(81);
+    const shortSection = `${'a'.repeat(78)}Ж`;
+    const longSection = `${shortSection}Q`;
     const oldNoSection = `${x}\n${noSection}\n${x}\nb\nb\n${x}`;
     const oldShort = `${x}\n${shortSection}\n${x}\nb\nb\n${x}`;
     const oldLong = `${x}\n${longSection}\n${x}\nb\nb\n${x}`;
     const newNoSection = `${x}\n${noSection}\n${x}\nb\nb\n`;
     const newShort = `${x}\n${shortSection}\n${x}\nb\nb\n`;
     const newLong = `${x}\n${longSection}\n${x}\nb\nb\n`;
-    const shortBytes = maxGitUnifiedDiffOracleBytes(oldShort, newShort);
-    const longBytes = maxGitUnifiedDiffOracleBytes(oldLong, newLong);
-    assert.ok(shortBytes >= maxGitUnifiedDiffOracleBytes(oldNoSection, newNoSection));
-    assert.equal(longBytes, shortBytes);
+    const noSectionOracle = maxGitUnifiedDiffOracle(oldNoSection, newNoSection);
+    const shortOracle = maxGitUnifiedDiffOracle(oldShort, newShort);
+    const longOracle = maxGitUnifiedDiffOracle(oldLong, newLong);
+    const noSectionHeaders = getHunkHeaderSections(noSectionOracle.patch);
+    const shortHeaders = getHunkHeaderSections(shortOracle.patch);
+    const longHeaders = getHunkHeaderSections(longOracle.patch);
+    assert.equal(noSectionHeaders.length, 1);
+    assert.equal(shortHeaders.length, 1);
+    assert.equal(longHeaders.length, 1);
+    assert.equal(noSectionHeaders[0], '');
+    assert.ok(shortHeaders[0].startsWith(' '), `expected visible section context, got ${shortHeaders[0]}`);
+    assert.ok(Buffer.byteLength(shortHeaders[0], 'utf8') <= MAX_GIT_HUNK_HEADER_CONTEXT_BYTES);
+    assert.ok(Buffer.byteLength(shortHeaders[0], 'utf8') > GIT_HUNK_SECTION_SEPARATOR_BYTES);
+    assert.equal(shortHeaders[0], longHeaders[0], `expected 81-byte section context cap under ${shortOracle.algorithm}/${longOracle.algorithm}`);
+    assert.ok(shortOracle.bytes > noSectionOracle.bytes);
+    const sectionOnlyBytes = shortOracle.bytes - noSectionOracle.bytes;
+    assert.ok(sectionOnlyBytes <= MAX_GIT_HUNK_HEADER_CONTEXT_BYTES);
+    assert.equal(longOracle.bytes, shortOracle.bytes);
   });
 
   it('rejects ambiguous transpositions that can exceed the 2 KiB unified diff limit', async () => {
@@ -677,7 +751,7 @@ describe('POST /v1/executions/grok/draft-pr', () => {
     }
   });
 
-  it('property-style oracle sweep guards ambiguous tie-break undercount on small repeated sequences', async () => {
+  it('property-style public-endpoint sweep never accepts below max real-git diff bytes', async () => {
     const sequences = [
       ['a'],
       ['b'],
@@ -686,15 +760,16 @@ describe('POST /v1/executions/grok/draft-pr', () => {
       ['b', 'a'],
       ['a', 'b', 'a'],
       ['b', 'a', 'b'],
+      ['a', 'b', 'a', 'b'],
     ];
     let checked = 0;
+    let accepted = 0;
     for (const oldSeq of sequences) {
       for (const newSeq of sequences) {
         for (const oldNl of [true, false]) {
           for (const newNl of [true, false]) {
             const oldContent = oldSeq.join('\n') + (oldNl ? '\n' : '');
             const newContent = newSeq.join('\n') + (newNl ? '\n' : '');
-            const oracle = gnuUnifiedDiffOracle(oldContent, newContent);
             const runId = `run-sweep-${checked}`;
             const github = githubMock({ sourceContent: oldContent });
             const res = await handleRequest(
@@ -703,7 +778,16 @@ describe('POST /v1/executions/grok/draft-pr', () => {
             );
             const body = JSON.parse(res.body);
             if (res.status === 200) {
-              assert.ok(body.diff_summary.unified_diff_bytes >= oracle.bytes, `${runId}: broker undercounted oracle`);
+              accepted += 1;
+              const maxGit = maxGitUnifiedDiffOracleBytes(oldContent, newContent);
+              assert.ok(
+                body.diff_summary.unified_diff_bytes >= maxGit,
+                `${runId}: broker undercounted max git diff ${maxGit} (got ${body.diff_summary.unified_diff_bytes})`,
+              );
+              assert.ok(
+                maxGit <= GROK_DRAFT_PR_LIMITS.MAX_UNIFIED_DIFF_BYTES,
+                `${runId}: accepted despite max git diff ${maxGit} > ${GROK_DRAFT_PR_LIMITS.MAX_UNIFIED_DIFF_BYTES}`,
+              );
             } else {
               assert.ok([422, 409].includes(res.status), `${runId}: unexpected status ${res.status}`);
             }
@@ -713,6 +797,7 @@ describe('POST /v1/executions/grok/draft-pr', () => {
       }
     }
     assert.equal(checked, sequences.length * sequences.length * 4);
+    assert.ok(accepted > 0);
   });
 
   it('rejects oversized model output before branch write path', async () => {
