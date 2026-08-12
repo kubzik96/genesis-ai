@@ -68,6 +68,16 @@ Stage 1 заканчивается на **draft PR**, ожидающем нез�
 
 Hard limits Revision 1 **не** ослаблены этим EA.
 
+### Stage 1 implementation outcome — 2026-08-12
+
+- **Task status:** T-011 = **REVIEW** (not DONE).
+- **Implementation PR:** [#29](https://github.com/kubzik96/genesis-ai/pull/29), reviewed HEAD `348729a9cebe98476d00bc62c963aa4c0163efe4`.
+- **Evidence:** focused endpoint tests 33/33, Durable Object tests 14/14, full Broker suite 128/128; expanded Git diff oracle — 1,985 comparisons, zero undercounts and zero accepted oversize cases.
+- **Independent review:** non-Grok PASS on the exact reviewed HEAD; formal GitHub review APPROVED.
+- **Post-review decisions:** CEO separately authorized Ready, Approve and squash merge. PR #29 was merged as `4c7677fcb0a84557888171c5c54cad8974e1e6be`.
+- **Authorization boundary:** those post-review decisions do not expand Stage 1 EA and do not grant Stage 2, deployment, Cloudflare, Dify, secrets operations, live xAI/GitHub writes or smoke.
+- **Live runtime evidence:** none; `CI_NOT_CONFIGURED`.
+
 ---
 
 ## 1. Контекст
@@ -295,19 +305,19 @@ Grok возвращает данные, но не выполняет GitHub writ
 - [x] S-0005 и DR-0007 утверждены CEO и опубликованы в Git.
 - [x] Отдельная Bridge task зарегистрирована.
 - [x] Отдельный staged Execution Authorization выдан.
-- [ ] Один endpoint реализован без generic proxy/merge route.
+- [x] Один endpoint реализован без generic proxy/merge route.
 - [ ] `XAI_API_KEY` находится только в Broker secret storage.
-- [ ] Все hard limits §4.4 enforced server-side.
-- [ ] Unit/contract/negative tests подтверждают auth, gate, base SHA, allowlist, limits и idempotency.
-- [ ] Partial failure переводится в `UNKNOWN` без auto-retry.
+- [x] Все hard limits §4.4 enforced server-side.
+- [x] Unit/contract/negative tests подтверждают auth, gate, base SHA, allowlist, limits и idempotency.
+- [x] Partial failure переводится в `UNKNOWN` без auto-retry.
 - [ ] Dify draft flow не выполняет direct GitHub write.
 - [ ] Первый smoke меняет только `MEMORY.md`, 1–3 строки, в одной новой ветке и одном draft PR.
 - [ ] Broker возвращает фактические Git-артефакты.
-- [ ] Workflow останавливается на `DRAFT_PR_CREATED_AWAITING_INDEPENDENT_REVIEW`.
-- [ ] Grok не является sole reviewer.
-- [ ] Merge и direct `main` write отсутствуют.
-- [ ] Секреты отсутствуют в Git, логах и безопасных ответах.
-- [ ] Результат не объявляется полным One-Window PASS до независимого автоматического review и Gate 3.
+- [x] Workflow останавливается на `DRAFT_PR_CREATED_AWAITING_INDEPENDENT_REVIEW` (mocked Stage 1 contract evidence).
+- [x] Grok не является sole reviewer.
+- [x] Merge endpoint и direct `main` write отсутствуют в executor implementation.
+- [x] Секреты отсутствуют в Git, тестовых логах и безопасных ответах Stage 1.
+- [x] Результат не объявляется полным One-Window PASS до независимого автоматического review и Gate 3.
 
 ---
 
@@ -368,3 +378,5 @@ Grok возвращает данные, но не выполняет GitHub writ
 | 1 | 2026-08-11 | ChatGPT — COO | Создан Draft limited Grok/xAI executor path; EA NOT_GRANTED |
 | 1 | 2026-08-11 | CEO Genesis AI | **Approved**. Execution Authorization остаётся NOT_GRANTED. Реализация, deployment, secrets operations и smoke не разрешены этим Approval. |
 | 1 | 2026-08-11 | CEO Genesis AI | granted Stage 1 CODE_AND_TESTS_ONLY EA for T-011; source + local unit/contract/negative/mock tests + docs only; feature branch + draft PR; deployment, secrets, live xAI/GitHub writes и smoke запрещены. |
+| 1 | 2026-08-12 | ChatGPT — independent reviewer | PR #29 independently reviewed PASS on exact HEAD `348729a…`; Stage 1 code/tests criteria confirmed. |
+| 1 | 2026-08-12 | CEO Genesis AI | Separately authorized Ready, formal Approve and squash merge (`4c7677f…`). T-011 → REVIEW; Stage 2/runtime authorization remains NOT_GRANTED. |

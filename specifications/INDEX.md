@@ -20,7 +20,7 @@
 | [S-0002](S-0002-Genesis-Secure-GitHub-Broker-MVP.md) | Genesis Secure GitHub Broker MVP | Approved | 1 | T-010 | 2026-07-24 |
 | [S-0003](S-0003-Post-Stage-4-Source-of-Record-Synchronization.md) | Post-Stage-4 Source of Record Synchronization and Codex Role Definition | Superseded | 1 | T-009, T-010 | 2026-08-07 |
 | [S-0004](S-0004-Post-Stage-4-Source-of-Record-Synchronization-Governance-Correction.md) | Post-Stage-4 Source of Record Synchronization (Governance Correction) | Approved | 1 | T-009, T-010 | 2026-08-07 |
-| [S-0005](S-0005-Genesis-Limited-Grok-Executor-Path.md) | Genesis Limited Grok Executor Path | Approved | 1 | NOT_REGISTERED | 2026-08-11 |
+| [S-0005](S-0005-Genesis-Limited-Grok-Executor-Path.md) | Genesis Limited Grok Executor Path | Approved | 1 | T-011 | 2026-08-11 |
 
 ## Следующий номер
 
