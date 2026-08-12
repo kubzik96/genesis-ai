@@ -337,6 +337,23 @@ function buildEditScriptBounded(oldLines, newLines, maxEdits) {
   return annotateIndices(edits);
 }
 
+function applyFinalNewlineSemantics(ops, { oldLineCount, newLineCount, oldHasFinalNewline, newHasFinalNewline }) {
+  if (oldHasFinalNewline === newHasFinalNewline || oldLineCount === 0 || newLineCount === 0) return ops;
+  let finalEqualIndex = -1;
+  for (let i = 0; i < ops.length; i += 1) {
+    const op = ops[i];
+    if (op.type === 'equal' && op.oldIndex === oldLineCount && op.newIndex === newLineCount) {
+      finalEqualIndex = i;
+      break;
+    }
+  }
+  if (finalEqualIndex < 0) return ops;
+  const bareOps = ops.map((op) => ({ type: op.type, line: op.line }));
+  const [finalEqual] = bareOps.splice(finalEqualIndex, 1);
+  bareOps.splice(finalEqualIndex, 0, { type: 'delete', line: finalEqual.line }, { type: 'add', line: finalEqual.line });
+  return annotateIndices(bareOps);
+}
+
 function buildUnifiedHunkRanges(ops, contextLines) {
   const changeIndices = [];
   for (let i = 0; i < ops.length; i += 1) {
@@ -360,6 +377,12 @@ function buildUnifiedHunkRanges(ops, contextLines) {
   }
   ranges.push([start, end]);
   return ranges;
+}
+
+function formatUnifiedRange(start, count) {
+  if (count === 0) return '0,0';
+  if (count === 1) return String(start);
+  return `${start},${count}`;
 }
 
 function countUnifiedDiffBytesBounded({
@@ -392,9 +415,23 @@ function countUnifiedDiffBytesBounded({
     }
     const oldStart = oldCount === 0 ? (oldLineCount === 0 ? 0 : first.oldIndex) : first.oldIndex;
     const newStart = newCount === 0 ? (newLineCount === 0 ? 0 : first.newIndex) : first.newIndex;
-    if (!add(`@@ -${oldStart},${oldCount} +${newStart},${newCount} @@\n`)) return { ok: false, exceeded: true, bytes: total };
+    if (!add(`@@ -${formatUnifiedRange(oldStart, oldCount)} +${formatUnifiedRange(newStart, newCount)} @@\n`)) {
+      return { ok: false, exceeded: true, bytes: total };
+    }
     for (const op of hunkOps) {
-      if (op.type === 'equal' && !add(` ${op.line}\n`)) return { ok: false, exceeded: true, bytes: total };
+      if (op.type === 'equal') {
+        if (!add(` ${op.line}\n`)) return { ok: false, exceeded: true, bytes: total };
+        if (
+          (!oldHasFinalNewline || !newHasFinalNewline) &&
+          oldLineCount > 0 &&
+          newLineCount > 0 &&
+          op.oldIndex === oldLineCount &&
+          op.newIndex === newLineCount &&
+          !add('\\ No newline at end of file\n')
+        ) {
+          return { ok: false, exceeded: true, bytes: total };
+        }
+      }
       if (op.type === 'delete') {
         if (!add(`-${op.line}\n`)) return { ok: false, exceeded: true, bytes: total };
         if (!oldHasFinalNewline && oldLineCount > 0 && op.oldIndex === oldLineCount && !add('\\ No newline at end of file\n')) {
@@ -427,10 +464,16 @@ function diffStats(oldContent, newContent, path) {
   }
   const oldSplit = splitLines(oldContent);
   const newSplit = splitLines(newContent);
-  const ops = buildEditScriptBounded(oldSplit.lines, newSplit.lines, GROK_DRAFT_PR_LIMITS.MAX_CHANGED_LINES);
-  if (!ops) {
+  const baseOps = buildEditScriptBounded(oldSplit.lines, newSplit.lines, GROK_DRAFT_PR_LIMITS.MAX_CHANGED_LINES);
+  if (!baseOps) {
     return fail(422, 'CHANGED_LINES_EXCEEDED', `Changed lines must be <= ${GROK_DRAFT_PR_LIMITS.MAX_CHANGED_LINES}`);
   }
+  const ops = applyFinalNewlineSemantics(baseOps, {
+    oldLineCount: oldSplit.lines.length,
+    newLineCount: newSplit.lines.length,
+    oldHasFinalNewline: oldSplit.hasFinalNewline,
+    newHasFinalNewline: newSplit.hasFinalNewline,
+  });
   let additions = 0;
   let deletions = 0;
   for (const op of ops) {

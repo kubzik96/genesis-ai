@@ -1,5 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { handleRequest } from '../src/router.js';
 import { MemoryBrokerStore } from '../src/memory-store.js';
 import { IDEM_STATES } from '../src/constants.js';
@@ -25,6 +29,24 @@ function base64ToUtf8(encoded) {
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
   return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+}
+
+function gnuUnifiedDiffOracle(oldContent, newContent) {
+  const dir = mkdtempSync(join(tmpdir(), 'grok-diff-oracle-'));
+  const oldPath = join(dir, 'old.txt');
+  const newPath = join(dir, 'new.txt');
+  try {
+    writeFileSync(oldPath, oldContent, { encoding: 'utf8' });
+    writeFileSync(newPath, newContent, { encoding: 'utf8' });
+    const result = spawnSync('diff', ['-u', '--label', 'a/MEMORY.md', oldPath, '--label', 'b/MEMORY.md', newPath], { encoding: null });
+    if (result.status !== 0 && result.status !== 1) {
+      throw new Error(`GNU diff failed: ${result.stderr ? result.stderr.toString('utf8') : 'unknown error'}`);
+    }
+    const output = result.stdout || Buffer.alloc(0);
+    return { bytes: output.length, patch: output.toString('utf8') };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 function makeRequest({ headers = {}, body }) {
@@ -307,47 +329,113 @@ describe('POST /v1/executions/grok/draft-pr', () => {
   });
 
   it('keeps standard unified diff byte counts stable for nearby and separated hunks', async () => {
+    const nearbyOld = 'a\nb\nc\nd\ne\nf\ng\n';
+    const nearbyNew = 'a\nB\nc\nC\nd\ne\nf\ng\n';
     const nearby = await handleRequest(
       makeRequest({ headers: { 'idempotency-key': 'k-nearby-hunks' }, body: baseBody({ run_id: 'run-nearby-hunks' }) }),
       envWith({
-        github: githubMock({ sourceContent: 'a\nb\nc\nd\ne\nf\ng\n' }),
-        xai: { calls: 0, fn: async () => xaiResponse('a\nB\nc\nC\nd\ne\nf\ng\n') },
+        github: githubMock({ sourceContent: nearbyOld }),
+        xai: { calls: 0, fn: async () => xaiResponse(nearbyNew) },
       }),
     );
+    assert.equal(gnuUnifiedDiffOracle(nearbyOld, nearbyNew).bytes, 72);
     assert.equal(nearby.status, 200);
     assert.equal(JSON.parse(nearby.body).diff_summary.unified_diff_bytes, 72);
 
+    const separatedOld = '1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n';
+    const separatedNew = '1\n2\n3\n4\nX\n6\n7\n8\n9\n10\n11\n12\n13\n';
     const separated = await handleRequest(
       makeRequest({ headers: { 'idempotency-key': 'k-separated-hunks' }, body: baseBody({ run_id: 'run-separated-hunks' }) }),
       envWith({
-        github: githubMock({ sourceContent: '1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n' }),
-        xai: { calls: 0, fn: async () => xaiResponse('1\n2\n3\n4\nX\n6\n7\n8\n9\n10\n11\n12\n13\n') },
+        github: githubMock({ sourceContent: separatedOld }),
+        xai: { calls: 0, fn: async () => xaiResponse(separatedNew) },
       }),
     );
+    assert.equal(gnuUnifiedDiffOracle(separatedOld, separatedNew).bytes, 106);
     assert.equal(separated.status, 200);
     assert.equal(JSON.parse(separated.body).diff_summary.unified_diff_bytes, 106);
   });
 
   it('counts missing final newline marker bytes in unified diff', async () => {
+    const oldContent = 'line1\nline2';
+    const noEofNewlineNew = 'line1\nline-two\nline3';
+    const withEofNewlineNew = 'line1\nline-two\nline3\n';
     const noEofNewline = await handleRequest(
       makeRequest({ headers: { 'idempotency-key': 'k-no-eof-marker' }, body: baseBody({ run_id: 'run-no-eof-marker' }) }),
       envWith({
-        github: githubMock({ sourceContent: 'line1\nline2' }),
-        xai: { calls: 0, fn: async () => xaiResponse('line1\nline-two\nline3') },
+        github: githubMock({ sourceContent: oldContent }),
+        xai: { calls: 0, fn: async () => xaiResponse(noEofNewlineNew) },
       }),
     );
+    assert.equal(gnuUnifiedDiffOracle(oldContent, noEofNewlineNew).bytes, 135);
     assert.equal(noEofNewline.status, 200);
     assert.equal(JSON.parse(noEofNewline.body).diff_summary.unified_diff_bytes, 135);
 
     const withEofNewline = await handleRequest(
       makeRequest({ headers: { 'idempotency-key': 'k-with-eof-newline' }, body: baseBody({ run_id: 'run-with-eof-newline' }) }),
       envWith({
-        github: githubMock({ sourceContent: 'line1\nline2' }),
-        xai: { calls: 0, fn: async () => xaiResponse('line1\nline-two\nline3\n') },
+        github: githubMock({ sourceContent: oldContent }),
+        xai: { calls: 0, fn: async () => xaiResponse(withEofNewlineNew) },
       }),
     );
+    assert.equal(gnuUnifiedDiffOracle(oldContent, withEofNewlineNew).bytes, 107);
     assert.equal(withEofNewline.status, 200);
     assert.equal(JSON.parse(withEofNewline.body).diff_summary.unified_diff_bytes, 107);
+  });
+
+  it('rejects boundary case where EOF context marker makes unified UTF-8 diff exceed 2 KiB', async () => {
+    const trailing = 'x'.repeat(1960);
+    const oldContent = `old\nctx1\nctx2\n${trailing}`;
+    const newContent = `new\nctx1\nctx2\n${trailing}`;
+    const oracle = gnuUnifiedDiffOracle(oldContent, newContent);
+    assert.equal(oracle.bytes, 2060);
+    assert.match(oracle.patch, /\\ No newline at end of file/);
+    const github = githubMock({ sourceContent: oldContent });
+    const xai = { calls: 0, fn: async () => xaiResponse(newContent) };
+    const res = await handleRequest(
+      makeRequest({ headers: { 'idempotency-key': 'k-eof-2k-boundary' }, body: baseBody({ run_id: 'run-eof-2k-boundary' }) }),
+      envWith({ github, xai }),
+    );
+    assert.equal(res.status, 422);
+    assert.equal(JSON.parse(res.body).error, 'DIFF_SIZE_EXCEEDED');
+    assert.equal(xai.calls, 1);
+    assert.equal(github.calls.getRef, 1);
+    assert.equal(github.calls.getContentAtRef, 1);
+    assert.equal(github.calls.createRef, 0);
+    assert.equal(github.calls.updateFile, 0);
+    assert.equal(github.calls.createPullRequest, 0);
+  });
+
+  it('handles EOF-newline-only transitions as real diff changes with oracle-aligned bytes', async () => {
+    const removeOld = 'line1\nline2\n';
+    const removeNew = 'line1\nline2';
+    const removeOracle = gnuUnifiedDiffOracle(removeOld, removeNew);
+    assert.match(removeOracle.patch, /\\ No newline at end of file/);
+    const removeGithub = githubMock({ sourceContent: removeOld });
+    const removeRes = await handleRequest(
+      makeRequest({ headers: { 'idempotency-key': 'k-eof-remove' }, body: baseBody({ run_id: 'run-eof-remove' }) }),
+      envWith({ github: removeGithub, xai: { calls: 0, fn: async () => xaiResponse(removeNew) } }),
+    );
+    assert.equal(removeRes.status, 200);
+    const removeBody = JSON.parse(removeRes.body);
+    assert.equal(removeBody.diff_summary.unified_diff_bytes, removeOracle.bytes);
+    assert.equal(removeBody.diff_summary.changed_lines, 2);
+    assert.equal(base64ToUtf8(removeGithub.calls.updateFileArgs.contentBase64), removeNew);
+
+    const addOld = 'line1\nline2';
+    const addNew = 'line1\nline2\n';
+    const addOracle = gnuUnifiedDiffOracle(addOld, addNew);
+    assert.match(addOracle.patch, /\\ No newline at end of file/);
+    const addGithub = githubMock({ sourceContent: addOld });
+    const addRes = await handleRequest(
+      makeRequest({ headers: { 'idempotency-key': 'k-eof-add' }, body: baseBody({ run_id: 'run-eof-add' }) }),
+      envWith({ github: addGithub, xai: { calls: 0, fn: async () => xaiResponse(addNew) } }),
+    );
+    assert.equal(addRes.status, 200);
+    const addBody = JSON.parse(addRes.body);
+    assert.equal(addBody.diff_summary.unified_diff_bytes, addOracle.bytes);
+    assert.equal(addBody.diff_summary.changed_lines, 2);
+    assert.equal(base64ToUtf8(addGithub.calls.updateFileArgs.contentBase64), addNew);
   });
 
   it('rejects oversized model output before branch write path', async () => {
