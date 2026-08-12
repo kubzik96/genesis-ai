@@ -22,6 +22,10 @@
 >
 > Approved Revision 1 и выданная для неё Stage 1 EA остаются историческим основанием уже выполненной Stage 1.
 >
+> **PRE-MERGE GATE:** текущий Draft HEAD является review-only и **MUST NOT MERGE**. PR обязан оставаться Draft до отдельного CEO Approval Revision 2 и promotion commit, который атомарно переводит этот файл и `specifications/INDEX.md` в Approved Revision 2 и удаляет proposal-запись.
+>
+> Promotion commit не разрешает Stage 2 implementation: его exact HEAD требует финальной read-only проверки и отдельных решений Ready/Merge. Execution Authorization остаётся отдельным последующим Gate.
+>
 > Подготовка и публикация этого Draft не разрешают код, deployment, Cloudflare, secrets, Dify, live xAI/GitHub calls или smoke.
 >
 > Любая реализация Revision 2 требует: independent specification review → отдельный CEO Approval Revision 2 → отдельный staged Execution Authorization.
@@ -410,7 +414,9 @@ Production adapter активируется только при одноврем
 
 - [ ] Независимый reviewer подтвердил exact Revision 2 diff и отсутствие скрытого Stage 2 EA.
 - [ ] CEO отдельно утвердил Revision 2; сам Approval не разрешает implementation/deploy/secrets/live calls/smoke.
-- [ ] `specifications/INDEX.md` синхронизирован с утверждённой Revision.
+- [ ] После CEO Approval создан один promotion commit: S-0005 metadata → Approved Revision 2; authoritative INDEX row → Approved Revision 2; proposal entry удалена.
+- [ ] Exact promotion HEAD прошёл финальную read-only проверку path/status/EA/scope до отдельных Ready/Merge решений.
+- [ ] До выполнения всех предыдущих пунктов PR остаётся Draft и merge запрещён.
 
 ### 8.2 Для будущего Stage 2 CODE_AND_TESTS_ONLY
 
@@ -510,3 +516,4 @@ Production adapter активируется только при одноврем
 | 1 | 2026-08-12 | Codex | Stage 1 outcome recorded: PR #29 merged as `4c7677f`; PR #31 SoR sync merged as `906c487`; T-011 remains REVIEW, not DONE. |
 | 2 | 2026-08-12 | Codex | Candidate Stage 2 Draft: pinned xAI/GitHub production contract, budget/permission/activation gates and future staged sequence; no EA, implementation, deploy, secrets, Dify or live calls. |
 | 2 | 2026-08-12 | Codex | Independent-review corrections: Approved R1 authority preserved in INDEX; Draft R2 listed separately; reasoning-cost settlement and legacy Chat Completions migration gate clarified. |
+| 2 | 2026-08-12 | Codex | Independent-review lifecycle correction: Draft HEAD made explicitly non-mergeable; atomic post-Approval promotion commit and final exact-HEAD verification required before Ready/Merge. |

@@ -24,7 +24,7 @@
 
 ## Предлагаемые revisions (не authoritative)
 
-Запись в этом разделе не заменяет текущую Approved Revision. Перед merge утверждённой новой Revision основная таблица обновляется, а proposal-запись удаляется в том же commit.
+Запись в этом разделе не заменяет текущую Approved Revision. PR с такой записью обязан оставаться Draft и **MUST NOT MERGE**. Только после отдельного CEO Approval один promotion commit атомарно обновляет основную таблицу до Approved новой Revision, обновляет metadata спецификации и удаляет proposal-запись. Exact promotion HEAD требует финальной read-only проверки и отдельных решений Ready/Merge.
 
 | ID | Предлагаемая Revision | Статус | PR | Дата |
 |---|---|---|---|---|
