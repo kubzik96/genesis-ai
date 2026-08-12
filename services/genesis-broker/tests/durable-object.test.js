@@ -423,7 +423,7 @@ describe('BrokerDurableObject crash-safe idempotency', () => {
       assert.equal(xai.calls, 1);
     });
 
-    it('Stage 1 mock-only guard blocks operation on DO path when mocks are missing', async () => {
+    it('default-off production guard blocks operation on DO path when test adapters are missing', async () => {
       const storage = new MockStorage();
       const result = await invokeDoFetch(
         storage,
@@ -431,7 +431,7 @@ describe('BrokerDurableObject crash-safe idempotency', () => {
         makeGrokDoPayload({ key: 'key-grok-no-mocks', hash: 'hash-grok-no-mocks' }),
       );
       assert.equal(result.status, 503);
-      assert.equal(result.body?.error, 'STAGE1_MOCKS_REQUIRED');
+      assert.equal(result.body?.error, 'EXECUTOR_DISABLED');
     });
 
     it('existing S-0002 create/assign flow remains unchanged via DO fetch boundary', async () => {

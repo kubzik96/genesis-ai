@@ -8,6 +8,7 @@ import { discoverLinkedPullNumber } from './discover-pr.js';
 import { auditEvent } from './audit.js';
 import { normalizeCreateIssuePayload } from './normalize-payload.js';
 import { executeGrokDraftPrOperation, validateDraftPrRequest } from './grok-draft-pr.js';
+import { evaluateExecutorActivation, isStage1TestAdapter } from './executor-activation.js';
 
 function json(status, body) {
   return {
@@ -597,7 +598,23 @@ async function handleGrokDraftPr(request, env, github) {
     return json(gateCheck.status, { error: gateCheck.error, message: gateCheck.message });
   }
 
-  if (!xaiConfigured(env?.xai)) {
+  const stage1TestPath = isStage1TestAdapter(github, env?.xai);
+  if (!stage1TestPath) {
+    const activation = evaluateExecutorActivation(env, { requireDoBinding: true });
+    if (!activation.ok) {
+      auditReject({
+        endpoint,
+        outcome: activation.status,
+        error: activation.error,
+        run_id: payload.runId,
+        gate: payload.gate,
+        idempotency_key: idemKey,
+        latency_ms: Date.now() - tStart,
+      });
+      return json(activation.status, { error: activation.error, message: activation.message });
+    }
+  }
+  if (stage1TestPath && !xaiConfigured(env?.xai)) {
     auditReject({
       endpoint,
       outcome: 503,
@@ -607,7 +624,7 @@ async function handleGrokDraftPr(request, env, github) {
       idempotency_key: idemKey,
       latency_ms: Date.now() - tStart,
     });
-    return json(503, { error: 'XAI_NOT_CONFIGURED', message: 'xAI Stage 1 mock missing — fail-closed' });
+    return json(503, { error: 'XAI_NOT_CONFIGURED', message: 'xAI Stage 1 test adapter missing — fail-closed' });
   }
   if (!githubConfiguredForDraftPr(github)) {
     auditReject({
@@ -621,7 +638,7 @@ async function handleGrokDraftPr(request, env, github) {
     });
     return json(503, {
       error: 'GITHUB_DRAFT_PR_NOT_CONFIGURED',
-      message: 'GitHub Stage 1 mock missing draft-pr methods — fail-closed',
+      message: 'Reviewed GitHub draft-pr adapter missing required methods — fail-closed',
     });
   }
 
@@ -673,7 +690,6 @@ function xaiConfigured(xai) {
 function githubConfiguredForDraftPr(github) {
   return Boolean(
     github &&
-    github.__stage1Mock === true &&
     typeof github.getRef === 'function' &&
     typeof github.getContentAtRef === 'function' &&
     typeof github.createRef === 'function' &&

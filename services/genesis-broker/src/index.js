@@ -1,6 +1,6 @@
 /**
  * Genesis Secure GitHub Broker — Cloudflare Worker entry (S-0002).
- * CODE_ONLY stage: no live deployment, no secrets in repo.
+ * Stage 2 production adapter source, default-off: no live deployment or secrets in repo.
  */
 import { handleRequest } from './router.js';
 import { createGithubClient } from './github-client.js';
