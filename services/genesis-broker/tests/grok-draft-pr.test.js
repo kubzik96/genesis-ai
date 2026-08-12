@@ -101,18 +101,6 @@ function maxGitUnifiedDiffOracleBytes(oldContent, newContent) {
   return maxBytes;
 }
 
-function maxGitUnifiedDiffOracle(oldContent, newContent) {
-  const algorithms = [null, 'myers', 'minimal', 'patience', 'histogram'];
-  let max = { bytes: 0, patch: '', algorithm: 'default' };
-  for (const algorithm of algorithms) {
-    const diff = gitUnifiedDiffOracle(oldContent, newContent, algorithm);
-    if (diff.bytes > max.bytes) {
-      max = { ...diff, algorithm: algorithm || 'default' };
-    }
-  }
-  return max;
-}
-
 function getHunkHeaderSections(patch) {
   return patch
     .split('\n')
@@ -467,12 +455,15 @@ describe('POST /v1/executions/grok/draft-pr', () => {
   });
 
   it('matches max real-git bytes for separated-hunk and EOF variants across algorithms', async () => {
+    const algorithms = [null, 'myers', 'minimal', 'patience', 'histogram'];
     const cases = [
       {
         idempotency: 'k-git-multi-hunk',
         run: 'run-git-multi-hunk',
         oldContent: '1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n',
-        newContent: '1\n2\nX\n4\n5\n6\n7\n8\n9\n10\n11\n12\nY\n14\n',
+        newContent: '1\n2\nX\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\nY\n13\n14\n',
+        expectedHunks: 2,
+        expectedChangedLines: 2,
       },
       {
         idempotency: 'k-git-eof-terminated',
@@ -488,7 +479,14 @@ describe('POST /v1/executions/grok/draft-pr', () => {
       },
     ];
     for (const tc of cases) {
-      const maxGit = maxGitUnifiedDiffOracleBytes(tc.oldContent, tc.newContent);
+      const gitOracles = algorithms.map((algorithm) => gitUnifiedDiffOracle(tc.oldContent, tc.newContent, algorithm));
+      const maxGit = Math.max(...gitOracles.map((oracle) => oracle.bytes));
+      if (tc.expectedHunks) {
+        for (const [index, oracle] of gitOracles.entries()) {
+          const label = algorithms[index] || 'default';
+          assert.equal(getHunkHeaderSections(oracle.patch).length, tc.expectedHunks, `${label} must produce separated hunks`);
+        }
+      }
       const github = githubMock({ sourceContent: tc.oldContent });
       const res = await handleRequest(
         makeRequest({ headers: { 'idempotency-key': tc.idempotency }, body: baseBody({ run_id: tc.run }) }),
@@ -496,7 +494,10 @@ describe('POST /v1/executions/grok/draft-pr', () => {
       );
       assert.equal(res.status, 200);
       const body = JSON.parse(res.body);
+      assert.ok(body.diff_summary.changed_lines <= GROK_DRAFT_PR_LIMITS.MAX_CHANGED_LINES);
+      if (tc.expectedChangedLines) assert.equal(body.diff_summary.changed_lines, tc.expectedChangedLines);
       assertConservativeUnifiedDiffBytes(body.diff_summary.unified_diff_bytes, maxGit);
+      assert.ok(maxGit <= GROK_DRAFT_PR_LIMITS.MAX_UNIFIED_DIFF_BYTES);
       assert.equal(github.calls.createRef, 1);
       assert.equal(github.calls.updateFile, 1);
       assert.equal(github.calls.createPullRequest, 1);
@@ -658,34 +659,32 @@ describe('POST /v1/executions/grok/draft-pr', () => {
   });
 
   it('git-oracle hunk section context is present and capped at 80 UTF-8 bytes', () => {
-    const x = 'x'.repeat(940);
+    const algorithms = [null, 'myers', 'minimal', 'patience', 'histogram'];
     const noSection = '';
     const shortSection = `${'a'.repeat(78)}Ж`;
     const longSection = `${shortSection}Q`;
-    const oldNoSection = `${x}\n${noSection}\n${x}\nb\nb\n${x}`;
-    const oldShort = `${x}\n${shortSection}\n${x}\nb\nb\n${x}`;
-    const oldLong = `${x}\n${longSection}\n${x}\nb\nb\n${x}`;
-    const newNoSection = `${x}\n${noSection}\n${x}\nb\nb\n`;
-    const newShort = `${x}\n${shortSection}\n${x}\nb\nb\n`;
-    const newLong = `${x}\n${longSection}\n${x}\nb\nb\n`;
-    const noSectionOracle = maxGitUnifiedDiffOracle(oldNoSection, newNoSection);
-    const shortOracle = maxGitUnifiedDiffOracle(oldShort, newShort);
-    const longOracle = maxGitUnifiedDiffOracle(oldLong, newLong);
-    const noSectionHeaders = getHunkHeaderSections(noSectionOracle.patch);
-    const shortHeaders = getHunkHeaderSections(shortOracle.patch);
-    const longHeaders = getHunkHeaderSections(longOracle.patch);
-    assert.equal(noSectionHeaders.length, 1);
-    assert.equal(shortHeaders.length, 1);
-    assert.equal(longHeaders.length, 1);
-    assert.equal(noSectionHeaders[0], '');
-    assert.ok(shortHeaders[0].startsWith(' '), `expected visible section context, got ${shortHeaders[0]}`);
-    assert.ok(Buffer.byteLength(shortHeaders[0], 'utf8') <= MAX_GIT_HUNK_HEADER_CONTEXT_BYTES);
-    assert.ok(Buffer.byteLength(shortHeaders[0], 'utf8') > GIT_HUNK_SECTION_SEPARATOR_BYTES);
-    assert.equal(shortHeaders[0], longHeaders[0], `expected 81-byte section context cap under ${shortOracle.algorithm}/${longOracle.algorithm}`);
-    assert.ok(shortOracle.bytes > noSectionOracle.bytes);
-    const sectionOnlyBytes = shortOracle.bytes - noSectionOracle.bytes;
-    assert.ok(sectionOnlyBytes <= MAX_GIT_HUNK_HEADER_CONTEXT_BYTES);
-    assert.equal(longOracle.bytes, shortOracle.bytes);
+    const oldFor = (section) => `${section}\nctx1\nctx2\ntarget\ntail\n`;
+    const newFor = (section) => `${section}\nctx1\nctx2\ntarget\n`;
+    const expectedVisibleSection = ` ${shortSection}`;
+    assert.equal(Buffer.byteLength(shortSection, 'utf8'), GIT_MAX_HUNK_SECTION_BYTES);
+
+    for (const algorithm of algorithms) {
+      const label = algorithm || 'default';
+      const noSectionOracle = gitUnifiedDiffOracle(oldFor(noSection), newFor(noSection), algorithm);
+      const shortOracle = gitUnifiedDiffOracle(oldFor(shortSection), newFor(shortSection), algorithm);
+      const longOracle = gitUnifiedDiffOracle(oldFor(longSection), newFor(longSection), algorithm);
+      const noSectionHeaders = getHunkHeaderSections(noSectionOracle.patch);
+      const shortHeaders = getHunkHeaderSections(shortOracle.patch);
+      const longHeaders = getHunkHeaderSections(longOracle.patch);
+
+      assert.deepEqual(noSectionHeaders, [''], `${label} no-section control must remain empty`);
+      assert.deepEqual(shortHeaders, [expectedVisibleSection], `${label} must select the intended UTF-8 section`);
+      assert.deepEqual(longHeaders, [expectedVisibleSection], `${label} must cap the visible section at 80 UTF-8 bytes`);
+      assert.equal(Buffer.byteLength(shortHeaders[0].slice(1), 'utf8'), GIT_MAX_HUNK_SECTION_BYTES);
+      assert.equal(Buffer.byteLength(shortHeaders[0], 'utf8'), MAX_GIT_HUNK_HEADER_CONTEXT_BYTES);
+      assert.equal(shortOracle.bytes - noSectionOracle.bytes, MAX_GIT_HUNK_HEADER_CONTEXT_BYTES);
+      assert.equal(longOracle.bytes, shortOracle.bytes);
+    }
   });
 
   it('rejects ambiguous transpositions that can exceed the 2 KiB unified diff limit', async () => {
