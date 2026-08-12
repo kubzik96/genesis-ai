@@ -10,7 +10,9 @@ import { GROK_DRAFT_PR_LIMITS, IDEM_STATES } from '../src/constants.js';
 
 const BASE_SHA = 'a'.repeat(40);
 const BLOB_SHA = 'b'.repeat(40);
-const MAX_GIT_HUNK_HEADER_CONTEXT_BYTES = 81;
+const GIT_MAX_HUNK_SECTION_BYTES = 80;
+const GIT_HUNK_SECTION_SEPARATOR_BYTES = 1;
+const MAX_GIT_HUNK_HEADER_CONTEXT_BYTES = GIT_MAX_HUNK_SECTION_BYTES + GIT_HUNK_SECTION_SEPARATOR_BYTES;
 const MAX_GIT_HUNK_HEADER_CONTEXT_BYTES_TOTAL = MAX_GIT_HUNK_HEADER_CONTEXT_BYTES * GROK_DRAFT_PR_LIMITS.MAX_CHANGED_LINES;
 
 function utf8ToBase64(text) {
@@ -52,16 +54,19 @@ function gnuUnifiedDiffOracle(oldContent, newContent) {
   }
 }
 
-function gitUnifiedDiffOracle(oldContent, newContent) {
+function gitUnifiedDiffOracle(oldContent, newContent, algorithm = null) {
   const dir = mkdtempSync(join(tmpdir(), 'grok-git-diff-oracle-'));
   const oldPath = join(dir, 'old.txt');
   const newPath = join(dir, 'new.txt');
   try {
+    const args = ['diff', '--no-index', '--no-ext-diff', '--no-color', '--no-renames'];
+    if (algorithm) args.push(`--diff-algorithm=${algorithm}`);
+    args.push('--', oldPath, newPath);
     writeFileSync(oldPath, oldContent, { encoding: 'utf8' });
     writeFileSync(newPath, newContent, { encoding: 'utf8' });
     const result = spawnSync(
       'git',
-      ['diff', '--no-index', '--no-ext-diff', '--no-color', '--no-renames', '--', oldPath, newPath],
+      args,
       { encoding: null },
     );
     if (result.status !== 0 && result.status !== 1) {
@@ -84,6 +89,16 @@ function gitUnifiedDiffOracle(oldContent, newContent) {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+function maxGitUnifiedDiffOracleBytes(oldContent, newContent) {
+  const algorithms = [null, 'myers', 'minimal', 'patience', 'histogram'];
+  let maxBytes = 0;
+  for (const algorithm of algorithms) {
+    const diff = gitUnifiedDiffOracle(oldContent, newContent, algorithm);
+    if (diff.bytes > maxBytes) maxBytes = diff.bytes;
+  }
+  return maxBytes;
 }
 
 function assertConservativeUnifiedDiffBytes(actualBytes, oracleBytes) {
@@ -555,6 +570,48 @@ describe('POST /v1/executions/grok/draft-pr', () => {
     assert.equal(github.calls.createRef, 0);
     assert.equal(github.calls.updateFile, 0);
     assert.equal(github.calls.createPullRequest, 0);
+  });
+
+  it('accepts near-boundary one-line deletion when max Git-visible patch stays <= 2 KiB', async () => {
+    const x = 'x'.repeat(940);
+    const section = 'q'.repeat(1750);
+    const oldContent = `${x}\n${section}\n${x}\nb\nb\n${x}`;
+    const newContent = `${x}\n${section}\n${x}\nb\nb\n`;
+    const maxGitOracleBytes = maxGitUnifiedDiffOracleBytes(oldContent, newContent);
+    assert.ok(maxGitOracleBytes <= 2048);
+    assert.ok(maxGitOracleBytes >= 2000);
+
+    const github = githubMock({ sourceContent: oldContent });
+    const xai = { calls: 0, fn: async () => xaiResponse(newContent) };
+    const res = await handleRequest(
+      makeRequest({ headers: { 'idempotency-key': 'k-git-header-2k-near-boundary' }, body: baseBody({ run_id: 'run-git-header-2k-near-boundary' }) }),
+      envWith({ github, xai }),
+    );
+
+    assert.equal(res.status, 200);
+    const body = JSON.parse(res.body);
+    assert.ok(body.diff_summary.unified_diff_bytes >= maxGitOracleBytes);
+    assert.ok(body.diff_summary.unified_diff_bytes <= 2048);
+    assert.equal(github.calls.createRef, 1);
+    assert.equal(github.calls.updateFile, 1);
+    assert.equal(github.calls.createPullRequest, 1);
+  });
+
+  it('git-oracle hunk section context is capped at 80 bytes', () => {
+    const x = 'x'.repeat(940);
+    const noSection = '';
+    const shortSection = 'q'.repeat(80);
+    const longSection = 'q'.repeat(81);
+    const oldNoSection = `${x}\n${noSection}\n${x}\nb\nb\n${x}`;
+    const oldShort = `${x}\n${shortSection}\n${x}\nb\nb\n${x}`;
+    const oldLong = `${x}\n${longSection}\n${x}\nb\nb\n${x}`;
+    const newNoSection = `${x}\n${noSection}\n${x}\nb\nb\n`;
+    const newShort = `${x}\n${shortSection}\n${x}\nb\nb\n`;
+    const newLong = `${x}\n${longSection}\n${x}\nb\nb\n`;
+    const shortBytes = maxGitUnifiedDiffOracleBytes(oldShort, newShort);
+    const longBytes = maxGitUnifiedDiffOracleBytes(oldLong, newLong);
+    assert.ok(shortBytes >= maxGitUnifiedDiffOracleBytes(oldNoSection, newNoSection));
+    assert.equal(longBytes, shortBytes);
   });
 
   it('rejects ambiguous transpositions that can exceed the 2 KiB unified diff limit', async () => {

@@ -237,7 +237,13 @@ const UNIFIED_CONTEXT_LINES = 3;
 const MAX_UNIFIED_HUNKS = GROK_DRAFT_PR_LIMITS.MAX_CHANGED_LINES;
 const MAX_UNIFIED_RENDERED_LINES = MAX_UNIFIED_HUNKS * (1 + (2 * UNIFIED_CONTEXT_LINES));
 const MAX_UNIFIED_NO_NEWLINE_MARKERS = 2;
-const MAX_GIT_HUNK_HEADER_CONTEXT_BYTES = 81;
+const GIT_MAX_HUNK_SECTION_BYTES = 80;
+const GIT_HUNK_SECTION_SEPARATOR_BYTES = 1;
+// Git unified hunks can append optional "function/section" context to the
+// "@@ ... @@" header. Git truncates that section text to 80 bytes and prefixes
+// it with one separating space when present. We always reserve this 81-byte
+// allowance per hunk to stay fail-closed for Git-visible patch bytes.
+const MAX_GIT_HUNK_HEADER_CONTEXT_BYTES = GIT_MAX_HUNK_SECTION_BYTES + GIT_HUNK_SECTION_SEPARATOR_BYTES;
 
 function splitLines(text) {
   if (text === '') return { lines: [], hasFinalNewline: false };

@@ -47,6 +47,8 @@ npm test
 
 `/v1/executions/grok/draft-pr` is implemented for Stage 1 with mocked xAI and mocked GitHub writes in tests (no live API writes for Stage 1 evidence).
 
+Unified diff hard-limit enforcement (`<= 2048` UTF-8 bytes) is fail-closed before any write path and includes a per-hunk 81-byte Git-visible hunk-header section allowance (80-byte section text cap + 1 separator byte).
+
 ## Authoritative store
 
 SQLite-backed **Durable Object** (not Workers KV).
