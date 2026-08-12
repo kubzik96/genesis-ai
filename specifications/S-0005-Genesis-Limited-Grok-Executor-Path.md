@@ -6,29 +6,29 @@
 |---|---|
 | **ID** | S-0005 |
 | **Название** | Genesis Limited Grok Executor Path |
-| **Статус** | **Draft** |
+| **Статус** | **Approved** |
 | **Revision** | 2 |
 | **Автор** | ChatGPT — COO, по поручению CEO и итогам архитектурного review Grok |
 | **Дата создания** | 2026-08-11; candidate Revision 2 — 2026-08-12 |
-| **Дата утверждения** | Revision 1 — 2026-08-11; Revision 2 — **не утверждена** |
-| **Утвердил** | Revision 1 — CEO Genesis AI; Revision 2 — **—** |
-| **Execution Authorization** | **NOT_GRANTED — Revision 2 Draft** |
+| **Дата утверждения** | Revision 1 — 2026-08-11; Revision 2 — 2026-08-12 |
+| **Утвердил** | Revision 1 — CEO Genesis AI; Revision 2 — CEO Genesis AI |
+| **Execution Authorization** | **NOT_GRANTED — Revision 2 Approved; Stage 2 требует отдельного CEO EA** |
 | **Связанные задачи** | **T-011** |
 | **Связанные Decision Records** | DR-0007 (Accepted) |
 | **Родительская Specification** | S-0001 Revision 3 (Approved) |
 | **Исполнитель (после Authorization)** | Integration Engineer; Grok/xAI как limited executor |
 
-> **Revision 2 — Draft.** Она не утверждена и не заменяет Approved Revision 1 до отдельного CEO Approval.
+> **Revision 2 — Approved** CEO Genesis AI 2026-08-12 на основании self-review, явно принятого CEO после недоступности Grok из-за лимита.
 >
-> Approved Revision 1 и выданная для неё Stage 1 EA остаются историческим основанием уже выполненной Stage 1.
+> Revision 1 и выданная для неё Stage 1 EA остаются историческим основанием уже выполненной Stage 1.
 >
-> **PRE-MERGE GATE:** текущий Draft HEAD является review-only и **MUST NOT MERGE**. PR обязан оставаться Draft до отдельного CEO Approval Revision 2 и promotion commit, который атомарно переводит этот файл и `specifications/INDEX.md` в Approved Revision 2 и удаляет proposal-запись.
+> **PROMOTION COMPLETE / PRE-MERGE GATE:** этот promotion commit атомарно переводит S-0005 и `specifications/INDEX.md` в Approved Revision 2 и удаляет proposal-запись. Его exact HEAD является review-only и **MUST NOT MERGE** до финальной read-only проверки и отдельных CEO решений Ready/Merge.
 >
-> Promotion commit не разрешает Stage 2 implementation: его exact HEAD требует финальной read-only проверки и отдельных решений Ready/Merge. Execution Authorization остаётся отдельным последующим Gate.
+> Approval и promotion commit не разрешают Stage 2 implementation. Execution Authorization остаётся отдельным последующим Gate.
 >
-> Подготовка и публикация этого Draft не разрешают код, deployment, Cloudflare, secrets, Dify, live xAI/GitHub calls или smoke.
+> Этот Approval не разрешает код, deployment, Cloudflare, secrets, Dify, live xAI/GitHub calls или smoke.
 >
-> Любая реализация Revision 2 требует: independent specification review → отдельный CEO Approval Revision 2 → отдельный staged Execution Authorization.
+> Любая реализация Revision 2 требует отдельный staged Execution Authorization.
 >
 > Первый live smoke по-прежнему требует отдельного ограниченного CEO Gate после code/tests review, deployment preflight и проверки точного deployed SHA.
 
@@ -410,13 +410,13 @@ Production adapter активируется только при одноврем
 
 ## 8. Критерии готовности Revision 2
 
-### 8.1 Для Approval этого Draft
+### 8.1 Approval, promotion и pre-merge verification
 
-- [ ] Независимый reviewer подтвердил exact Revision 2 diff и отсутствие скрытого Stage 2 EA.
-- [ ] CEO отдельно утвердил Revision 2; сам Approval не разрешает implementation/deploy/secrets/live calls/smoke.
-- [ ] После CEO Approval создан один promotion commit: S-0005 metadata → Approved Revision 2; authoritative INDEX row → Approved Revision 2; proposal entry удалена.
+- [x] Exact Draft HEAD прошёл self-review; CEO явно принял self-review как основание Approval после недоступности Grok из-за лимита.
+- [x] CEO отдельно утвердил Revision 2; сам Approval не разрешает implementation/deploy/secrets/live calls/smoke.
+- [x] Создан один promotion commit: S-0005 metadata → Approved Revision 2; authoritative INDEX row → Approved Revision 2; proposal entry удалена.
 - [ ] Exact promotion HEAD прошёл финальную read-only проверку path/status/EA/scope до отдельных Ready/Merge решений.
-- [ ] До выполнения всех предыдущих пунктов PR остаётся Draft и merge запрещён.
+- [ ] До финальной проверки и отдельных CEO решений PR остаётся Draft и merge запрещён.
 
 ### 8.2 Для будущего Stage 2 CODE_AND_TESTS_ONLY
 
@@ -517,3 +517,4 @@ Production adapter активируется только при одноврем
 | 2 | 2026-08-12 | Codex | Candidate Stage 2 Draft: pinned xAI/GitHub production contract, budget/permission/activation gates and future staged sequence; no EA, implementation, deploy, secrets, Dify or live calls. |
 | 2 | 2026-08-12 | Codex | Independent-review corrections: Approved R1 authority preserved in INDEX; Draft R2 listed separately; reasoning-cost settlement and legacy Chat Completions migration gate clarified. |
 | 2 | 2026-08-12 | Codex | Independent-review lifecycle correction: Draft HEAD made explicitly non-mergeable; atomic post-Approval promotion commit and final exact-HEAD verification required before Ready/Merge. |
+| 2 | 2026-08-12 | CEO Genesis AI / Codex | **Approved** на основании self-review, принятого CEO после лимита Grok; atomic promotion выполнен. Stage 2 EA остаётся NOT_GRANTED; promotion HEAD требует финальной read-only проверки перед отдельными Ready/Merge решениями. |
