@@ -234,6 +234,9 @@ function normalizeXaiResponse(payload) {
 }
 
 const UNIFIED_CONTEXT_LINES = 3;
+const MAX_UNIFIED_HUNKS = GROK_DRAFT_PR_LIMITS.MAX_CHANGED_LINES;
+const MAX_UNIFIED_RENDERED_LINES = MAX_UNIFIED_HUNKS * (1 + (2 * UNIFIED_CONTEXT_LINES));
+const MAX_UNIFIED_NO_NEWLINE_MARKERS = 2;
 
 function splitLines(text) {
   if (text === '') return { lines: [], hasFinalNewline: false };
@@ -277,56 +280,105 @@ function buildEditScriptBounded(oldLines, newLines, maxEdits) {
   if (Math.abs(n - m) > maxEdits) return null;
   const dp = Array.from({ length: n + 1 }, () => new Map());
   const parent = Array.from({ length: n + 1 }, () => new Map());
+  const equalSig = Array.from({ length: n + 1 }, () => new Map());
+  const HASH_MASK_64 = (1n << 64n) - 1n;
+  const HASH_FNV_PRIME = 1099511628211n;
+  const extendEqualSig = (hash, oldIndex, newIndex) => {
+    let next = hash ^ ((BigInt(oldIndex) << 32n) | BigInt(newIndex));
+    next = (next * HASH_FNV_PRIME) & HASH_MASK_64;
+    return next;
+  };
+  const pushSig = (target, hash) => {
+    if (target.length === 0) {
+      target.push(hash);
+      return;
+    }
+    if (target[0] === hash) return;
+    if (target.length === 1) {
+      target.push(hash);
+    }
+  };
   dp[0].set(0, 0);
+  equalSig[0].set(0, [1469598103934665603n]);
   for (let i = 0; i <= n; i += 1) {
     const jMin = Math.max(0, i - maxEdits);
     const jMax = Math.min(m, i + maxEdits);
     for (let j = jMin; j <= jMax; j += 1) {
       if (i === 0 && j === 0) continue;
       let best = Number.POSITIVE_INFINITY;
-      let bestMove = null;
+      let bestMoves = 0;
       if (i > 0 && j > 0 && oldLines[i - 1] === newLines[j - 1]) {
         const v = dp[i - 1].get(j - 1);
         if (v !== undefined && v < best) {
           best = v;
-          bestMove = 'equal';
+          bestMoves = 1;
+        } else if (v !== undefined && v === best) {
+          bestMoves |= 1;
         }
       }
       if (i > 0) {
         const v = dp[i - 1].get(j);
         if (v !== undefined && v + 1 < best) {
           best = v + 1;
-          bestMove = 'delete';
+          bestMoves = 2;
+        } else if (v !== undefined && v + 1 === best) {
+          bestMoves |= 2;
         }
       }
       if (j > 0) {
         const v = dp[i].get(j - 1);
         if (v !== undefined && v + 1 < best) {
           best = v + 1;
-          bestMove = 'add';
+          bestMoves = 4;
+        } else if (v !== undefined && v + 1 === best) {
+          bestMoves |= 4;
         }
       }
       if (best <= maxEdits) {
         dp[i].set(j, best);
-        parent[i].set(j, bestMove);
+        parent[i].set(j, bestMoves);
+        const sigs = [];
+        if ((bestMoves & 1) !== 0 && i > 0 && j > 0) {
+          const prev = equalSig[i - 1].get(j - 1) || [];
+          for (const h of prev) {
+            pushSig(sigs, extendEqualSig(h, i, j));
+            if (sigs.length > 1) break;
+          }
+        }
+        if ((bestMoves & 2) !== 0 && i > 0) {
+          const prev = equalSig[i - 1].get(j) || [];
+          for (const h of prev) {
+            pushSig(sigs, h);
+            if (sigs.length > 1) break;
+          }
+        }
+        if ((bestMoves & 4) !== 0 && j > 0) {
+          const prev = equalSig[i].get(j - 1) || [];
+          for (const h of prev) {
+            pushSig(sigs, h);
+            if (sigs.length > 1) break;
+          }
+        }
+        equalSig[i].set(j, sigs);
       }
     }
   }
   const editDistance = dp[n].get(m);
   if (editDistance === undefined || editDistance > maxEdits) return null;
+  const ambiguous = (equalSig[n].get(m) || []).length > 1;
   let i = n;
   let j = m;
   const edits = [];
   while (i > 0 || j > 0) {
-    const move = parent[i].get(j);
-    if (move === 'equal') {
+    const moves = parent[i].get(j) || 0;
+    if ((moves & 1) && i > 0 && j > 0) {
       edits.push({ type: 'equal', line: oldLines[i - 1] });
       i -= 1;
       j -= 1;
-    } else if (move === 'delete') {
+    } else if ((moves & 2) && i > 0) {
       edits.push({ type: 'delete', line: oldLines[i - 1] });
       i -= 1;
-    } else if (move === 'add') {
+    } else if ((moves & 4) && j > 0) {
       edits.push({ type: 'add', line: newLines[j - 1] });
       j -= 1;
     } else {
@@ -334,7 +386,7 @@ function buildEditScriptBounded(oldLines, newLines, maxEdits) {
     }
   }
   edits.reverse();
-  return annotateIndices(edits);
+  return { ops: annotateIndices(edits), ambiguous };
 }
 
 function lineHasTerminator(index, lineCount, hasFinalNewline) {
@@ -459,6 +511,39 @@ function countUnifiedDiffBytesBounded({
   return { ok: true, bytes: total };
 }
 
+function countConservativeAmbiguousUnifiedDiffUpperBoundBytes({
+  path,
+  oldLines,
+  newLines,
+  oldLineCount,
+  newLineCount,
+  maxBytes,
+}) {
+  const encoder = new TextEncoder();
+  const markerBytes = encoder.encode('\\ No newline at end of file\n').length;
+  let maxLineBytes = 0;
+  for (const line of oldLines) {
+    const lineBytes = encoder.encode(line).length;
+    if (lineBytes > maxLineBytes) maxLineBytes = lineBytes;
+  }
+  for (const line of newLines) {
+    const lineBytes = encoder.encode(line).length;
+    if (lineBytes > maxLineBytes) maxLineBytes = lineBytes;
+  }
+  const oldDigits = String(Math.max(oldLineCount, 0)).length;
+  const newDigits = String(Math.max(newLineCount, 0)).length;
+  const maxRangeBytes = Math.max((2 * oldDigits) + 1, (2 * newDigits) + 1, 3);
+  const maxHunkHeaderBytes = encoder.encode(`@@ -${'9'.repeat(maxRangeBytes)} +${'9'.repeat(maxRangeBytes)} @@\n`).length;
+  let total = 0;
+  total += encoder.encode(`--- a/${path}\n`).length;
+  total += encoder.encode(`+++ b/${path}\n`).length;
+  total += maxHunkHeaderBytes * MAX_UNIFIED_HUNKS;
+  total += (maxLineBytes + 2) * MAX_UNIFIED_RENDERED_LINES;
+  total += markerBytes * MAX_UNIFIED_NO_NEWLINE_MARKERS;
+  if (total > maxBytes) return { ok: true, exceeded: true, bytes: total };
+  return { ok: true, exceeded: false, bytes: total };
+}
+
 function diffStats(oldContent, newContent, path) {
   const encoder = new TextEncoder();
   const oldBytes = encoder.encode(oldContent).length;
@@ -474,11 +559,11 @@ function diffStats(oldContent, newContent, path) {
   }
   const oldSplit = splitLines(oldContent);
   const newSplit = splitLines(newContent);
-  const baseOps = buildEditScriptBounded(oldSplit.lines, newSplit.lines, GROK_DRAFT_PR_LIMITS.MAX_CHANGED_LINES);
-  if (!baseOps) {
+  const editScript = buildEditScriptBounded(oldSplit.lines, newSplit.lines, GROK_DRAFT_PR_LIMITS.MAX_CHANGED_LINES);
+  if (!editScript) {
     return fail(422, 'CHANGED_LINES_EXCEEDED', `Changed lines must be <= ${GROK_DRAFT_PR_LIMITS.MAX_CHANGED_LINES}`);
   }
-  const ops = applyFinalNewlineSemantics(baseOps, {
+  const ops = applyFinalNewlineSemantics(editScript.ops, {
     oldLineCount: oldSplit.lines.length,
     newLineCount: newSplit.lines.length,
     oldHasFinalNewline: oldSplit.hasFinalNewline,
@@ -512,6 +597,35 @@ function diffStats(oldContent, newContent, path) {
       };
     }
     return fail(422, 'INVALID_DIFF', 'Failed to compute unified diff');
+  }
+  if (editScript.ambiguous) {
+    const conservative = countConservativeAmbiguousUnifiedDiffUpperBoundBytes({
+      path,
+      oldLines: oldSplit.lines,
+      newLines: newSplit.lines,
+      oldLineCount: oldSplit.lines.length,
+      newLineCount: newSplit.lines.length,
+      maxBytes: GROK_DRAFT_PR_LIMITS.MAX_UNIFIED_DIFF_BYTES,
+    });
+    if (!conservative.ok) return fail(422, 'INVALID_DIFF', 'Failed to conservatively bound unified diff');
+    if (conservative.exceeded) {
+      return {
+        ok: true,
+        additions,
+        deletions,
+        changedLines,
+        diffBytes: conservative.bytes,
+        diffExceeded: true,
+      };
+    }
+    return {
+      ok: true,
+      additions,
+      deletions,
+      changedLines,
+      diffBytes: Math.max(diffCount.bytes, conservative.bytes),
+      diffExceeded: false,
+    };
   }
   return { ok: true, additions, deletions, changedLines, diffBytes: diffCount.bytes, diffExceeded: false };
 }

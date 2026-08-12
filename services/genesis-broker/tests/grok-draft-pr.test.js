@@ -489,6 +489,107 @@ describe('POST /v1/executions/grok/draft-pr', () => {
     assert.equal(removeBody.diff_summary.changed_lines, 3, 'removing z makes y unterminated (+line identity change)');
   });
 
+  it('rejects ambiguous transpositions that can exceed the 2 KiB unified diff limit', async () => {
+    const long = 'x'.repeat(1000);
+    const cases = [
+      {
+        idempotency: 'k-amb-transpose-forward',
+        run: 'run-amb-transpose-forward',
+        oldContent: `${long}\nb\nz`,
+        newContent: `b\n${long}\nz`,
+      },
+      {
+        idempotency: 'k-amb-transpose-inverse',
+        run: 'run-amb-transpose-inverse',
+        oldContent: `b\n${long}\nz`,
+        newContent: `${long}\nb\nz`,
+      },
+    ];
+    for (const tc of cases) {
+      const oracle = gnuUnifiedDiffOracle(tc.oldContent, tc.newContent);
+      assert.ok(oracle.bytes > 0);
+      const github = githubMock({ sourceContent: tc.oldContent });
+      const res = await handleRequest(
+        makeRequest({ headers: { 'idempotency-key': tc.idempotency }, body: baseBody({ run_id: tc.run }) }),
+        envWith({ github, xai: { calls: 0, fn: async () => xaiResponse(tc.newContent) } }),
+      );
+      assert.equal(res.status, 422);
+      assert.equal(JSON.parse(res.body).error, 'DIFF_SIZE_EXCEEDED');
+      assert.equal(github.calls.createRef, 0);
+      assert.equal(github.calls.updateFile, 0);
+      assert.equal(github.calls.createPullRequest, 0);
+    }
+  });
+
+  it('reports conservative unified diff bytes for ambiguous repeated-line and UTF-8 variants', async () => {
+    const cases = [
+      { id: 'rep-1', oldContent: 'a\nb\na\n', newContent: 'b\na\na\n' },
+      { id: 'rep-2', oldContent: 'привет\nмир\nпривет', newContent: 'мир\nпривет\nпривет' },
+      { id: 'rep-3', oldContent: 'x\ny\nx', newContent: 'x\nx\ny' },
+      { id: 'rep-4', oldContent: 'λ\nβ\nλ\n', newContent: 'β\nλ\nλ\n' },
+    ];
+    for (const tc of cases) {
+      const oracle = gnuUnifiedDiffOracle(tc.oldContent, tc.newContent);
+      const github = githubMock({ sourceContent: tc.oldContent });
+      const res = await handleRequest(
+        makeRequest({ headers: { 'idempotency-key': `k-${tc.id}` }, body: baseBody({ run_id: `run-${tc.id}` }) }),
+        envWith({ github, xai: { calls: 0, fn: async () => xaiResponse(tc.newContent) } }),
+      );
+      const body = JSON.parse(res.body);
+      if (res.status === 200) {
+        assert.ok(body.diff_summary.unified_diff_bytes >= oracle.bytes);
+        assert.ok(body.diff_summary.unified_diff_bytes <= 2048);
+        assert.equal(github.calls.createRef, 1);
+        assert.equal(github.calls.updateFile, 1);
+        assert.equal(github.calls.createPullRequest, 1);
+      } else {
+        assert.equal(res.status, 422);
+        assert.ok(['DIFF_SIZE_EXCEEDED', 'CHANGED_LINES_EXCEEDED'].includes(body.error));
+        assert.equal(github.calls.createRef, 0);
+        assert.equal(github.calls.updateFile, 0);
+        assert.equal(github.calls.createPullRequest, 0);
+      }
+    }
+  });
+
+  it('property-style oracle sweep guards ambiguous tie-break undercount on small repeated sequences', async () => {
+    const sequences = [
+      ['a'],
+      ['b'],
+      ['a', 'a'],
+      ['a', 'b'],
+      ['b', 'a'],
+      ['a', 'b', 'a'],
+      ['b', 'a', 'b'],
+    ];
+    let checked = 0;
+    for (const oldSeq of sequences) {
+      for (const newSeq of sequences) {
+        for (const oldNl of [true, false]) {
+          for (const newNl of [true, false]) {
+            const oldContent = oldSeq.join('\n') + (oldNl ? '\n' : '');
+            const newContent = newSeq.join('\n') + (newNl ? '\n' : '');
+            const oracle = gnuUnifiedDiffOracle(oldContent, newContent);
+            const runId = `run-sweep-${checked}`;
+            const github = githubMock({ sourceContent: oldContent });
+            const res = await handleRequest(
+              makeRequest({ headers: { 'idempotency-key': `k-sweep-${checked}` }, body: baseBody({ run_id: runId }) }),
+              envWith({ github, xai: { calls: 0, fn: async () => xaiResponse(newContent) } }),
+            );
+            const body = JSON.parse(res.body);
+            if (res.status === 200) {
+              assert.ok(body.diff_summary.unified_diff_bytes >= oracle.bytes, `${runId}: broker undercounted oracle`);
+            } else {
+              assert.ok([422, 409].includes(res.status), `${runId}: unexpected status ${res.status}`);
+            }
+            checked += 1;
+          }
+        }
+      }
+    }
+    assert.equal(checked, sequences.length * sequences.length * 4);
+  });
+
   it('rejects oversized model output before branch write path', async () => {
     const github = githubMock();
     const huge = `line1\n${'x'.repeat(70 * 1024)}\nline3\n`;
