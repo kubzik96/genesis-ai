@@ -169,6 +169,7 @@ describe('POST /v1/executions/grok/draft-pr', () => {
     assert.equal(body.branch, 'genesis/grok/run-1');
     assert.equal(body.pr_number, 123);
     assert.deepEqual(body.changed_files, ['MEMORY.md']);
+    assert.equal(body.diff_summary.unified_diff_bytes, 79);
     assert.equal(xai.calls, 1);
     assert.equal(github.calls.createPullRequest, 1);
     assert.equal(github.calls.createPullRequestArgs.title, 'grok: run-1');
@@ -280,6 +281,73 @@ describe('POST /v1/executions/grok/draft-pr', () => {
     );
     assert.equal(tooLargeDiff.status, 422);
     assert.equal(JSON.parse(tooLargeDiff.body).error, 'DIFF_SIZE_EXCEEDED');
+  });
+
+  it('rejects long-context replacement when actual unified UTF-8 diff exceeds 2 KiB', async () => {
+    const longLine = 'x'.repeat(1000);
+    const source = [longLine, longLine, longLine, 'target', longLine, longLine, longLine].join('\n') + '\n';
+    const github = githubMock({ sourceContent: source });
+    const xai = {
+      calls: 0,
+      fn: async () => xaiResponse([longLine, longLine, longLine, 'target!', longLine, longLine, longLine].join('\n') + '\n'),
+    };
+    const res = await handleRequest(
+      makeRequest({ headers: { 'idempotency-key': 'k-long-context' }, body: baseBody({ run_id: 'run-long-context' }) }),
+      envWith({ github, xai }),
+    );
+    const body = JSON.parse(res.body);
+    assert.equal(res.status, 422);
+    assert.equal(body.error, 'DIFF_SIZE_EXCEEDED');
+    assert.equal(xai.calls, 1);
+    assert.equal(github.calls.getRef, 1);
+    assert.equal(github.calls.getContentAtRef, 1);
+    assert.equal(github.calls.createRef, 0);
+    assert.equal(github.calls.updateFile, 0);
+    assert.equal(github.calls.createPullRequest, 0);
+  });
+
+  it('keeps standard unified diff byte counts stable for nearby and separated hunks', async () => {
+    const nearby = await handleRequest(
+      makeRequest({ headers: { 'idempotency-key': 'k-nearby-hunks' }, body: baseBody({ run_id: 'run-nearby-hunks' }) }),
+      envWith({
+        github: githubMock({ sourceContent: 'a\nb\nc\nd\ne\nf\ng\n' }),
+        xai: { calls: 0, fn: async () => xaiResponse('a\nB\nc\nC\nd\ne\nf\ng\n') },
+      }),
+    );
+    assert.equal(nearby.status, 200);
+    assert.equal(JSON.parse(nearby.body).diff_summary.unified_diff_bytes, 72);
+
+    const separated = await handleRequest(
+      makeRequest({ headers: { 'idempotency-key': 'k-separated-hunks' }, body: baseBody({ run_id: 'run-separated-hunks' }) }),
+      envWith({
+        github: githubMock({ sourceContent: '1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n' }),
+        xai: { calls: 0, fn: async () => xaiResponse('1\n2\n3\n4\nX\n6\n7\n8\n9\n10\n11\n12\n13\n') },
+      }),
+    );
+    assert.equal(separated.status, 200);
+    assert.equal(JSON.parse(separated.body).diff_summary.unified_diff_bytes, 106);
+  });
+
+  it('counts missing final newline marker bytes in unified diff', async () => {
+    const noEofNewline = await handleRequest(
+      makeRequest({ headers: { 'idempotency-key': 'k-no-eof-marker' }, body: baseBody({ run_id: 'run-no-eof-marker' }) }),
+      envWith({
+        github: githubMock({ sourceContent: 'line1\nline2' }),
+        xai: { calls: 0, fn: async () => xaiResponse('line1\nline-two\nline3') },
+      }),
+    );
+    assert.equal(noEofNewline.status, 200);
+    assert.equal(JSON.parse(noEofNewline.body).diff_summary.unified_diff_bytes, 135);
+
+    const withEofNewline = await handleRequest(
+      makeRequest({ headers: { 'idempotency-key': 'k-with-eof-newline' }, body: baseBody({ run_id: 'run-with-eof-newline' }) }),
+      envWith({
+        github: githubMock({ sourceContent: 'line1\nline2' }),
+        xai: { calls: 0, fn: async () => xaiResponse('line1\nline-two\nline3\n') },
+      }),
+    );
+    assert.equal(withEofNewline.status, 200);
+    assert.equal(JSON.parse(withEofNewline.body).diff_summary.unified_diff_bytes, 107);
   });
 
   it('rejects oversized model output before branch write path', async () => {

@@ -233,8 +233,14 @@ function normalizeXaiResponse(payload) {
   };
 }
 
+const UNIFIED_CONTEXT_LINES = 3;
+
 function splitLines(text) {
-  return text === '' ? [] : text.split('\n');
+  if (text === '') return { lines: [], hasFinalNewline: false };
+  const hasFinalNewline = text.endsWith('\n');
+  const lines = text.split('\n');
+  if (hasFinalNewline) lines.pop();
+  return { lines, hasFinalNewline };
 }
 
 function countLinesBounded(text, maxLines) {
@@ -331,6 +337,81 @@ function buildEditScriptBounded(oldLines, newLines, maxEdits) {
   return annotateIndices(edits);
 }
 
+function buildUnifiedHunkRanges(ops, contextLines) {
+  const changeIndices = [];
+  for (let i = 0; i < ops.length; i += 1) {
+    if (ops[i].type !== 'equal') changeIndices.push(i);
+  }
+  if (changeIndices.length === 0) return [];
+  const ranges = [];
+  let start = Math.max(0, changeIndices[0] - contextLines);
+  let end = Math.min(ops.length - 1, changeIndices[0] + contextLines);
+  for (let i = 1; i < changeIndices.length; i += 1) {
+    const idx = changeIndices[i];
+    const nextStart = Math.max(0, idx - contextLines);
+    const nextEnd = Math.min(ops.length - 1, idx + contextLines);
+    if (nextStart <= end + 1) {
+      end = Math.max(end, nextEnd);
+      continue;
+    }
+    ranges.push([start, end]);
+    start = nextStart;
+    end = nextEnd;
+  }
+  ranges.push([start, end]);
+  return ranges;
+}
+
+function countUnifiedDiffBytesBounded({
+  path,
+  ops,
+  oldLineCount,
+  newLineCount,
+  oldHasFinalNewline,
+  newHasFinalNewline,
+  maxBytes,
+}) {
+  const encoder = new TextEncoder();
+  let total = 0;
+  const add = (line) => {
+    total += encoder.encode(line).length;
+    if (total > maxBytes) return false;
+    return true;
+  };
+  if (!add(`--- a/${path}\n`)) return { ok: false, exceeded: true, bytes: total };
+  if (!add(`+++ b/${path}\n`)) return { ok: false, exceeded: true, bytes: total };
+  const ranges = buildUnifiedHunkRanges(ops, UNIFIED_CONTEXT_LINES);
+  for (const [start, end] of ranges) {
+    const hunkOps = ops.slice(start, end + 1);
+    const first = hunkOps[0];
+    let oldCount = 0;
+    let newCount = 0;
+    for (const op of hunkOps) {
+      if (op.type !== 'add') oldCount += 1;
+      if (op.type !== 'delete') newCount += 1;
+    }
+    const oldStart = oldCount === 0 ? (oldLineCount === 0 ? 0 : first.oldIndex) : first.oldIndex;
+    const newStart = newCount === 0 ? (newLineCount === 0 ? 0 : first.newIndex) : first.newIndex;
+    if (!add(`@@ -${oldStart},${oldCount} +${newStart},${newCount} @@\n`)) return { ok: false, exceeded: true, bytes: total };
+    for (const op of hunkOps) {
+      if (op.type === 'equal' && !add(` ${op.line}\n`)) return { ok: false, exceeded: true, bytes: total };
+      if (op.type === 'delete') {
+        if (!add(`-${op.line}\n`)) return { ok: false, exceeded: true, bytes: total };
+        if (!oldHasFinalNewline && oldLineCount > 0 && op.oldIndex === oldLineCount && !add('\\ No newline at end of file\n')) {
+          return { ok: false, exceeded: true, bytes: total };
+        }
+      }
+      if (op.type === 'add') {
+        if (!add(`+${op.line}\n`)) return { ok: false, exceeded: true, bytes: total };
+        if (!newHasFinalNewline && newLineCount > 0 && op.newIndex === newLineCount && !add('\\ No newline at end of file\n')) {
+          return { ok: false, exceeded: true, bytes: total };
+        }
+      }
+    }
+  }
+  return { ok: true, bytes: total };
+}
+
 function diffStats(oldContent, newContent, path) {
   const encoder = new TextEncoder();
   const oldBytes = encoder.encode(oldContent).length;
@@ -344,9 +425,9 @@ function diffStats(oldContent, newContent, path) {
   ) {
     return fail(422, 'CONTENT_TOO_LARGE', `Content exceeds ${MAX_DIFF_INPUT_LINES} lines`);
   }
-  const oldLines = splitLines(oldContent);
-  const newLines = splitLines(newContent);
-  const ops = buildEditScriptBounded(oldLines, newLines, GROK_DRAFT_PR_LIMITS.MAX_CHANGED_LINES);
+  const oldSplit = splitLines(oldContent);
+  const newSplit = splitLines(newContent);
+  const ops = buildEditScriptBounded(oldSplit.lines, newSplit.lines, GROK_DRAFT_PR_LIMITS.MAX_CHANGED_LINES);
   if (!ops) {
     return fail(422, 'CHANGED_LINES_EXCEEDED', `Changed lines must be <= ${GROK_DRAFT_PR_LIMITS.MAX_CHANGED_LINES}`);
   }
@@ -357,32 +438,29 @@ function diffStats(oldContent, newContent, path) {
     if (op.type === 'delete') deletions += 1;
   }
   const changedLines = additions + deletions;
-  let unified = `--- a/${path}\n+++ b/${path}\n`;
-  const hunks = [];
-  let current = [];
-  for (const op of ops) {
-    if (op.type === 'equal') {
-      if (current.length > 0) {
-        hunks.push(current);
-        current = [];
-      }
-      continue;
+  const diffCount = countUnifiedDiffBytesBounded({
+    path,
+    ops,
+    oldLineCount: oldSplit.lines.length,
+    newLineCount: newSplit.lines.length,
+    oldHasFinalNewline: oldSplit.hasFinalNewline,
+    newHasFinalNewline: newSplit.hasFinalNewline,
+    maxBytes: GROK_DRAFT_PR_LIMITS.MAX_UNIFIED_DIFF_BYTES,
+  });
+  if (!diffCount.ok) {
+    if (diffCount.exceeded) {
+      return {
+        ok: true,
+        additions,
+        deletions,
+        changedLines,
+        diffBytes: diffCount.bytes,
+        diffExceeded: true,
+      };
     }
-    current.push(op);
+    return fail(422, 'INVALID_DIFF', 'Failed to compute unified diff');
   }
-  if (current.length > 0) hunks.push(current);
-  for (const hunk of hunks) {
-    const first = hunk[0];
-    const oldCount = hunk.filter((op) => op.type === 'delete').length;
-    const newCount = hunk.filter((op) => op.type === 'add').length;
-    unified += `@@ -${first.oldIndex},${oldCount} +${first.newIndex},${newCount} @@\n`;
-    for (const op of hunk) {
-      if (op.type === 'delete') unified += `-${op.line}\n`;
-      if (op.type === 'add') unified += `+${op.line}\n`;
-    }
-  }
-  const diffBytes = encoder.encode(unified).length;
-  return { ok: true, additions, deletions, changedLines, diffBytes, unified };
+  return { ok: true, additions, deletions, changedLines, diffBytes: diffCount.bytes, diffExceeded: false };
 }
 
 function safeResult(status, message) {
@@ -523,7 +601,7 @@ export async function executeGrokDraftPrOperation({ github, xai, runId, baseSha,
       safeResult: safeResult('CHANGED_LINES_EXCEEDED', `Changed lines must be <= ${GROK_DRAFT_PR_LIMITS.MAX_CHANGED_LINES}`),
     };
   }
-  if (stats.diffBytes > GROK_DRAFT_PR_LIMITS.MAX_UNIFIED_DIFF_BYTES) {
+  if (stats.diffExceeded) {
     return {
       ok: false,
       status: 422,
