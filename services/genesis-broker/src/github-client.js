@@ -1,25 +1,28 @@
-import { COPILOT_BOT, FIXED_BASE_BRANCH, FIXED_FULL_NAME, FIXED_OWNER, FIXED_REPO, GITHUB_API_HOST } from './constants.js';
+/**
+ * GitHub REST client for Genesis Broker.
+ * All methods are pure HTTP wrappers; no side-effects beyond the call.
+ */
+
+const API = 'https://api.github.com';
 
 /**
- * Minimal GitHub API client. Host and repo are fixed — no generic proxy.
- * Inject `fetchImpl` for tests.
+ * @param {object} opts
+ * @param {string} opts.token
+ * @param {string} opts.owner
+ * @param {string} opts.repo
  */
-export function createGithubClient({ pat, fetchImpl = fetch }) {
-  if (!pat) {
-    return null;
-  }
+export function createGitHubClient({ token, owner, repo }) {
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+    'User-Agent': 'genesis-broker',
+  };
 
-  async function gh(method, path, body) {
-    const url = `https://${GITHUB_API_HOST}${path}`;
-    const res = await fetchImpl(url, {
+  async function request(method, path, body) {
+    const res = await fetch(`${API}${path}`, {
       method,
-      headers: {
-        Accept: 'application/vnd.github+json',
-        Authorization: `Bearer ${pat}`,
-        'X-GitHub-Api-Version': '2022-11-28',
-        'User-Agent': 'genesis-broker-mvp',
-        ...(body ? { 'Content-Type': 'application/json' } : {}),
-      },
+      headers: body ? { ...headers, 'Content-Type': 'application/json' } : headers,
       body: body ? JSON.stringify(body) : undefined,
     });
     const text = await res.text();
@@ -27,126 +30,69 @@ export function createGithubClient({ pat, fetchImpl = fetch }) {
     try {
       data = text ? JSON.parse(text) : null;
     } catch {
-      data = { raw: text?.slice?.(0, 200) };
+      data = { raw: text };
     }
-    return { status: res.status, ok: res.ok, data, headers: res.headers };
+    if (!res.ok) {
+      const err = new Error(data?.message || `GitHub ${res.status}`);
+      err.status = res.status;
+      err.data = data;
+      throw err;
+    }
+    return data;
   }
 
   return {
-    async getContent(path) {
-      const encoded = path
-        .split('/')
-        .map(encodeURIComponent)
-        .join('/');
-      return gh('GET', `/repos/${FIXED_OWNER}/${FIXED_REPO}/contents/${encoded}?ref=${FIXED_BASE_BRANCH}`);
+    async getRefSha(ref) {
+      const data = await request('GET', `/repos/${owner}/${repo}/git/ref/heads/${ref}`);
+      return data.object.sha;
     },
 
-    async createIssue({ title, body, labels }) {
-      return gh('POST', `/repos/${FIXED_OWNER}/${FIXED_REPO}/issues`, {
+    async getBlob(sha) {
+      return request('GET', `/repos/${owner}/${repo}/git/blobs/${sha}`);
+    },
+
+    async createBlob(content, encoding = 'utf-8') {
+      return request('POST', `/repos/${owner}/${repo}/git/blobs`, { content, encoding });
+    },
+
+    async getCommit(sha) {
+      return request('GET', `/repos/${owner}/${repo}/git/commits/${sha}`);
+    },
+
+    async createTree(baseTreeSha, tree) {
+      return request('POST', `/repos/${owner}/${repo}/git/trees`, {
+        base_tree: baseTreeSha,
+        tree,
+      });
+    },
+
+    async createCommit(message, treeSha, parentSha) {
+      return request('POST', `/repos/${owner}/${repo}/git/commits`, {
+        message,
+        tree: treeSha,
+        parents: [parentSha],
+      });
+    },
+
+    async createRef(ref, sha) {
+      return request('POST', `/repos/${owner}/${repo}/git/refs`, {
+        ref: `refs/heads/${ref}`,
+        sha,
+      });
+    },
+
+    async createPull({ title, head, base, body, draft = true }) {
+      return request('POST', `/repos/${owner}/${repo}/pulls`, {
         title,
-        body,
-        labels: labels || [],
+        head,
+        base,
+        body: body || '',
+        draft: !!draft,
       });
     },
 
-    /**
-     * Path B2: Issue Assignment API — assign Copilot bot with agent_assignment (single call).
-     * Repository and base branch are fixed constants; clients cannot override (S-0002 §4.3).
-     */
-    async assignCopilot(issueNumber) {
-      return gh(
-        'POST',
-        `/repos/${FIXED_OWNER}/${FIXED_REPO}/issues/${issueNumber}/assignees`,
-        {
-          assignees: [COPILOT_BOT],
-          agent_assignment: {
-            target_repo: FIXED_FULL_NAME,
-            base_branch: FIXED_BASE_BRANCH,
-            custom_instructions: '',
-            custom_agent: '',
-            model: '',
-          },
-        },
-      );
-    },
-
-    async getIssue(issueNumber) {
-      return gh('GET', `/repos/${FIXED_OWNER}/${FIXED_REPO}/issues/${issueNumber}`);
-    },
-
-    /**
-     * Read-only Issue timeline for structured PR discovery (cross-referenced events).
-     * per_page=100. Caller must fail-closed if incompletePages is true and it cannot continue.
-     */
-    async getIssueTimeline(issueNumber, { page = 1, perPage = 100 } = {}) {
-      const q = `per_page=${perPage}&page=${page}`;
-      return gh(
-        'GET',
-        `/repos/${FIXED_OWNER}/${FIXED_REPO}/issues/${issueNumber}/timeline?${q}`,
-      );
-    },
-
-    async getPull(pullNumber) {
-      return gh('GET', `/repos/${FIXED_OWNER}/${FIXED_REPO}/pulls/${pullNumber}`);
-    },
-
-    async getPullFiles(pullNumber) {
-      return gh('GET', `/repos/${FIXED_OWNER}/${FIXED_REPO}/pulls/${pullNumber}/files`);
-    },
-
-    async getPullDiff(pullNumber) {
-      const url = `https://${GITHUB_API_HOST}/repos/${FIXED_OWNER}/${FIXED_REPO}/pulls/${pullNumber}`;
-      const res = await fetchImpl(url, {
-        method: 'GET',
-        headers: {
-          Accept: 'application/vnd.github.v3.diff',
-          Authorization: `Bearer ${pat}`,
-          'X-GitHub-Api-Version': '2022-11-28',
-          'User-Agent': 'genesis-broker-mvp',
-        },
-      });
-      const text = await res.text();
-      return { status: res.status, ok: res.ok, data: text, headers: res.headers };
-    },
-
-    async getCombinedStatus(ref) {
-      return gh('GET', `/repos/${FIXED_OWNER}/${FIXED_REPO}/commits/${encodeURIComponent(ref)}/status`);
+    async getFileContent(path, ref) {
+      return request('GET', `/repos/${owner}/${repo}/contents/${path}?ref=${encodeURIComponent(ref)}`);
     },
   };
-}
-
-/** Map GitHub HTTP status to safe client error without leaking headers/tokens. */
-export function mapGithubError(status, data) {
-  const message =
-    (data && (data.message || data.error)) ||
-    (status === 401
-      ? 'GitHub unauthorized'
-      : status === 403
-        ? 'GitHub forbidden'
-        : status === 422
-          ? 'GitHub validation failed'
-          : status >= 500
-            ? 'GitHub upstream error'
-            : 'GitHub request failed');
-  return {
-    status: status >= 400 ? status : 502,
-    error: `GITHUB_${status}`,
-    message: String(message).slice(0, 300),
-  };
-}
-
-/**
- * Parse GitHub Link header for rel="next".
- * @param {Headers | { get?: Function } | null | undefined} headers
- * @returns {string | null}
- */
-export function parseLinkNext(headers) {
-  if (!headers || typeof headers.get !== 'function') return null;
-  const link = headers.get('link') || headers.get('Link');
-  if (!link || typeof link !== 'string') return null;
-  for (const part of link.split(',')) {
-    const m = part.trim().match(/^<([^>]+)>\s*;\s*rel="?next"?/i);
-    if (m) return m[1];
-  }
-  return null;
 }

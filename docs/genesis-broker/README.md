@@ -52,3 +52,8 @@ SQLite-backed **Durable Object** (not Workers KV).
 
 - Repository: `kubzik96/genesis-ai`
 - Base branch: `main`
+
+
+## Limited Grok Executor (S-0005)
+
+See [grok-executor.md](./grok-executor.md) for T-011 Stage 1 endpoint.
