@@ -1,28 +1,25 @@
-/**
- * GitHub REST client for Genesis Broker.
- * All methods are pure HTTP wrappers; no side-effects beyond the call.
- */
-
-const API = 'https://api.github.com';
+import { COPILOT_BOT, FIXED_BASE_BRANCH, FIXED_FULL_NAME, FIXED_OWNER, FIXED_REPO, GITHUB_API_HOST } from './constants.js';
 
 /**
- * @param {object} opts
- * @param {string} opts.token
- * @param {string} opts.owner
- * @param {string} opts.repo
+ * Minimal GitHub API client. Host and repo are fixed — no generic proxy.
+ * Inject `fetchImpl` for tests.
  */
-export function createGitHubClient({ token, owner, repo }) {
-  const headers = {
-    Authorization: `Bearer ${token}`,
-    Accept: 'application/vnd.github+json',
-    'X-GitHub-Api-Version': '2022-11-28',
-    'User-Agent': 'genesis-broker',
-  };
+export function createGithubClient({ pat, fetchImpl = fetch }) {
+  if (!pat) {
+    return null;
+  }
 
-  async function request(method, path, body) {
-    const res = await fetch(`${API}${path}`, {
+  async function gh(method, path, body, accept) {
+    const url = `https://${GITHUB_API_HOST}${path}`;
+    const res = await fetchImpl(url, {
       method,
-      headers: body ? { ...headers, 'Content-Type': 'application/json' } : headers,
+      headers: {
+        Accept: accept || 'application/vnd.github+json',
+        Authorization: `Bearer ${pat}`,
+        'X-GitHub-Api-Version': '2022-11-28',
+        'User-Agent': 'genesis-broker-mvp',
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
+      },
       body: body ? JSON.stringify(body) : undefined,
     });
     const text = await res.text();
@@ -30,69 +27,161 @@ export function createGitHubClient({ token, owner, repo }) {
     try {
       data = text ? JSON.parse(text) : null;
     } catch {
-      data = { raw: text };
+      data = { raw: text?.slice?.(0, 200) };
     }
-    if (!res.ok) {
-      const err = new Error(data?.message || `GitHub ${res.status}`);
-      err.status = res.status;
-      err.data = data;
-      throw err;
-    }
-    return data;
+    return { status: res.status, ok: res.ok, data, headers: res.headers };
   }
 
   return {
-    async getRefSha(ref) {
-      const data = await request('GET', `/repos/${owner}/${repo}/git/ref/heads/${ref}`);
-      return data.object.sha;
+    async getContent(path, ref = FIXED_BASE_BRANCH) {
+      const encoded = path
+        .split('/')
+        .map(encodeURIComponent)
+        .join('/');
+      return gh('GET', `/repos/${FIXED_OWNER}/${FIXED_REPO}/contents/${encoded}?ref=${encodeURIComponent(ref)}`);
     },
 
-    async getBlob(sha) {
-      return request('GET', `/repos/${owner}/${repo}/git/blobs/${sha}`);
+    async createIssue({ title, body, labels }) {
+      return gh('POST', `/repos/${FIXED_OWNER}/${FIXED_REPO}/issues`, {
+        title,
+        body,
+        labels: labels || [],
+      });
     },
 
-    async createBlob(content, encoding = 'utf-8') {
-      return request('POST', `/repos/${owner}/${repo}/git/blobs`, { content, encoding });
+    async assignCopilot(issueNumber) {
+      return gh(
+        'POST',
+        `/repos/${FIXED_OWNER}/${FIXED_REPO}/issues/${issueNumber}/assignees`,
+        {
+          assignees: [COPILOT_BOT],
+          agent_assignment: {
+            target_repo: FIXED_FULL_NAME,
+            base_branch: FIXED_BASE_BRANCH,
+            custom_instructions: '',
+            custom_agent: '',
+            model: '',
+          },
+        },
+      );
+    },
+
+    async getIssue(issueNumber) {
+      return gh('GET', `/repos/${FIXED_OWNER}/${FIXED_REPO}/issues/${issueNumber}`);
+    },
+
+    async getIssueTimeline(issueNumber, { page = 1, perPage = 100 } = {}) {
+      const q = `per_page=${perPage}&page=${page}`;
+      return gh(
+        'GET',
+        `/repos/${FIXED_OWNER}/${FIXED_REPO}/issues/${issueNumber}/timeline?${q}`,
+      );
+    },
+
+    async getPull(pullNumber) {
+      return gh('GET', `/repos/${FIXED_OWNER}/${FIXED_REPO}/pulls/${pullNumber}`);
+    },
+
+    async getPullFiles(pullNumber) {
+      return gh('GET', `/repos/${FIXED_OWNER}/${FIXED_REPO}/pulls/${pullNumber}/files`);
+    },
+
+    async getPullDiff(pullNumber) {
+      const url = `https://${GITHUB_API_HOST}/repos/${FIXED_OWNER}/${FIXED_REPO}/pulls/${pullNumber}`;
+      const res = await fetchImpl(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/vnd.github.v3.diff',
+          Authorization: `Bearer ${pat}`,
+          'X-GitHub-Api-Version': '2022-11-28',
+          'User-Agent': 'genesis-broker-mvp',
+        },
+      });
+      const text = await res.text();
+      return { status: res.status, ok: res.ok, data: text, headers: res.headers };
+    },
+
+    async getCombinedStatus(ref) {
+      return gh('GET', `/repos/${FIXED_OWNER}/${FIXED_REPO}/commits/${encodeURIComponent(ref)}/status`);
+    },
+
+    async getRef(ref) {
+      const encoded = encodeURIComponent(ref.startsWith('refs/') ? ref : `heads/${ref}`);
+      return gh('GET', `/repos/${FIXED_OWNER}/${FIXED_REPO}/git/ref/${encoded}`);
     },
 
     async getCommit(sha) {
-      return request('GET', `/repos/${owner}/${repo}/git/commits/${sha}`);
+      return gh('GET', `/repos/${FIXED_OWNER}/${FIXED_REPO}/git/commits/${encodeURIComponent(sha)}`);
+    },
+
+    async createBlob(content, encoding = 'utf-8') {
+      return gh('POST', `/repos/${FIXED_OWNER}/${FIXED_REPO}/git/blobs`, {
+        content,
+        encoding,
+      });
     },
 
     async createTree(baseTreeSha, tree) {
-      return request('POST', `/repos/${owner}/${repo}/git/trees`, {
+      return gh('POST', `/repos/${FIXED_OWNER}/${FIXED_REPO}/git/trees`, {
         base_tree: baseTreeSha,
         tree,
       });
     },
 
-    async createCommit(message, treeSha, parentSha) {
-      return request('POST', `/repos/${owner}/${repo}/git/commits`, {
+    async createCommit({ message, tree, parents }) {
+      return gh('POST', `/repos/${FIXED_OWNER}/${FIXED_REPO}/git/commits`, {
         message,
-        tree: treeSha,
-        parents: [parentSha],
+        tree,
+        parents: parents || [],
       });
     },
 
     async createRef(ref, sha) {
-      return request('POST', `/repos/${owner}/${repo}/git/refs`, {
-        ref: `refs/heads/${ref}`,
+      const fullRef = ref.startsWith('refs/') ? ref : `refs/heads/${ref}`;
+      return gh('POST', `/repos/${FIXED_OWNER}/${FIXED_REPO}/git/refs`, {
+        ref: fullRef,
         sha,
       });
     },
 
-    async createPull({ title, head, base, body, draft = true }) {
-      return request('POST', `/repos/${owner}/${repo}/pulls`, {
+    async createPull({ title, head, base, body, draft }) {
+      return gh('POST', `/repos/${FIXED_OWNER}/${FIXED_REPO}/pulls`, {
         title,
         head,
         base,
         body: body || '',
-        draft: !!draft,
+        draft: draft === true,
       });
     },
-
-    async getFileContent(path, ref) {
-      return request('GET', `/repos/${owner}/${repo}/contents/${path}?ref=${encodeURIComponent(ref)}`);
-    },
   };
+}
+
+export function mapGithubError(status, data) {
+  const message =
+    (data && (data.message || data.error)) ||
+    (status === 401
+      ? 'GitHub unauthorized'
+      : status === 403
+        ? 'GitHub forbidden'
+        : status === 422
+          ? 'GitHub validation failed'
+          : status >= 500
+            ? 'GitHub upstream error'
+            : 'GitHub request failed');
+  return {
+    status: status >= 400 ? status : 502,
+    error: `GITHUB_${status}`,
+    message: String(message).slice(0, 300),
+  };
+}
+
+export function parseLinkNext(headers) {
+  if (!headers || typeof headers.get !== 'function') return null;
+  const link = headers.get('link') || headers.get('Link');
+  if (!link || typeof link !== 'string') return null;
+  for (const part of link.split(',')) {
+    const m = part.trim().match(/^<([^>]+)>\s*;\s*rel="?next"?/i);
+    if (m) return m[1];
+  }
+  return null;
 }
