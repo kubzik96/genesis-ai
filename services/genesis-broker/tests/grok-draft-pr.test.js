@@ -7,6 +7,26 @@ import { IDEM_STATES } from '../src/constants.js';
 const BASE_SHA = 'a'.repeat(40);
 const BLOB_SHA = 'b'.repeat(40);
 
+function utf8ToBase64(text) {
+  const bytes = new TextEncoder().encode(text);
+  let binary = '';
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary);
+}
+
+function bytesToBase64(bytes) {
+  let binary = '';
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary);
+}
+
+function base64ToUtf8(encoded) {
+  const binary = atob(encoded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+}
+
 function makeRequest({ headers = {}, body }) {
   return new Request('https://broker.test/v1/executions/grok/draft-pr', {
     method: 'POST',
@@ -38,6 +58,9 @@ function baseBody(overrides = {}) {
 function githubMock({
   beforeSha = BASE_SHA,
   afterSha = BASE_SHA,
+  sourceContent = 'line1\nline2\nline3\n',
+  sourceEncoding = 'base64',
+  sourceContentBase64 = null,
   createRefStatus = 201,
   updateFileStatus = 200,
   pullStatus = 201,
@@ -45,6 +68,7 @@ function githubMock({
 } = {}) {
   const calls = { getRef: 0, getContentAtRef: 0, createRef: 0, updateFile: 0, createPullRequest: 0 };
   return {
+    __stage1Mock: true,
     calls,
     async getRef() {
       calls.getRef += 1;
@@ -57,10 +81,11 @@ function githubMock({
     },
     async getContentAtRef() {
       calls.getContentAtRef += 1;
+      const content = sourceContentBase64 || utf8ToBase64(sourceContent);
       return {
         ok: true,
         status: 200,
-        data: { sha: BLOB_SHA, encoding: 'base64', content: btoa('line1\nline2\nline3\n') },
+        data: { sha: BLOB_SHA, encoding: sourceEncoding, content: sourceEncoding === 'base64' ? content : sourceContent },
       };
     },
     async createRef() {
@@ -70,15 +95,17 @@ function githubMock({
         ? { ok: false, status: createRefStatus, data: { message: 'exists' } }
         : { ok: true, status: createRefStatus, data: {} };
     },
-    async updateFile() {
+    async updateFile(args) {
       calls.updateFile += 1;
+      calls.updateFileArgs = args;
       if (throwAt === 'updateFile') throw new Error('timeout');
       return updateFileStatus >= 400
         ? { ok: false, status: updateFileStatus, data: { message: 'fail' } }
         : { ok: true, status: updateFileStatus, data: { commit: { sha: 'c'.repeat(40) } } };
     },
-    async createPullRequest() {
+    async createPullRequest(args) {
       calls.createPullRequest += 1;
+      calls.createPullRequestArgs = args;
       if (throwAt === 'createPullRequest') throw new Error('timeout');
       return pullStatus >= 400
         ? { ok: false, status: pullStatus, data: { message: 'fail' } }
@@ -106,6 +133,7 @@ function envWith({ github, xai }) {
     store: new MemoryBrokerStore(),
     github,
     xai: {
+      __stage1Mock: true,
       calls: 0,
       async generateDraftPrChange(...args) {
         xai.calls += 1;
@@ -129,6 +157,7 @@ describe('POST /v1/executions/grok/draft-pr', () => {
     assert.deepEqual(body.changed_files, ['MEMORY.md']);
     assert.equal(xai.calls, 1);
     assert.equal(github.calls.createPullRequest, 1);
+    assert.equal(github.calls.createPullRequestArgs.title, 'grok: run-1');
   });
 
   it('idempotency replay avoids second xAI/GitHub write', async () => {
@@ -194,6 +223,18 @@ describe('POST /v1/executions/grok/draft-pr', () => {
     assert.equal(JSON.parse(secondFile.body).error, 'MULTIPLE_FILES_REJECTED');
   });
 
+  it('requires strict request top-level schema and denies server-controlled fields', async () => {
+    const withRepo = await handleRequest(
+      makeRequest({
+        headers: { 'idempotency-key': 'k-repo' },
+        body: baseBody({ repository: 'kubzik96/genesis-ai' }),
+      }),
+      envWith({ github: githubMock(), xai: { calls: 0, fn: async () => xaiResponse() } }),
+    );
+    assert.equal(withRepo.status, 400);
+    assert.equal(JSON.parse(withRepo.body).error, 'UNKNOWN_FIELD');
+  });
+
   it('enforces changed lines and diff size hard limits', async () => {
     const noChanges = await handleRequest(
       makeRequest({ headers: { 'idempotency-key': 'k-no-change' }, body: baseBody() }),
@@ -247,6 +288,86 @@ describe('POST /v1/executions/grok/draft-pr', () => {
     );
     assert.equal(branchExists.status, 422);
     assert.equal(JSON.parse(branchExists.body).error, 'GITHUB_422');
+  });
+
+  it('fails closed when Stage 1 mocks are missing', async () => {
+    const github = githubMock();
+    const env = {
+      BROKER_SERVICE_TOKEN: 'secret',
+      GITHUB_PAT: 'pat',
+      store: new MemoryBrokerStore(),
+      github,
+      xai: {
+        async generateDraftPrChange() {
+          return xaiResponse();
+        },
+      },
+    };
+    const res = await handleRequest(
+      makeRequest({ headers: { 'idempotency-key': 'k-mocks' }, body: baseBody() }),
+      env,
+    );
+    assert.equal(res.status, 503);
+    assert.equal(JSON.parse(res.body).error, 'XAI_NOT_CONFIGURED');
+    assert.equal(github.calls.getRef, 0);
+  });
+
+  it('supports UTF-8 Cyrillic round-trip and base64-encodes as UTF-8 bytes', async () => {
+    const github = githubMock({ sourceContent: 'Привет\nмир\nline3\n' });
+    const xai = {
+      calls: 0,
+      fn: async () => xaiResponse('Привет\nмир!\nline3\n'),
+    };
+    const res = await handleRequest(
+      makeRequest({ headers: { 'idempotency-key': 'k-cyr' }, body: baseBody() }),
+      envWith({ github, xai }),
+    );
+    assert.equal(res.status, 200);
+    assert.equal(base64ToUtf8(github.calls.updateFileArgs.contentBase64), 'Привет\nмир!\nline3\n');
+  });
+
+  it('rejects malformed base64 and invalid UTF-8 from GitHub source', async () => {
+    const malformed = await handleRequest(
+      makeRequest({ headers: { 'idempotency-key': 'k-b64' }, body: baseBody() }),
+      envWith({
+        github: githubMock({ sourceContentBase64: '%%%not-base64%%%' }),
+        xai: { calls: 0, fn: async () => xaiResponse() },
+      }),
+    );
+    assert.equal(malformed.status, 422);
+    assert.equal(JSON.parse(malformed.body).error, 'INVALID_BASE64');
+
+    const invalidUtf8 = await handleRequest(
+      makeRequest({ headers: { 'idempotency-key': 'k-utf8' }, body: baseBody() }),
+      envWith({
+        github: githubMock({ sourceContentBase64: bytesToBase64([0xc3, 0x28]) }),
+        xai: { calls: 0, fn: async () => xaiResponse() },
+      }),
+    );
+    assert.equal(invalidUtf8.status, 422);
+    assert.equal(JSON.parse(invalidUtf8.body).error, 'INVALID_UTF8');
+  });
+
+  it('rejects invalid self_check and unpaired surrogate content from xAI', async () => {
+    const badSelfCheck = await handleRequest(
+      makeRequest({ headers: { 'idempotency-key': 'k-self-check' }, body: baseBody() }),
+      envWith({
+        github: githubMock(),
+        xai: { calls: 0, fn: async () => ({ ...xaiResponse(), self_check: { scope_ok: false } }) },
+      }),
+    );
+    assert.equal(badSelfCheck.status, 422);
+    assert.equal(JSON.parse(badSelfCheck.body).error, 'SCOPE_NOT_AFFIRMED');
+
+    const badSurrogate = await handleRequest(
+      makeRequest({ headers: { 'idempotency-key': 'k-surrogate' }, body: baseBody() }),
+      envWith({
+        github: githubMock(),
+        xai: { calls: 0, fn: async () => xaiResponse(`line1\nbad-\ud800\nline3\n`) },
+      }),
+    );
+    assert.equal(badSurrogate.status, 422);
+    assert.equal(JSON.parse(badSurrogate.body).error, 'BINARY_CONTENT_REJECTED');
   });
 
   it('duplicate run_id write is rate-limited', async () => {
@@ -316,7 +437,7 @@ describe('POST /v1/executions/grok/draft-pr', () => {
         GITHUB_PAT: 'pat',
         store,
         github: githubMock({ throwAt: stage }),
-        xai: { async generateDraftPrChange() { return xaiResponse(); } },
+        xai: { __stage1Mock: true, async generateDraftPrChange() { return xaiResponse(); } },
       };
       const key = `k-unknown-${stage}`;
       const first = await handleRequest(makeRequest({ headers: { 'idempotency-key': key }, body: baseBody({ run_id: runId }) }), env);

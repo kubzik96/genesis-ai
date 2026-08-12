@@ -607,7 +607,7 @@ async function handleGrokDraftPr(request, env, github) {
       idempotency_key: idemKey,
       latency_ms: Date.now() - tStart,
     });
-    return json(503, { error: 'XAI_NOT_CONFIGURED', message: 'xAI mock client missing — fail-closed' });
+    return json(503, { error: 'XAI_NOT_CONFIGURED', message: 'xAI Stage 1 mock missing — fail-closed' });
   }
   if (!githubConfiguredForDraftPr(github)) {
     auditReject({
@@ -621,7 +621,7 @@ async function handleGrokDraftPr(request, env, github) {
     });
     return json(503, {
       error: 'GITHUB_DRAFT_PR_NOT_CONFIGURED',
-      message: 'GitHub client missing draft-pr methods — fail-closed',
+      message: 'GitHub Stage 1 mock missing draft-pr methods — fail-closed',
     });
   }
 
@@ -663,12 +663,17 @@ async function handleGrokDraftPr(request, env, github) {
 }
 
 function xaiConfigured(xai) {
-  return Boolean(xai && typeof xai.generateDraftPrChange === 'function');
+  return Boolean(
+    xai &&
+    xai.__stage1Mock === true &&
+    typeof xai.generateDraftPrChange === 'function',
+  );
 }
 
 function githubConfiguredForDraftPr(github) {
   return Boolean(
     github &&
+    github.__stage1Mock === true &&
     typeof github.getRef === 'function' &&
     typeof github.getContentAtRef === 'function' &&
     typeof github.createRef === 'function' &&

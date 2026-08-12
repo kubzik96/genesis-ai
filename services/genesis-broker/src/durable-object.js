@@ -278,6 +278,23 @@ function buildGithubCall(operation, operationData, github, xai) {
     };
   }
   if (operation === 'create_branch_commit_draft_pr') {
+    if (
+      !github ||
+      github.__stage1Mock !== true ||
+      !xai ||
+      xai.__stage1Mock !== true ||
+      typeof xai.generateDraftPrChange !== 'function'
+    ) {
+      return async () => ({
+        ok: false,
+        status: 503,
+        githubStatus: null,
+        safeResult: {
+          error: 'STAGE1_MOCKS_REQUIRED',
+          message: 'Stage 1 grok draft-pr operation requires explicit test mocks',
+        },
+      });
+    }
     return async () => executeGrokDraftPrOperation({
       github,
       xai,

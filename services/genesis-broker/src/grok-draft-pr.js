@@ -8,10 +8,12 @@ import { mapGithubError } from './github-client.js';
 
 const HEX_40 = /^[a-f0-9]{40}$/i;
 const RUN_ID_BRANCH = /^[a-z0-9][a-z0-9._-]{0,80}$/;
+const BASE64_RE = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+const MAX_TASK_TITLE_LENGTH = 120;
+const MAX_TASK_INSTRUCTION_LENGTH = 2000;
+const MAX_SUMMARY_LENGTH = 500;
 const REQUEST_TOP_LEVEL_KEYS = new Set([
   'operation',
-  'repository',
-  'base_branch',
   'run_id',
   'gate',
   'confirmed_at',
@@ -21,6 +23,7 @@ const REQUEST_TOP_LEVEL_KEYS = new Set([
 const TASK_KEYS = new Set(['title', 'instruction', 'allowed_files']);
 const RESPONSE_KEYS = new Set(['summary', 'changes', 'self_check']);
 const CHANGE_KEYS = new Set(['path', 'expected_blob_sha', 'new_content']);
+const SELF_CHECK_KEYS = new Set(['scope_ok']);
 
 function hasOnlyKnownKeys(input, known) {
   return Object.keys(input).every((k) => known.has(k));
@@ -39,12 +42,6 @@ export function validateDraftPrRequest(body) {
   }
   if (body.operation !== GROK_DRAFT_PR_OPERATION) {
     return fail(400, 'INVALID_OPERATION', `operation must be ${GROK_DRAFT_PR_OPERATION}`);
-  }
-  if (body.repository && body.repository !== FIXED_FULL_NAME) {
-    return fail(403, 'REPO_NOT_ALLOWED', `Only ${FIXED_FULL_NAME}`);
-  }
-  if (body.base_branch && body.base_branch !== FIXED_BASE_BRANCH) {
-    return fail(403, 'BASE_BRANCH_NOT_ALLOWED', `Only ${FIXED_BASE_BRANCH}`);
   }
   if (!body.run_id || typeof body.run_id !== 'string' || !body.run_id.trim()) {
     return fail(400, 'INVALID_RUN_ID', 'run_id is required');
@@ -65,8 +62,14 @@ export function validateDraftPrRequest(body) {
   if (!body.task.title || typeof body.task.title !== 'string' || !body.task.title.trim()) {
     return fail(400, 'INVALID_TASK', 'task.title is required');
   }
+  if (body.task.title.trim().length > MAX_TASK_TITLE_LENGTH) {
+    return fail(422, 'INVALID_TASK', `task.title too long (max ${MAX_TASK_TITLE_LENGTH})`);
+  }
   if (!body.task.instruction || typeof body.task.instruction !== 'string' || !body.task.instruction.trim()) {
     return fail(400, 'INVALID_TASK', 'task.instruction is required');
+  }
+  if (body.task.instruction.trim().length > MAX_TASK_INSTRUCTION_LENGTH) {
+    return fail(422, 'INVALID_TASK', `task.instruction too long (max ${MAX_TASK_INSTRUCTION_LENGTH})`);
   }
   if (!Array.isArray(body.task.allowed_files)) {
     return fail(400, 'INVALID_TASK', 'task.allowed_files must be array');
@@ -95,19 +98,83 @@ export function validateDraftPrRequest(body) {
   };
 }
 
-function safeDecodeBase64(raw) {
-  if (typeof raw !== 'string') return '';
-  if (typeof atob === 'function') return atob(raw.replace(/\n/g, ''));
-  return Buffer.from(raw, 'base64').toString('utf8');
+function hasUnpairedSurrogates(value) {
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(i + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return true;
+      i += 1;
+      continue;
+    }
+    if (code >= 0xdc00 && code <= 0xdfff) return true;
+  }
+  return false;
 }
 
-function safeEncodeBase64(raw) {
-  if (typeof btoa === 'function') return btoa(raw);
-  return Buffer.from(raw, 'utf8').toString('base64');
+function hasDisallowedControlChars(value) {
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d) return true;
+  }
+  return false;
 }
 
-function isTextPayload(value) {
-  return typeof value === 'string' && !value.includes('\u0000');
+function decodeBase64ToBytes(raw) {
+  if (typeof raw !== 'string') {
+    return fail(422, 'INVALID_BASE64', 'Base64 payload must be string');
+  }
+  const normalized = raw.replace(/\s+/g, '');
+  if (!normalized || normalized.length % 4 !== 0 || !BASE64_RE.test(normalized)) {
+    return fail(422, 'INVALID_BASE64', 'Malformed base64 payload');
+  }
+  try {
+    const bin = atob(normalized);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i += 1) out[i] = bin.charCodeAt(i);
+    return { ok: true, value: out };
+  } catch {
+    return fail(422, 'INVALID_BASE64', 'Malformed base64 payload');
+  }
+}
+
+function decodeUtf8Bytes(bytes) {
+  try {
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    if (text.includes('\u0000') || hasUnpairedSurrogates(text) || hasDisallowedControlChars(text)) {
+      return fail(422, 'BINARY_CONTENT_REJECTED', 'Only UTF-8 text payload is allowed');
+    }
+    return { ok: true, value: text };
+  } catch {
+    return fail(422, 'INVALID_UTF8', 'Invalid UTF-8 payload');
+  }
+}
+
+function encodeUtf8ToBase64(text) {
+  if (typeof text !== 'string' || hasUnpairedSurrogates(text) || text.includes('\u0000') || hasDisallowedControlChars(text)) {
+    return fail(422, 'BINARY_CONTENT_REJECTED', 'Only UTF-8 text payload is allowed');
+  }
+  const bytes = new TextEncoder().encode(text);
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return { ok: true, value: btoa(bin) };
+}
+
+function validateTextPayload(value) {
+  if (typeof value !== 'string' || hasUnpairedSurrogates(value) || value.includes('\u0000') || hasDisallowedControlChars(value)) {
+    return fail(422, 'BINARY_CONTENT_REJECTED', 'Only UTF-8 text payload is allowed');
+  }
+  return { ok: true, value };
+}
+
+function validateSelfCheck(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || !hasOnlyKnownKeys(value, SELF_CHECK_KEYS)) {
+    return fail(422, 'INVALID_XAI_RESPONSE', 'self_check schema invalid');
+  }
+  if (value.scope_ok !== true) {
+    return fail(422, 'SCOPE_NOT_AFFIRMED', 'self_check.scope_ok must be true');
+  }
+  return { ok: true, value: { scope_ok: true } };
 }
 
 function extractMainSha(refResponse) {
@@ -126,6 +193,11 @@ function normalizeXaiResponse(payload) {
   if (!Array.isArray(payload.changes) || payload.changes.length !== 1) {
     return fail(422, 'MULTIPLE_FILES_REJECTED', 'xAI response must contain exactly one change');
   }
+  if (typeof payload.summary !== 'string' || !payload.summary.trim() || payload.summary.length > MAX_SUMMARY_LENGTH) {
+    return fail(422, 'INVALID_XAI_RESPONSE', `summary must be non-empty string up to ${MAX_SUMMARY_LENGTH} chars`);
+  }
+  const selfCheck = validateSelfCheck(payload.self_check);
+  if (!selfCheck.ok) return selfCheck;
   const [change] = payload.changes;
   if (!change || typeof change !== 'object' || Array.isArray(change) || !hasOnlyKnownKeys(change, CHANGE_KEYS)) {
     return fail(422, 'INVALID_XAI_RESPONSE', 'xAI change schema invalid');
@@ -137,18 +209,17 @@ function normalizeXaiResponse(payload) {
   if (typeof change.expected_blob_sha !== 'string' || !HEX_40.test(change.expected_blob_sha)) {
     return fail(422, 'INVALID_BLOB_SHA', 'expected_blob_sha must be 40-char SHA');
   }
-  if (!isTextPayload(change.new_content)) {
-    return fail(422, 'BINARY_CONTENT_REJECTED', 'Only UTF-8 text payload is allowed');
-  }
+  const validatedText = validateTextPayload(change.new_content);
+  if (!validatedText.ok) return validatedText;
   return {
     ok: true,
     value: {
-      summary: typeof payload.summary === 'string' ? payload.summary : '',
-      selfCheck: payload.self_check ?? null,
+      summary: payload.summary.trim(),
+      selfCheck: selfCheck.value,
       change: {
         path,
         expectedBlobSha: change.expected_blob_sha.toLowerCase(),
-        newContent: change.new_content,
+        newContent: validatedText.value,
       },
     },
   };
@@ -265,11 +336,19 @@ export async function executeGrokDraftPrOperation({ github, xai, runId, baseSha,
   if (!HEX_40.test(sourceSha)) {
     return { ok: false, status: 422, githubStatus: source.status, safeResult: safeResult('INVALID_BLOB_SHA', 'Failed to resolve source blob SHA') };
   }
-  const sourceContent = source.data?.encoding === 'base64'
-    ? safeDecodeBase64(source.data.content || '')
-    : String(source.data?.content || '');
-  if (!isTextPayload(sourceContent)) {
-    return { ok: false, status: 422, githubStatus: source.status, safeResult: safeResult('BINARY_CONTENT_REJECTED', 'Source content is not UTF-8 text') };
+  const sourceBytes = source.data?.encoding === 'base64'
+    ? decodeBase64ToBytes(source.data.content || '')
+    : (() => {
+      const encoded = encodeUtf8ToBase64(String(source.data?.content || ''));
+      if (!encoded.ok) return encoded;
+      return decodeBase64ToBytes(encoded.value);
+    })();
+  if (!sourceBytes.ok) {
+    return { ok: false, status: sourceBytes.status, githubStatus: source.status, safeResult: safeResult(sourceBytes.error, sourceBytes.message) };
+  }
+  const sourceContent = decodeUtf8Bytes(sourceBytes.value);
+  if (!sourceContent.ok) {
+    return { ok: false, status: sourceContent.status, githubStatus: source.status, safeResult: safeResult(sourceContent.error, sourceContent.message) };
   }
 
   if (!xai || typeof xai.generateDraftPrChange !== 'function') {
@@ -291,7 +370,7 @@ export async function executeGrokDraftPrOperation({ github, xai, runId, baseSha,
       context: [{
         path: GROK_DRAFT_PR_LIMITS.ALLOWED_FILE,
         sha: sourceSha,
-        content: sourceContent,
+        content: sourceContent.value,
       }],
     });
   } catch {
@@ -301,11 +380,11 @@ export async function executeGrokDraftPrOperation({ github, xai, runId, baseSha,
   if (!parsed.ok) {
     return { ok: false, status: parsed.status, githubStatus: null, safeResult: safeResult(parsed.error, parsed.message) };
   }
-  const { change, summary, selfCheck } = parsed.value;
+  const { change } = parsed.value;
   if (change.expectedBlobSha !== sourceSha) {
     return { ok: false, status: 422, githubStatus: source.status, safeResult: safeResult('INVALID_BLOB_SHA', 'expected_blob_sha mismatch') };
   }
-  const stats = diffStats(sourceContent, change.newContent, change.path);
+  const stats = diffStats(sourceContent.value, change.newContent, change.path);
   if (stats.changedLines < 1) {
     return {
       ok: false,
@@ -356,7 +435,7 @@ export async function executeGrokDraftPrOperation({ github, xai, runId, baseSha,
   const commitRes = await github.updateFile({
     path: change.path,
     message: `grok: ${runId}`,
-    contentBase64: safeEncodeBase64(change.newContent),
+    contentBase64: encodeUtf8ToBase64(change.newContent).value,
     branch,
     sha: sourceSha,
   });
@@ -366,15 +445,13 @@ export async function executeGrokDraftPrOperation({ github, xai, runId, baseSha,
   }
 
   const pullRes = await github.createPullRequest({
-    title: task.title,
+    title: `grok: ${runId}`,
     body: [
       `operation: ${GROK_DRAFT_PR_OPERATION}`,
       `run_id: ${runId}`,
       `base_sha: ${baseSha}`,
-      '',
-      summary || '',
-      selfCheck ? `self_check: ${JSON.stringify(selfCheck)}` : '',
-    ].filter(Boolean).join('\n'),
+      `file: ${change.path}`,
+    ].join('\n'),
     head: branch,
     base: FIXED_BASE_BRANCH,
     draft: true,
