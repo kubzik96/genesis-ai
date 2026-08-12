@@ -323,14 +323,18 @@ Grok возвращает данные, но не выполняет GitHub writ
 
 После ответа Broker повторно валидирует JSON обычным кодом; гарантия provider schema не заменяет server-side validation S-0005.
 
+Путь Chat Completions находится в разделе `legacy` документации xAI. Перед любым будущим Stage 2 EA его доступность и совместимость повторно проверяются read-only. Недоступность или объявление срока отключения не разрешают автоматическую миграцию на Responses API: endpoint остаётся fail-closed до отдельного изменения Specification и review.
+
 ### 4.9 Budget contract (candidate Revision 2)
 
 - calendar month и accounting timezone: UTC;
 - candidate hard monthly ceiling: **USD 5.00** для этого endpoint;
 - до xAI-вызова Durable Object атомарно резервирует **USD 0.10** (`1,000,000,000` USD ticks) на единственный запрос;
 - если доступный месячный остаток меньше reservation, вернуть `429 XAI_BUDGET_EXCEEDED` без xAI/GitHub write;
-- после валидного ответа reservation заменяется фактическим `usage.cost_in_usd_ticks` из xAI response;
-- отсутствующий, нецелый, отрицательный или превышающий reservation cost → fail-closed, reservation остаётся полностью списанным, GitHub write не выполняется;
+- после валидного ответа reservation заменяется фактическим total provider cost из `usage.cost_in_usd_ticks` xAI response;
+- reasoning tokens не вычитаются и не учитываются отдельным обходным каналом: любые их charges входят в authoritative total provider cost и budget settlement;
+- отсутствующий, нецелый или отрицательный cost → fail-closed, reservation остаётся полностью списанным, live path блокируется до reconciliation, GitHub write не выполняется;
+- cost выше reservation → ledger записывает фактический cost, даже если месячный счётчик временно превысит ceiling; live path блокируется до reconciliation, GitHub write не выполняется;
 - prompt/context формируется в пределах фиксированного byte ceiling до network call;
 - при текущих опубликованных тарифах `grok-4.3` worst-case для 32 KiB input и 8,192 output tokens не превышает USD 0.062; reservation USD 0.10 обязателен с запасом;
 - priority processing, server-side tools, batch/deferred calls и prompt caching не используются в первом live path;
@@ -505,3 +509,4 @@ Production adapter активируется только при одноврем
 | 1 | 2026-08-11 | CEO Genesis AI | granted Stage 1 CODE_AND_TESTS_ONLY EA for T-011; source + local unit/contract/negative/mock tests + docs only; feature branch + draft PR; deployment, secrets, live xAI/GitHub writes и smoke запрещены. |
 | 1 | 2026-08-12 | Codex | Stage 1 outcome recorded: PR #29 merged as `4c7677f`; PR #31 SoR sync merged as `906c487`; T-011 remains REVIEW, not DONE. |
 | 2 | 2026-08-12 | Codex | Candidate Stage 2 Draft: pinned xAI/GitHub production contract, budget/permission/activation gates and future staged sequence; no EA, implementation, deploy, secrets, Dify or live calls. |
+| 2 | 2026-08-12 | Codex | Independent-review corrections: Approved R1 authority preserved in INDEX; Draft R2 listed separately; reasoning-cost settlement and legacy Chat Completions migration gate clarified. |
