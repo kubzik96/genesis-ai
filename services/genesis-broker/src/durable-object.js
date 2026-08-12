@@ -116,6 +116,7 @@ export class BrokerDurableObject {
       assign_copilot: false,
       create_branch_commit_draft_pr: false,
       create_branch_commit_draft_pr_blocked: false,
+      create_branch_commit_draft_pr_pending: null,
       created_issue_number: null,
     };
     const bounds = checkRunBounds(runState, operation);
@@ -163,7 +164,23 @@ export class BrokerDurableObject {
       state: IDEM_STATES.PENDING,
       safe_result: null,
     };
-    await storage.put(`idem:${idempotencyKey}`, pending);
+    const reservedRunState = operation === 'create_branch_commit_draft_pr'
+      ? {
+        ...runState,
+        create_branch_commit_draft_pr_pending: {
+          idempotency_key: idempotencyKey,
+          request_hash: requestHash,
+        },
+      }
+      : runState;
+    if (operation === 'create_branch_commit_draft_pr') {
+      await storage.put(Object.fromEntries([
+        [`idem:${idempotencyKey}`, pending],
+        [`run:${runId}`, reservedRunState],
+      ]));
+    } else {
+      await storage.put(`idem:${idempotencyKey}`, pending);
+    }
 
     const githubCall = buildGithubCall(operation, operationData, github, this.env?.xai || this.env?._xai);
     let result;
@@ -177,7 +194,11 @@ export class BrokerDurableObject {
       if (operation === 'create_branch_commit_draft_pr') {
         await storage.put(Object.fromEntries([
           [`idem:${idempotencyKey}`, markUnknown(pending, safe)],
-          [`run:${runId}`, { ...runState, create_branch_commit_draft_pr_blocked: true }],
+          [`run:${runId}`, {
+            ...runState,
+            create_branch_commit_draft_pr_blocked: true,
+            create_branch_commit_draft_pr_pending: null,
+          }],
         ]));
       } else {
         await storage.put(`idem:${idempotencyKey}`, markUnknown(pending, safe));
@@ -207,7 +228,11 @@ export class BrokerDurableObject {
       } else if (operation === 'assign_copilot') {
         batchEntries.push([`run:${runId}`, { ...runState, assign_copilot: true }]);
       } else if (operation === 'create_branch_commit_draft_pr') {
-        batchEntries.push([`run:${runId}`, { ...runState, create_branch_commit_draft_pr: true }]);
+        batchEntries.push([`run:${runId}`, {
+          ...runState,
+          create_branch_commit_draft_pr: true,
+          create_branch_commit_draft_pr_pending: null,
+        }]);
       }
       await storage.put(Object.fromEntries(batchEntries));
       return this._json({
@@ -227,7 +252,11 @@ export class BrokerDurableObject {
         };
         await storage.put(Object.fromEntries([
           [`idem:${idempotencyKey}`, markUnknown(pending, safe)],
-          [`run:${runId}`, { ...runState, create_branch_commit_draft_pr_blocked: true }],
+          [`run:${runId}`, {
+            ...runState,
+            create_branch_commit_draft_pr_blocked: true,
+            create_branch_commit_draft_pr_pending: null,
+          }],
         ]));
         return this._json({
           status: 409,
@@ -238,7 +267,15 @@ export class BrokerDurableObject {
           unknown: true,
         });
       }
-      await storage.put(`idem:${idempotencyKey}`, markFailed(pending, result.safeResult));
+      if (operation === 'create_branch_commit_draft_pr') {
+        const currentRunState = (await storage.get(`run:${runId}`)) ?? runState;
+        await storage.put(Object.fromEntries([
+          [`idem:${idempotencyKey}`, markFailed(pending, result.safeResult)],
+          [`run:${runId}`, { ...currentRunState, create_branch_commit_draft_pr_pending: null }],
+        ]));
+      } else {
+        await storage.put(`idem:${idempotencyKey}`, markFailed(pending, result.safeResult));
+      }
       return this._json({
         status: result.status,
         body: result.safeResult,
@@ -255,7 +292,11 @@ export class BrokerDurableObject {
     if (operation === 'create_branch_commit_draft_pr') {
       await storage.put(Object.fromEntries([
         [`idem:${idempotencyKey}`, markUnknown(pending, safe)],
-        [`run:${runId}`, { ...runState, create_branch_commit_draft_pr_blocked: true }],
+        [`run:${runId}`, {
+          ...runState,
+          create_branch_commit_draft_pr_blocked: true,
+          create_branch_commit_draft_pr_pending: null,
+        }],
       ]));
     } else {
       await storage.put(`idem:${idempotencyKey}`, markUnknown(pending, safe));

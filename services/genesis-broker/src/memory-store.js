@@ -101,6 +101,7 @@ export class MemoryBrokerStore {
         assign_copilot: false,
         create_branch_commit_draft_pr: false,
         create_branch_commit_draft_pr_blocked: false,
+        create_branch_commit_draft_pr_pending: null,
         created_issue_number: null,
       };
       const bounds = checkRunBounds(runState, operation);
@@ -136,6 +137,15 @@ export class MemoryBrokerStore {
         state: IDEM_STATES.PENDING,
         safe_result: null,
       };
+      if (operation === 'create_branch_commit_draft_pr') {
+        this.setRun(runId, {
+          ...runState,
+          create_branch_commit_draft_pr_pending: {
+            idempotency_key: idempotencyKey,
+            request_hash: requestHash,
+          },
+        });
+      }
       this.setIdem(idempotencyKey, pending);
 
       let result;
@@ -147,7 +157,11 @@ export class MemoryBrokerStore {
           message: 'GitHub call timed out or returned indeterminate result; auto-retry forbidden',
         };
         if (operation === 'create_branch_commit_draft_pr') {
-          this.setRun(runId, { ...runState, create_branch_commit_draft_pr_blocked: true });
+          this.setRun(runId, {
+            ...runState,
+            create_branch_commit_draft_pr_blocked: true,
+            create_branch_commit_draft_pr_pending: null,
+          });
         }
         this.setIdem(idempotencyKey, markUnknown(pending, safe));
         return {
@@ -171,7 +185,11 @@ export class MemoryBrokerStore {
         } else if (operation === 'assign_copilot') {
           this.setRun(runId, { ...runState, assign_copilot: true });
         } else if (operation === 'create_branch_commit_draft_pr') {
-          this.setRun(runId, { ...runState, create_branch_commit_draft_pr: true });
+          this.setRun(runId, {
+            ...runState,
+            create_branch_commit_draft_pr: true,
+            create_branch_commit_draft_pr_pending: null,
+          });
         }
         this.setIdem(idempotencyKey, markSucceeded(pending, result.safeResult));
         return {
@@ -189,7 +207,11 @@ export class MemoryBrokerStore {
             error: 'BLOCKED_RECONCILIATION_REQUIRED',
             message: result.safeResult?.message || 'Post-branch failure requires reconciliation; auto-retry forbidden',
           };
-          this.setRun(runId, { ...runState, create_branch_commit_draft_pr_blocked: true });
+          this.setRun(runId, {
+            ...runState,
+            create_branch_commit_draft_pr_blocked: true,
+            create_branch_commit_draft_pr_pending: null,
+          });
           this.setIdem(idempotencyKey, markUnknown(pending, safe));
           return {
             status: 409,
@@ -199,6 +221,10 @@ export class MemoryBrokerStore {
             idempotencyState: IDEM_STATES.UNKNOWN,
             unknown: true,
           };
+        }
+        if (operation === 'create_branch_commit_draft_pr') {
+          const currentRunState = this.getRun(runId) || runState;
+          this.setRun(runId, { ...currentRunState, create_branch_commit_draft_pr_pending: null });
         }
         this.setIdem(idempotencyKey, markFailed(pending, result.safeResult));
         return {
@@ -215,7 +241,11 @@ export class MemoryBrokerStore {
         message: `GitHub upstream error — indeterminate result (status ${result.status}); auto-retry forbidden`,
       };
       if (operation === 'create_branch_commit_draft_pr') {
-        this.setRun(runId, { ...runState, create_branch_commit_draft_pr_blocked: true });
+        this.setRun(runId, {
+          ...runState,
+          create_branch_commit_draft_pr_blocked: true,
+          create_branch_commit_draft_pr_pending: null,
+        });
       }
       this.setIdem(idempotencyKey, markUnknown(pending, safe));
       return {

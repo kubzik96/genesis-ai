@@ -97,6 +97,10 @@ const GROK_BASE_SHA = 'a'.repeat(40);
 const GROK_BLOB_SHA = 'b'.repeat(40);
 const GROK_COMMIT_SHA = 'c'.repeat(40);
 
+function sumStage1Calls(calls) {
+  return calls.getRef + calls.getContentAtRef + calls.createRef + calls.updateFile + calls.createPullRequest;
+}
+
 /* ── Tests ──────────────────────────────────────────────────────────────── */
 
 describe('BrokerDurableObject crash-safe idempotency', () => {
@@ -232,10 +236,12 @@ describe('BrokerDurableObject crash-safe idempotency', () => {
       const github = makeStage1GithubMock();
       const xai = makeStage1XaiMock();
       let pendingAtCreateRef = null;
+      let runStateAtCreateRef = null;
       const wrappedGithub = {
         ...github,
         async createRef(...args) {
           pendingAtCreateRef = await storage.get('idem:key-grok-pending');
+          runStateAtCreateRef = await storage.get('run:run-1');
           return github.createRef(...args);
         },
       };
@@ -246,6 +252,10 @@ describe('BrokerDurableObject crash-safe idempotency', () => {
       ).fetch(makeDoRequest(payload)).then((r) => r.text()).then(JSON.parse);
       assert.equal(first.status, 200);
       assert.equal(pendingAtCreateRef?.state, IDEM_STATES.PENDING);
+      assert.equal(
+        runStateAtCreateRef?.create_branch_commit_draft_pr_pending?.idempotency_key,
+        'key-grok-pending',
+      );
 
       const replay = await new BrokerDurableObject(
         { storage },
@@ -307,6 +317,110 @@ describe('BrokerDurableObject crash-safe idempotency', () => {
       assert.equal(github.calls.createRef, 1);
       assert.equal(github.calls.updateFile, 1);
       assert.equal(github.calls.createPullRequest, 0);
+    });
+
+    it('active per-run reservation blocks new key after reconstruction and preserves same-key semantics', async () => {
+      const storage = new MockStorage();
+      await storage.put(Object.fromEntries([
+        ['idem:key-grok-active', {
+          idempotency_key: 'key-grok-active',
+          request_hash: 'hash-grok-active',
+          operation: 'create_branch_commit_draft_pr',
+          run_id: 'run-grok-active',
+          gate: 'G2',
+          state: IDEM_STATES.PENDING,
+          safe_result: null,
+        }],
+        ['run:run-grok-active', {
+          create_issue: false,
+          assign_copilot: false,
+          create_branch_commit_draft_pr: false,
+          create_branch_commit_draft_pr_blocked: false,
+          create_branch_commit_draft_pr_pending: {
+            idempotency_key: 'key-grok-active',
+            request_hash: 'hash-grok-active',
+          },
+          created_issue_number: null,
+        }],
+      ]));
+      const github = makeStage1GithubMock();
+      const xai = makeStage1XaiMock();
+
+      const blockedNewKey = await new BrokerDurableObject(
+        { storage },
+        { GITHUB_PAT: 'pat', _github: github, _xai: xai },
+      ).fetch(makeDoRequest(makeGrokDoPayload({
+        key: 'key-grok-active-2',
+        hash: 'hash-grok-active-2',
+        runId: 'run-grok-active',
+      }))).then((r) => r.text()).then(JSON.parse);
+      assert.equal(blockedNewKey.status, 409);
+      assert.equal(blockedNewKey.body?.error, 'BLOCKED_RECONCILIATION_REQUIRED');
+      assert.equal(sumStage1Calls(github.calls), 0);
+      assert.equal(xai.calls, 0);
+
+      const inFlightSameKey = await new BrokerDurableObject(
+        { storage },
+        { GITHUB_PAT: 'pat', _github: github, _xai: xai },
+      ).fetch(makeDoRequest(makeGrokDoPayload({
+        key: 'key-grok-active',
+        hash: 'hash-grok-active',
+        runId: 'run-grok-active',
+      }))).then((r) => r.text()).then(JSON.parse);
+      assert.equal(inFlightSameKey.status, 409);
+      assert.equal(inFlightSameKey.body?.error, 'IDEMPOTENCY_IN_FLIGHT');
+      assert.equal(sumStage1Calls(github.calls), 0);
+      assert.equal(xai.calls, 0);
+
+      const conflictSameKey = await new BrokerDurableObject(
+        { storage },
+        { GITHUB_PAT: 'pat', _github: github, _xai: xai },
+      ).fetch(makeDoRequest(makeGrokDoPayload({
+        key: 'key-grok-active',
+        hash: 'hash-grok-active-diff',
+        runId: 'run-grok-active',
+      }))).then((r) => r.text()).then(JSON.parse);
+      assert.equal(conflictSameKey.status, 409);
+      assert.equal(conflictSameKey.body?.error, 'IDEMPOTENCY_CONFLICT');
+      assert.equal(sumStage1Calls(github.calls), 0);
+      assert.equal(xai.calls, 0);
+    });
+
+    it('deterministic pre-branch failure clears reservation and allows safe next-key retry', async () => {
+      const storage = new MockStorage();
+      const github = makeStage1GithubMock();
+      const xai = makeStage1XaiMock();
+      const runId = 'run-grok-prebranch-fail';
+      const firstPayload = makeGrokDoPayload({ key: 'key-grok-prebranch-fail', hash: 'hash-grok-prebranch-fail', runId });
+      firstPayload.operationData.baseSha = 'd'.repeat(40);
+
+      const first = await new BrokerDurableObject(
+        { storage },
+        { GITHUB_PAT: 'pat', _github: github, _xai: xai },
+      ).fetch(makeDoRequest(firstPayload)).then((r) => r.text()).then(JSON.parse);
+      assert.equal(first.status, 409);
+      assert.equal(first.idempotencyState, IDEM_STATES.FAILED);
+      assert.equal(github.calls.createRef, 0);
+      assert.equal(xai.calls, 0);
+
+      const runAfterFail = await storage.get(`run:${runId}`);
+      assert.equal(runAfterFail?.create_branch_commit_draft_pr_pending, null);
+      assert.equal(runAfterFail?.create_branch_commit_draft_pr_blocked, false);
+      assert.equal(runAfterFail?.create_branch_commit_draft_pr, false);
+
+      const second = await new BrokerDurableObject(
+        { storage },
+        { GITHUB_PAT: 'pat', _github: github, _xai: xai },
+      ).fetch(makeDoRequest(makeGrokDoPayload({
+        key: 'key-grok-prebranch-fail-2',
+        hash: 'hash-grok-prebranch-fail-2',
+        runId,
+      }))).then((r) => r.text()).then(JSON.parse);
+      assert.equal(second.status, 200);
+      assert.equal(github.calls.createRef, 1);
+      assert.equal(github.calls.updateFile, 1);
+      assert.equal(github.calls.createPullRequest, 1);
+      assert.equal(xai.calls, 1);
     });
 
     it('Stage 1 mock-only guard blocks operation on DO path when mocks are missing', async () => {

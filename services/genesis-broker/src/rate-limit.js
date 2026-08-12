@@ -28,8 +28,17 @@ export function checkRunBounds(runState, operation) {
     assign_copilot: false,
     create_branch_commit_draft_pr: false,
     create_branch_commit_draft_pr_blocked: false,
+    create_branch_commit_draft_pr_pending: null,
     created_issue_number: null,
   };
+  if (operation === 'create_branch_commit_draft_pr' && state.create_branch_commit_draft_pr_pending) {
+    return {
+      ok: false,
+      status: 409,
+      error: 'BLOCKED_RECONCILIATION_REQUIRED',
+      message: 'Prior draft-pr operation is still reserved; reconciliation required before retry',
+    };
+  }
   if (operation === 'create_branch_commit_draft_pr' && state.create_branch_commit_draft_pr_blocked) {
     return {
       ok: false,
