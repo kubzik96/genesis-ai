@@ -150,11 +150,17 @@ function decodeUtf8Bytes(bytes) {
   }
 }
 
-function encodeUtf8ToBase64(text) {
+function encodeUtf8ToBytes(text) {
   if (typeof text !== 'string' || hasUnpairedSurrogates(text) || text.includes('\u0000') || hasDisallowedControlChars(text)) {
     return fail(422, 'BINARY_CONTENT_REJECTED', 'Only UTF-8 text payload is allowed');
   }
-  const bytes = new TextEncoder().encode(text);
+  return { ok: true, value: new TextEncoder().encode(text) };
+}
+
+function encodeUtf8ToBase64(text) {
+  const encoded = encodeUtf8ToBytes(text);
+  if (!encoded.ok) return encoded;
+  const bytes = encoded.value;
   let bin = '';
   for (const b of bytes) bin += String.fromCharCode(b);
   return { ok: true, value: btoa(bin) };
@@ -338,11 +344,7 @@ export async function executeGrokDraftPrOperation({ github, xai, runId, baseSha,
   }
   const sourceBytes = source.data?.encoding === 'base64'
     ? decodeBase64ToBytes(source.data.content || '')
-    : (() => {
-      const encoded = encodeUtf8ToBase64(String(source.data?.content || ''));
-      if (!encoded.ok) return encoded;
-      return decodeBase64ToBytes(encoded.value);
-    })();
+    : encodeUtf8ToBytes(String(source.data?.content || ''));
   if (!sourceBytes.ok) {
     return { ok: false, status: sourceBytes.status, githubStatus: source.status, safeResult: safeResult(sourceBytes.error, sourceBytes.message) };
   }
