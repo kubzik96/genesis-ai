@@ -237,6 +237,7 @@ const UNIFIED_CONTEXT_LINES = 3;
 const MAX_UNIFIED_HUNKS = GROK_DRAFT_PR_LIMITS.MAX_CHANGED_LINES;
 const MAX_UNIFIED_RENDERED_LINES = MAX_UNIFIED_HUNKS * (1 + (2 * UNIFIED_CONTEXT_LINES));
 const MAX_UNIFIED_NO_NEWLINE_MARKERS = 2;
+const MAX_GIT_HUNK_HEADER_CONTEXT_BYTES = 81;
 
 function splitLines(text) {
   if (text === '') return { lines: [], hasFinalNewline: false };
@@ -465,6 +466,11 @@ function countUnifiedDiffBytesBounded({
     if (total > maxBytes) return false;
     return true;
   };
+  const addBytes = (count) => {
+    total += count;
+    if (total > maxBytes) return false;
+    return true;
+  };
   if (!add(`--- a/${path}\n`)) return { ok: false, exceeded: true, bytes: total };
   if (!add(`+++ b/${path}\n`)) return { ok: false, exceeded: true, bytes: total };
   const ranges = buildUnifiedHunkRanges(ops, UNIFIED_CONTEXT_LINES);
@@ -482,6 +488,7 @@ function countUnifiedDiffBytesBounded({
     if (!add(`@@ -${formatUnifiedRange(oldStart, oldCount)} +${formatUnifiedRange(newStart, newCount)} @@\n`)) {
       return { ok: false, exceeded: true, bytes: total };
     }
+    if (!addBytes(MAX_GIT_HUNK_HEADER_CONTEXT_BYTES)) return { ok: false, exceeded: true, bytes: total };
     for (const op of hunkOps) {
       if (op.type === 'equal') {
         if (!add(` ${op.line}\n`)) return { ok: false, exceeded: true, bytes: total };
@@ -535,7 +542,8 @@ function countConservativeAmbiguousUnifiedDiffUpperBoundBytes({
   const oldDigits = String(Math.max(oldLineCount, 0)).length;
   const newDigits = String(Math.max(newLineCount, 0)).length;
   const maxRangeBytes = Math.max((2 * oldDigits) + 1, (2 * newDigits) + 1, 3);
-  const maxHunkHeaderBytes = encoder.encode(`@@ -${'9'.repeat(maxRangeBytes)} +${'9'.repeat(maxRangeBytes)} @@\n`).length;
+  const maxHunkHeaderBytes = encoder.encode(`@@ -${'9'.repeat(maxRangeBytes)} +${'9'.repeat(maxRangeBytes)} @@\n`).length +
+    MAX_GIT_HUNK_HEADER_CONTEXT_BYTES;
   let total = 0;
   total += encoder.encode(`--- a/${path}\n`).length;
   total += encoder.encode(`+++ b/${path}\n`).length;

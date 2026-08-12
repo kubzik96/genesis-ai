@@ -6,10 +6,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { handleRequest } from '../src/router.js';
 import { MemoryBrokerStore } from '../src/memory-store.js';
-import { IDEM_STATES } from '../src/constants.js';
+import { GROK_DRAFT_PR_LIMITS, IDEM_STATES } from '../src/constants.js';
 
 const BASE_SHA = 'a'.repeat(40);
 const BLOB_SHA = 'b'.repeat(40);
+const MAX_GIT_HUNK_HEADER_CONTEXT_BYTES = 81;
+const MAX_GIT_HUNK_HEADER_CONTEXT_BYTES_TOTAL = MAX_GIT_HUNK_HEADER_CONTEXT_BYTES * GROK_DRAFT_PR_LIMITS.MAX_CHANGED_LINES;
 
 function utf8ToBase64(text) {
   const bytes = new TextEncoder().encode(text);
@@ -42,11 +44,54 @@ function gnuUnifiedDiffOracle(oldContent, newContent) {
     if (result.status !== 0 && result.status !== 1) {
       throw new Error(`GNU diff failed: ${result.stderr ? result.stderr.toString('utf8') : 'unknown error'}`);
     }
+
     const output = result.stdout || Buffer.alloc(0);
     return { bytes: output.length, patch: output.toString('utf8') };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+function gitUnifiedDiffOracle(oldContent, newContent) {
+  const dir = mkdtempSync(join(tmpdir(), 'grok-git-diff-oracle-'));
+  const oldPath = join(dir, 'old.txt');
+  const newPath = join(dir, 'new.txt');
+  try {
+    writeFileSync(oldPath, oldContent, { encoding: 'utf8' });
+    writeFileSync(newPath, newContent, { encoding: 'utf8' });
+    const result = spawnSync(
+      'git',
+      ['diff', '--no-index', '--no-ext-diff', '--no-color', '--no-renames', '--', oldPath, newPath],
+      { encoding: null },
+    );
+    if (result.status !== 0 && result.status !== 1) {
+      throw new Error(`git diff failed: ${result.stderr ? result.stderr.toString('utf8') : 'unknown error'}`);
+    }
+    const output = (result.stdout || Buffer.alloc(0)).toString('utf8');
+    const lines = output.split('\n');
+    if (lines.length >= 2 && lines[0].startsWith('diff --git ')) {
+      lines.shift();
+    }
+    if (lines.length >= 2 && lines[0].startsWith('index ')) {
+      lines.shift();
+    }
+    if (lines.length >= 2 && lines[0].startsWith('--- ') && lines[1].startsWith('+++ ')) {
+      lines[0] = '--- a/MEMORY.md';
+      lines[1] = '+++ b/MEMORY.md';
+    }
+    const normalized = lines.join('\n');
+    return { bytes: Buffer.byteLength(normalized, 'utf8'), patch: normalized };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+function assertConservativeUnifiedDiffBytes(actualBytes, oracleBytes) {
+  assert.ok(actualBytes >= oracleBytes, `expected ${actualBytes} >= oracle ${oracleBytes}`);
+  assert.ok(
+    actualBytes <= (oracleBytes + MAX_GIT_HUNK_HEADER_CONTEXT_BYTES_TOTAL),
+    `expected ${actualBytes} <= oracle ${oracleBytes} + ${MAX_GIT_HUNK_HEADER_CONTEXT_BYTES_TOTAL}`,
+  );
 }
 
 function makeRequest({ headers = {}, body }) {
@@ -191,7 +236,7 @@ describe('POST /v1/executions/grok/draft-pr', () => {
     assert.equal(body.branch, 'genesis/grok/run-1');
     assert.equal(body.pr_number, 123);
     assert.deepEqual(body.changed_files, ['MEMORY.md']);
-    assert.equal(body.diff_summary.unified_diff_bytes, 79);
+    assertConservativeUnifiedDiffBytes(body.diff_summary.unified_diff_bytes, gnuUnifiedDiffOracle('line1\nline2\nline3\n', 'line1\nline-two\nline3\n').bytes);
     assert.equal(xai.calls, 1);
     assert.equal(github.calls.createPullRequest, 1);
     assert.equal(github.calls.createPullRequestArgs.title, 'grok: run-1');
@@ -340,7 +385,7 @@ describe('POST /v1/executions/grok/draft-pr', () => {
     );
     assert.equal(gnuUnifiedDiffOracle(nearbyOld, nearbyNew).bytes, 72);
     assert.equal(nearby.status, 200);
-    assert.equal(JSON.parse(nearby.body).diff_summary.unified_diff_bytes, 72);
+    assertConservativeUnifiedDiffBytes(JSON.parse(nearby.body).diff_summary.unified_diff_bytes, 72);
 
     const separatedOld = '1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n';
     const separatedNew = '1\n2\n3\n4\nX\n6\n7\n8\n9\n10\n11\n12\n13\n';
@@ -353,7 +398,7 @@ describe('POST /v1/executions/grok/draft-pr', () => {
     );
     assert.equal(gnuUnifiedDiffOracle(separatedOld, separatedNew).bytes, 106);
     assert.equal(separated.status, 200);
-    assert.equal(JSON.parse(separated.body).diff_summary.unified_diff_bytes, 106);
+    assertConservativeUnifiedDiffBytes(JSON.parse(separated.body).diff_summary.unified_diff_bytes, 106);
   });
 
   it('counts missing final newline marker bytes in unified diff', async () => {
@@ -369,7 +414,7 @@ describe('POST /v1/executions/grok/draft-pr', () => {
     );
     assert.equal(gnuUnifiedDiffOracle(oldContent, noEofNewlineNew).bytes, 135);
     assert.equal(noEofNewline.status, 200);
-    assert.equal(JSON.parse(noEofNewline.body).diff_summary.unified_diff_bytes, 135);
+    assertConservativeUnifiedDiffBytes(JSON.parse(noEofNewline.body).diff_summary.unified_diff_bytes, 135);
 
     const withEofNewline = await handleRequest(
       makeRequest({ headers: { 'idempotency-key': 'k-with-eof-newline' }, body: baseBody({ run_id: 'run-with-eof-newline' }) }),
@@ -380,7 +425,7 @@ describe('POST /v1/executions/grok/draft-pr', () => {
     );
     assert.equal(gnuUnifiedDiffOracle(oldContent, withEofNewlineNew).bytes, 107);
     assert.equal(withEofNewline.status, 200);
-    assert.equal(JSON.parse(withEofNewline.body).diff_summary.unified_diff_bytes, 107);
+    assertConservativeUnifiedDiffBytes(JSON.parse(withEofNewline.body).diff_summary.unified_diff_bytes, 107);
   });
 
   it('rejects boundary case where EOF context marker makes unified UTF-8 diff exceed 2 KiB', async () => {
@@ -418,7 +463,7 @@ describe('POST /v1/executions/grok/draft-pr', () => {
     );
     assert.equal(removeRes.status, 200);
     const removeBody = JSON.parse(removeRes.body);
-    assert.equal(removeBody.diff_summary.unified_diff_bytes, removeOracle.bytes);
+    assertConservativeUnifiedDiffBytes(removeBody.diff_summary.unified_diff_bytes, removeOracle.bytes);
     assert.equal(removeBody.diff_summary.changed_lines, 2);
     assert.equal(base64ToUtf8(removeGithub.calls.updateFileArgs.contentBase64), removeNew);
 
@@ -433,7 +478,7 @@ describe('POST /v1/executions/grok/draft-pr', () => {
     );
     assert.equal(addRes.status, 200);
     const addBody = JSON.parse(addRes.body);
-    assert.equal(addBody.diff_summary.unified_diff_bytes, addOracle.bytes);
+    assertConservativeUnifiedDiffBytes(addBody.diff_summary.unified_diff_bytes, addOracle.bytes);
     assert.equal(addBody.diff_summary.changed_lines, 2);
     assert.equal(base64ToUtf8(addGithub.calls.updateFileArgs.contentBase64), addNew);
   });
@@ -472,7 +517,7 @@ describe('POST /v1/executions/grok/draft-pr', () => {
     );
     assert.equal(appendRes.status, 200);
     const appendBody = JSON.parse(appendRes.body);
-    assert.equal(appendBody.diff_summary.unified_diff_bytes, appendOracle.bytes);
+    assertConservativeUnifiedDiffBytes(appendBody.diff_summary.unified_diff_bytes, appendOracle.bytes);
     assert.equal(appendBody.diff_summary.changed_lines, 3, 'unterminated y becomes terminated (+line identity change) plus +z');
 
     const removeOld = 'x\ny\nz';
@@ -485,8 +530,31 @@ describe('POST /v1/executions/grok/draft-pr', () => {
     );
     assert.equal(removeRes.status, 200);
     const removeBody = JSON.parse(removeRes.body);
-    assert.equal(removeBody.diff_summary.unified_diff_bytes, removeOracle.bytes);
+    assertConservativeUnifiedDiffBytes(removeBody.diff_summary.unified_diff_bytes, removeOracle.bytes);
     assert.equal(removeBody.diff_summary.changed_lines, 3, 'removing z makes y unterminated (+line identity change)');
+  });
+
+  it('rejects one-line deletion when git hunk-header context pushes visible unified diff above 2 KiB', async () => {
+    const x = 'x'.repeat(980);
+    const section = 'q'.repeat(1750);
+    const oldContent = `${x}\n${section}\n${x}\nb\nb\n${x}`;
+    const newContent = `${x}\n${section}\n${x}\nb\nb\n`;
+    const gitOracle = gitUnifiedDiffOracle(oldContent, newContent);
+    assert.ok(gitOracle.bytes > 2048);
+
+    const github = githubMock({ sourceContent: oldContent });
+    const xai = { calls: 0, fn: async () => xaiResponse(newContent) };
+    const res = await handleRequest(
+      makeRequest({ headers: { 'idempotency-key': 'k-git-header-2k-boundary' }, body: baseBody({ run_id: 'run-git-header-2k-boundary' }) }),
+      envWith({ github, xai }),
+    );
+
+    assert.equal(res.status, 422);
+    assert.equal(JSON.parse(res.body).error, 'DIFF_SIZE_EXCEEDED');
+    assert.equal(xai.calls, 1);
+    assert.equal(github.calls.createRef, 0);
+    assert.equal(github.calls.updateFile, 0);
+    assert.equal(github.calls.createPullRequest, 0);
   });
 
   it('rejects ambiguous transpositions that can exceed the 2 KiB unified diff limit', async () => {
