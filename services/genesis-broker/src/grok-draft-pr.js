@@ -281,25 +281,27 @@ function buildEditScriptBounded(oldLines, newLines, maxEdits) {
   const dp = Array.from({ length: n + 1 }, () => new Map());
   const parent = Array.from({ length: n + 1 }, () => new Map());
   const equalSig = Array.from({ length: n + 1 }, () => new Map());
-  const HASH_MASK_64 = (1n << 64n) - 1n;
-  const HASH_FNV_PRIME = 1099511628211n;
-  const extendEqualSig = (hash, oldIndex, newIndex) => {
-    let next = hash ^ ((BigInt(oldIndex) << 32n) | BigInt(newIndex));
-    next = (next * HASH_FNV_PRIME) & HASH_MASK_64;
-    return next;
+  const internedEqualSig = new Map();
+  let nextSigId = 1;
+  const extendEqualSig = (sigId, oldIndex, newIndex) => {
+    const key = `${sigId}:${oldIndex}:${newIndex}`;
+    const existing = internedEqualSig.get(key);
+    if (existing !== undefined) return existing;
+    const created = nextSigId;
+    nextSigId += 1;
+    internedEqualSig.set(key, created);
+    return created;
   };
-  const pushSig = (target, hash) => {
+  const pushSig = (target, sigId) => {
     if (target.length === 0) {
-      target.push(hash);
+      target.push(sigId);
       return;
     }
-    if (target[0] === hash) return;
-    if (target.length === 1) {
-      target.push(hash);
-    }
+    if (target[0] === sigId) return;
+    if (target.length === 1) target.push(sigId);
   };
   dp[0].set(0, 0);
-  equalSig[0].set(0, [1469598103934665603n]);
+  equalSig[0].set(0, [0]);
   for (let i = 0; i <= n; i += 1) {
     const jMin = Math.max(0, i - maxEdits);
     const jMax = Math.min(m, i + maxEdits);
@@ -340,22 +342,22 @@ function buildEditScriptBounded(oldLines, newLines, maxEdits) {
         const sigs = [];
         if ((bestMoves & 1) !== 0 && i > 0 && j > 0) {
           const prev = equalSig[i - 1].get(j - 1) || [];
-          for (const h of prev) {
-            pushSig(sigs, extendEqualSig(h, i, j));
+          for (const sigId of prev) {
+            pushSig(sigs, extendEqualSig(sigId, i, j));
             if (sigs.length > 1) break;
           }
         }
         if ((bestMoves & 2) !== 0 && i > 0) {
           const prev = equalSig[i - 1].get(j) || [];
-          for (const h of prev) {
-            pushSig(sigs, h);
+          for (const sigId of prev) {
+            pushSig(sigs, sigId);
             if (sigs.length > 1) break;
           }
         }
         if ((bestMoves & 4) !== 0 && j > 0) {
           const prev = equalSig[i].get(j - 1) || [];
-          for (const h of prev) {
-            pushSig(sigs, h);
+          for (const sigId of prev) {
+            pushSig(sigs, sigId);
             if (sigs.length > 1) break;
           }
         }
