@@ -70,6 +70,10 @@ describe('xAI production client', () => {
     assert.equal(body.response_format.type, 'json_schema');
     assert.equal(body.response_format.json_schema.strict, true);
     assert.equal(body.response_format.json_schema.schema.additionalProperties, false);
+    assert.equal(
+      body.response_format.json_schema.schema.properties.changes.items.properties.expected_blob_sha.pattern,
+      '^[a-fA-F0-9]{40}$',
+    );
     assert.equal(result.__xaiProductionResult, true);
     assert.equal(result.costTicks, 500_000_000);
     assert.equal(result.output.changes[0].path, 'MEMORY.md');
