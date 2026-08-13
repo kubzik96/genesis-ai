@@ -836,7 +836,7 @@ describe('POST /v1/executions/grok/draft-pr', () => {
     assert.equal(JSON.parse(branchExists.body).error, 'GITHUB_422');
   });
 
-  it('fails closed when Stage 1 mocks are missing', async () => {
+  it('fails closed when neither Stage 1 test adapters nor reviewed production activation exist', async () => {
     const github = githubMock();
     const env = {
       BROKER_SERVICE_TOKEN: 'secret',
@@ -854,7 +854,7 @@ describe('POST /v1/executions/grok/draft-pr', () => {
       env,
     );
     assert.equal(res.status, 503);
-    assert.equal(JSON.parse(res.body).error, 'XAI_NOT_CONFIGURED');
+    assert.equal(JSON.parse(res.body).error, 'EXECUTOR_DISABLED');
     assert.equal(github.calls.getRef, 0);
   });
 
