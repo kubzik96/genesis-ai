@@ -33,7 +33,7 @@ The endpoint returns `503 EXECUTOR_DISABLED` before xAI/GitHub calls unless all 
 1. `GROK_EXECUTOR_LIVE_ENABLED` is exactly `true` under a later authorization;
 2. Cloudflare `CF_VERSION_METADATA` is present, has a valid immutable version ID, and its version tag is the exact reviewed 40-character Git SHA listed in `GROK_EXECUTOR_REVIEWED_SHAS`;
 3. `GROK_EXECUTOR_MODEL=grok-4.3`;
-4. `GROK_EXECUTOR_SCHEMA_SHA256=7d491c8bc6cced3742e1b04567cc158bbff8b771db4de44ae96e014f7c3758be`;
+4. `GROK_EXECUTOR_SCHEMA_SHA256=fa09394399fb28775cb1758dff6e8ddcf87bb1bec01c085bf6c7c816be9a8431`;
 5. `GROK_EXECUTOR_CONFIG_SHA256=613ad98634fae6824e135bf0fa845d60ab62e87191887bfe908d6a3bc5bb30da`;
 6. `XAI_API_KEY`, `GITHUB_PAT`, and `BROKER_SERVICE_TOKEN` are present only as Worker Secrets;
 7. the fixed Durable Object storage and budget ledger are available and not reconciliation-blocked.
