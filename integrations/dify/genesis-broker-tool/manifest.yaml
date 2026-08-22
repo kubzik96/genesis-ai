@@ -1,0 +1,27 @@
+version: 0.1.0
+type: plugin
+author: kubzik96
+name: genesis_broker
+label:
+  en_US: Genesis Broker
+created_at: "2026-08-23T00:00:00Z"
+icon: icon.svg
+description:
+  en_US: Private fail-closed tools for the fixed Genesis Broker boundary.
+resource:
+  memory: 67108864
+  permission:
+    tool:
+      enabled: true
+plugins:
+  tools:
+    - provider/genesis_broker.yaml
+meta:
+  version: 0.0.1
+  arch:
+    - amd64
+    - arm64
+  runner:
+    language: python
+    version: "3.12"
+    entrypoint: main
