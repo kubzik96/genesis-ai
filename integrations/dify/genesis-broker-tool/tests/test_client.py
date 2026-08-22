@@ -7,6 +7,7 @@ from genesis_broker.client import (
     BrokerResponseError,
     GenesisBrokerClient,
     TransportResponse,
+    _NoRedirectHandler,
 )
 
 
@@ -80,6 +81,18 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, "UNAUTHORIZED")
         self.assertEqual(caught.exception.status, 401)
         self.assertNotIn(self.token, str(caught.exception))
+
+    def test_redirect_handler_never_forwards_request(self) -> None:
+        handler = _NoRedirectHandler()
+        redirected = handler.redirect_request(
+            req=None,
+            fp=None,
+            code=302,
+            msg="Found",
+            headers={},
+            newurl="https://example.invalid/capture",
+        )
+        self.assertIsNone(redirected)
 
 
 if __name__ == "__main__":

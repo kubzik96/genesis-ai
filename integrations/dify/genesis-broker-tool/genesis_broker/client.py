@@ -101,8 +101,18 @@ class Transport(Protocol):
     ) -> TransportResponse: ...
 
 
+class _NoRedirectHandler(request.HTTPRedirectHandler):
+    """Convert every redirect into a handled HTTP response; never forward auth."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
+        return None
+
+
 class UrllibTransport:
     """Small runtime transport. It deliberately emits no logs or request objects."""
+
+    def __init__(self) -> None:
+        self.__opener = request.build_opener(_NoRedirectHandler())
 
     def request_json(
         self,
@@ -116,7 +126,7 @@ class UrllibTransport:
         data = None if body is None else json.dumps(body).encode("utf-8")
         outbound = request.Request(url=url, data=data, headers=dict(headers), method=method)
         try:
-            with request.urlopen(outbound, timeout=timeout) as response:
+            with self.__opener.open(outbound, timeout=timeout) as response:
                 raw = response.read()
                 status = int(response.status)
         except error.HTTPError as exc:
