@@ -1,0 +1,22 @@
+identity:
+  name: context_read
+  author: kubzik96
+  label:
+    en_US: Read approved Genesis context
+description:
+  human:
+    en_US: Reads one Broker-allowlisted repository context file.
+  llm: Reads one approved Genesis repository context file through the fixed Broker endpoint.
+parameters:
+  - name: path
+    type: string
+    required: true
+    label:
+      en_US: Approved path
+    human_description:
+      en_US: Exact repository path from the Broker context allowlist.
+    llm_description: Exact allowlisted repository path; arbitrary paths are rejected locally.
+    form: llm
+extra:
+  python:
+    source: tools/context_read.py

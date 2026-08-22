@@ -1,0 +1,23 @@
+identity:
+  author: kubzik96
+  name: genesis_broker
+  label:
+    en_US: Genesis Broker
+  description:
+    en_US: Private access to the fixed Genesis Broker boundary.
+  icon: icon.svg
+credentials_for_provider:
+  broker_service_token:
+    type: secret-input
+    required: true
+    label:
+      en_US: Broker service token
+    placeholder:
+      en_US: Paste the raw 64-character token without the Bearer prefix
+    help:
+      en_US: Stored only as a provider credential; validation is local and performs no request.
+tools:
+  - tools/context_read.yaml
+extra:
+  python:
+    source: provider/genesis_broker.py
