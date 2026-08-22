@@ -2,7 +2,7 @@
 
 ## Status
 
-**Предложено (Draft)**
+**Принято**
 
 ## Date
 
@@ -14,9 +14,9 @@ DR-0008 recorded that a raw Dify HTTP node displayed the Broker Authorization he
 
 The One-Window spike still needs a Dify-to-Broker client boundary. Continuing with raw HTTP nodes would repeat the exposure class. A private Dify Tool Plugin can keep the provider credential out of workflow parameters and construct the header inside runtime code.
 
-## Proposed decision
+## Decision
 
-Adopt a private, typed Tool Plugin as the only future Dify-to-Broker integration path, subject to later approval. Start with a read-only `context_read` slice and these invariants:
+Adopt a private, typed Tool Plugin as the Dify-to-Broker integration path for the approved CODE_ONLY scope. Start with a read-only `context_read` slice and these invariants:
 
 1. Broker credential is provider-level `secret-input` only.
 2. The provider stores the raw 64-character token; the plugin creates `Bearer <raw>` internally.
@@ -25,7 +25,7 @@ Adopt a private, typed Tool Plugin as the only future Dify-to-Broker integration
 5. Authorization, credentials, request headers, and raw transport exceptions are never logged or returned.
 6. Response sanitization removes credential-bearing fields and exact credential occurrences.
 7. Write tools require a later approved scope, independent review, and separate CEO gates.
-8. Plugin install/upload, credential entry, Dify run/publish, Broker calls, secrets operations, deployment, and activation are not authorized by this draft.
+8. Plugin install/upload, credential entry, Dify run/publish, Broker calls, secrets operations, deployment, and activation are not authorized by this decision.
 
 ## Alternatives
 
@@ -41,7 +41,7 @@ Negative: a private plugin must later be packaged, installed, reviewed for Dify 
 
 ## Approval boundary
 
-This record remains **Proposed**. The accompanying code is a review-only candidate. Nothing becomes an accepted architecture or authorized operational path until separate CEO approval and the repository workflow gates are completed.
+CEO approved DR-0009 and S-0006 Revision 1 on 2026-08-23 for the existing CODE_ONLY scope. This approval accepts the architecture and reviewed code candidate only; it does not authorize Ready, merge, plugin packaging/upload/install, credential entry, Dify changes/run/publish, Broker HTTP, Cloudflare or secret operations, deployment, activation, or live GitHub/xAI runtime calls. Each later action remains behind its separate repository and CEO gate.
 
 ## Related records
 

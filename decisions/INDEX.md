@@ -20,7 +20,7 @@
 | [DR-0005](DR-0005-Operational-AI-Team-Roles.md) | Operational AI Team Roles | Принято | 2026-07-27 |
 | [DR-0007](DR-0007-Grok-Limited-Executor.md) | Grok Limited Executor through Genesis Broker | Принято | 2026-08-11 |
 | [DR-0008](DR-0008-Broker-Token-Exposure-Quarantine.md) | Broker Token Exposure Quarantine | Принято | 2026-08-22 |
-| [DR-0009](DR-0009-Private-Dify-Broker-Tool-Plugin.md) | Private Dify Genesis Broker Tool Plugin | Предложено | 2026-08-23 |
+| [DR-0009](DR-0009-Private-Dify-Broker-Tool-Plugin.md) | Private Dify Genesis Broker Tool Plugin | Принято | 2026-08-23 |
 
 ## Следующий номер
 

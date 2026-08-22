@@ -2,9 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Status | **Draft** |
+| Status | **Approved** |
 | Revision | 1 |
 | Date | 2026-08-23 |
+| CEO Approval | **Granted 2026-08-23 for Revision 1** |
 | Execution Authorization | Limited CODE_ONLY candidate authorized for one Draft PR; no operational actions |
 
 ## Goal
@@ -20,7 +21,7 @@ Provide a reviewable private Dify Tool Plugin candidate that moves Broker authen
 - fixed Broker origin and exact context allowlist;
 - one read-only `context_read` tool;
 - unit and source-contract tests with no network;
-- draft architecture documentation and proposed DR-0009.
+- approved architecture documentation and DR-0009.
 
 ## Out of scope
 
@@ -45,9 +46,9 @@ Provide a reviewable private Dify Tool Plugin candidate that moves Broker authen
 - all local unit/contract tests pass;
 - Python sources compile;
 - source scan finds no real secret and no credential field in tool YAML;
-- Git diff contains only plugin code/tests and draft architecture/specification records;
+- Git diff contains only plugin code/tests and architecture/specification records;
 - PR remains Draft and has no operational side effect.
 
 ## Later gates
 
-This Draft specification requires independent review and CEO approval before it can govern installation or execution. Any write tool is a scope expansion and requires a new approved revision or specification.
+CEO Approval covers only the existing CODE_ONLY candidate. It does not authorize Ready, merge, plugin packaging/upload/install, credential entry, Dify configuration/run/publish, Broker HTTP, Cloudflare or secret operations, deployment, activation, or live GitHub/xAI runtime calls. Any operational use requires a separate CEO gate. Any write tool is a scope expansion and requires a new approved revision or specification.
