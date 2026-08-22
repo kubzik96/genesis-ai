@@ -10,7 +10,7 @@
 
 ## Context
 
-DR-0008 recorded that a raw Dify HTTP node displayed the Broker Authorization header in execution details. Rotation completed, but authenticated Dify runs remain prohibited until safe logging is independently confirmed.
+DR-0008 recorded that a raw Dify HTTP node displayed the Broker Authorization header in execution details. The replacement `BROKER_SERVICE_TOKEN` was stored in Dify, promoted in Worker version `d7536ffd-22a0-4593-abc8-37b13cfcee4e` at 100% traffic, and verified read-only with `GROK_EXECUTOR_LIVE_ENABLED=false`. Quarantine remains active because the separately authorized controlled authenticated check was not performed and safe Dify logging has not been independently confirmed.
 
 The One-Window spike still needs a Dify-to-Broker client boundary. Continuing with raw HTTP nodes would repeat the exposure class. A private Dify Tool Plugin can keep the provider credential out of workflow parameters and construct the header inside runtime code.
 
