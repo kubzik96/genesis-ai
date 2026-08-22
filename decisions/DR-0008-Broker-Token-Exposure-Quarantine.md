@@ -89,11 +89,11 @@ Preflight вернул `EXECUTOR_DISABLED`, xAI tokens = 0; полный workflo
 4. `GROK_EXECUTOR_LIVE_ENABLED` остаётся `false`; activation и live xAI/GitHub calls запрещены.
 5. Разрешены только локальные tests без live Worker, документация, архитектура и read-only GitHub review.
 6. Ротация `BROKER_SERVICE_TOKEN` является отдельным CEO Gate и должна завершиться до первого следующего authenticated Broker call.
-7. Ротация должна синхронно обновить только Worker Secret и соответствующую Dify secret variable; значения не передаются через чат, Git, Issue, PR или logs.
+7. Worker Secret `BROKER_SERVICE_TOKEN` хранит raw token. Dify secret variable `BROKER_AUTHORIZATION` хранит полное значение заголовка `Bearer <same raw token>`; фактические значения не передаются через чат, Git, Issue, PR или logs.
 8. `XAI_API_KEY` и `GITHUB_PAT` не считаются скомпрометированными без отдельного evidence.
 9. Плановый срок действия GitHub PAT до 2026-09-07 рассматривается отдельным calendar gate, а не частью данного incident.
 10. Dify run history не удаляется до решения об evidence retention. Secret values запрещено копировать из неё во внешние каналы.
-11. Карантин снимается только отдельным решением CEO после ротации, controlled verification и проверки remediation логирования.
+11. Карантин снимается только отдельным решением CEO после ротации, одного controlled authenticated check через отдельно разрешённый non-Dify client без логирования Authorization и подтверждения remediation до любого authenticated Dify run.
 
 Настоящий DR не разрешает secret operations, Cloudflare deployment, изменение Dify, Broker calls, activation, live calls, Ready или merge.
 
@@ -134,11 +134,11 @@ Preflight вернул `EXECUTOR_DISABLED`, xAI tokens = 0; полный workflo
 
 До снятия карантина должно быть подтверждено:
 
-- новый `BROKER_SERVICE_TOKEN` установлен только как Worker Secret и Dify secret variable;
+- Worker Secret содержит новый raw token, а Dify secret variable `BROKER_AUTHORIZATION` — соответствующее значение `Bearer <same raw token>`, без отображения фактических значений;
 - замена активного Worker Secret завершена; старый credential не тестируется и не используется повторно;
-- Dify не отображает новый credential в execution details либо запуск остаётся запрещённым;
+- authenticated Dify runs остаются запрещёнными до отдельного подтверждения безопасного логирования; текущий HTTP node не используется для доказательства маскирования;
 - exact deployed Worker version и bindings проверены read-only;
-- один controlled authenticated check отдельно разрешён CEO;
+- один controlled authenticated check отдельно разрешён CEO и выполнен только через non-Dify client, который не сохраняет Authorization;
 - `GROK_EXECUTOR_LIVE_ENABLED=false` сохраняется;
 - CEO отдельно снял quarantine.
 

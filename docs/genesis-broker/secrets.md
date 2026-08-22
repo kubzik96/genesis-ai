@@ -11,7 +11,7 @@
 ## Storage boundaries
 
 - `GITHUB_PAT` and `XAI_API_KEY` exist only as Worker Secrets and are never stored in Dify.
-- `BROKER_SERVICE_TOKEN` exists as a Worker Secret. Dify may reference the same value only through a separately authorized secret variable used for Broker authentication.
+- Worker Secret `BROKER_SERVICE_TOKEN` stores the raw token. Dify secret variable `BROKER_AUTHORIZATION` stores the full header value `Bearer <same raw token>` only under separate authorization.
 - Secret values must never appear in visible Dify node fields, prompts, request/response bodies, execution details, audit logs, Git, Issue or PR content.
 - Never return secrets from API responses.
 - Short expiry (7–30 days) is required for spike credentials.

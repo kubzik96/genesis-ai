@@ -17,14 +17,14 @@ For DR-0008 Quarantine Option B:
 
 1. Preserve only redacted incident evidence; do not delete Dify run history until retention is decided.
 2. Confirm `GROK_EXECUTOR_LIVE_ENABLED=false` and maintain the ban on all authenticated Broker calls.
-3. Generate a new high-entropy service token locally.
-4. Under an authorized Cloudflare secret operation, create the exact Worker version containing the new `BROKER_SERVICE_TOKEN`; do not create unrelated versions or change other secrets.
-5. Update only the Dify secret variable used for Broker authorization with the same new value. Do not place it in visible node fields.
+3. Generate a new high-entropy raw service token locally.
+4. Under an authorized Cloudflare secret operation, create the exact Worker version with the new raw token stored as `BROKER_SERVICE_TOKEN`; do not create unrelated versions or change other secrets.
+5. Update only Dify secret variable `BROKER_AUTHORIZATION` with the full header value `Bearer <same new raw token>`. Do not place either the raw token or the full header value in visible node fields.
 6. Under a separate promotion authorization, deploy only the verified secret-complete Worker version. During the Worker/Dify transition, run nothing.
 7. Verify deployment ID, bindings and `GROK_EXECUTOR_LIVE_ENABLED=false` read-only. Secret values must not be read back or displayed.
-8. Perform at most one controlled authenticated check only after a separate CEO authorization. A failed or ambiguous result is STOP, not permission to retry.
+8. Perform at most one controlled authenticated check only after a separate CEO authorization, using a non-Dify client that does not persist or display the Authorization header. A failed or ambiguous result is STOP, not permission to retry.
 9. Do not perform an authentication check with the old token. Promotion of the version containing the replacement Worker Secret is the invalidation mechanism.
-10. Inspect whether Dify can prevent Authorization from appearing in execution details. Until this is proven, further authenticated Dify runs remain prohibited.
+10. Keep every authenticated Dify run prohibited until a separately authorized remediation and verification plan proves safe logging without sending the new credential through the current HTTP node. Do not use a Dify node-run to test whether masking works.
 11. Lift quarantine only by a separate CEO decision.
 
 Replacing the Worker Secret invalidates the old service token only after the new secret-complete version is promoted to traffic.
