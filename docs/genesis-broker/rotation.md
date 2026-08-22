@@ -23,7 +23,7 @@ For DR-0008 Quarantine Option B:
 6. Under a separate promotion authorization, deploy only the verified secret-complete Worker version. During the Worker/Dify transition, run nothing.
 7. Verify deployment ID, bindings and `GROK_EXECUTOR_LIVE_ENABLED=false` read-only. Secret values must not be read back or displayed.
 8. Perform at most one controlled authenticated check only after a separate CEO authorization. A failed or ambiguous result is STOP, not permission to retry.
-9. Confirm the old token no longer authenticates without recording either token value.
+9. Do not perform an authentication check with the old token. Promotion of the version containing the replacement Worker Secret is the invalidation mechanism.
 10. Inspect whether Dify can prevent Authorization from appearing in execution details. Until this is proven, further authenticated Dify runs remain prohibited.
 11. Lift quarantine only by a separate CEO decision.
 

@@ -135,7 +135,7 @@ Preflight вернул `EXECUTOR_DISABLED`, xAI tokens = 0; полный workflo
 До снятия карантина должно быть подтверждено:
 
 - новый `BROKER_SERVICE_TOKEN` установлен только как Worker Secret и Dify secret variable;
-- старый credential больше не проходит authentication;
+- замена активного Worker Secret завершена; старый credential не тестируется и не используется повторно;
 - Dify не отображает новый credential в execution details либо запуск остаётся запрещённым;
 - exact deployed Worker version и bindings проверены read-only;
 - один controlled authenticated check отдельно разрешён CEO;
