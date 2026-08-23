@@ -39,6 +39,12 @@ class PluginContractTests(unittest.TestCase):
             client,
         )
 
+    def test_tool_exports_only_safe_non_json_diagnostics(self) -> None:
+        source = (ROOT / "tools/context_read.py").read_text(encoding="utf-8")
+        self.assertIn('safe_error["content_type"] = exc.content_type', source)
+        for forbidden in ("response.body", "response.headers", "request.headers"):
+            self.assertNotIn(forbidden, source)
+
 
 if __name__ == "__main__":
     unittest.main()
