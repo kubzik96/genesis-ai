@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_VERSION = "0.1.2"
+EXPECTED_VERSION = "0.1.3"
 EXPECTED_REQUIREMENT = "dify-plugin>=0.9.0,<1.0.0"
 
 

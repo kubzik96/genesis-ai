@@ -17,6 +17,36 @@ parameters:
       en_US: Exact repository path from the Broker context allowlist.
     llm_description: Exact allowlisted repository path; arbitrary paths are rejected locally.
     form: llm
+output_schema:
+  type: object
+  properties:
+    ok:
+      type: boolean
+      description: Whether the Broker read completed successfully.
+    path:
+      type: string
+      description: Repository-relative path returned by the Broker.
+    sha:
+      type: string
+      description: Git blob SHA returned by the Broker.
+    content:
+      type: string
+      description: Approved repository content returned by the Broker.
+    repository:
+      type: string
+      description: Fixed repository identifier returned by the Broker.
+    ref:
+      type: string
+      description: Fixed repository ref returned by the Broker.
+    error:
+      type: string
+      description: Stable safe error code when the read fails.
+    status:
+      type: integer
+      description: Safe HTTP status when available.
+    content_type:
+      type: string
+      description: Coarse safe content-type class for non-JSON responses.
 extra:
   python:
     source: tools/context_read.py

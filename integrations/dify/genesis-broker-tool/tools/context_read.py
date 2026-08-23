@@ -10,6 +10,13 @@ from genesis_broker.client import BrokerClientError, CredentialValidationError, 
 
 
 class GenesisBrokerContextReadTool(Tool):
+    def _variable_messages(
+        self, values: dict[str, Any]
+    ) -> Generator[ToolInvokeMessage]:
+        for name, value in values.items():
+            if value is not None:
+                yield self.create_variable_message(name, value)
+
     def _invoke(self, tool_parameters: dict[str, Any]) -> Generator[ToolInvokeMessage]:
         try:
             client = GenesisBrokerClient(
@@ -17,17 +24,24 @@ class GenesisBrokerContextReadTool(Tool):
             )
             result = client.context_read(tool_parameters.get("path", ""))
         except CredentialValidationError:
-            yield self.create_json_message(
-                json={"ok": False, "error": "INVALID_PROVIDER_CREDENTIAL"}
+            yield from self._variable_messages(
+                {"ok": False, "error": "INVALID_PROVIDER_CREDENTIAL"}
             )
             return
         except BrokerClientError as exc:
             safe_error = {"ok": False, "error": exc.code, "status": exc.status}
             if exc.content_type is not None:
                 safe_error["content_type"] = exc.content_type
-            yield self.create_json_message(
-                json=safe_error
-            )
+            yield from self._variable_messages(safe_error)
             return
 
-        yield self.create_json_message(json={"ok": True, "data": result})
+        yield from self._variable_messages(
+            {
+                "ok": True,
+                "path": result.get("path"),
+                "sha": result.get("sha"),
+                "content": result.get("content"),
+                "repository": result.get("repository"),
+                "ref": result.get("ref"),
+            }
+        )
