@@ -9,14 +9,6 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOL_PATH = ROOT / "tools/context_read.py"
-OBSERVED_DIFY_FAILURE_ENVELOPE = {
-    "code": 0,
-    "message": "success",
-    "data": {
-        "type": "json",
-        "message": {"json_object": {"ok": True, "data": {}}},
-    },
-}
 
 
 class FakeTool:
@@ -73,7 +65,9 @@ class ToolOutputContractTests(unittest.TestCase):
         )
         return list(tool._invoke({"path": path}))
 
-    def test_success_uses_declared_variables_not_json_runtime_envelope(self) -> None:
+    def test_compatibility_candidate_uses_declared_variables_not_json(self) -> None:
+        """Verify producer output only; Dify Tool-node state is a later integration gate."""
+
         class SuccessfulClient:
             def __init__(self, raw_token):
                 self.raw_token = raw_token
@@ -105,32 +99,6 @@ class ToolOutputContractTests(unittest.TestCase):
                 "ref": "main",
             },
         )
-
-    def test_code_zero_json_object_failure_signature_is_not_emitted(self) -> None:
-        class SuccessfulClient:
-            def __init__(self, raw_token):
-                self.raw_token = raw_token
-
-            def context_read(self, path):
-                return {
-                    "path": path,
-                    "sha": "synthetic-sha",
-                    "content": "approved content",
-                    "repository": "kubzik96/genesis-ai",
-                    "ref": "main",
-                }
-
-        self.assertEqual(OBSERVED_DIFY_FAILURE_ENVELOPE["code"], 0)
-        self.assertEqual(OBSERVED_DIFY_FAILURE_ENVELOPE["message"], "success")
-        self.assertIn(
-            "json_object", OBSERVED_DIFY_FAILURE_ENVELOPE["data"]["message"]
-        )
-
-        messages = self.invoke_with(lambda _module: SuccessfulClient)
-        rendered = json.dumps(messages)
-
-        self.assertNotIn("json_object", rendered)
-        self.assertTrue(all(message["type"] == "variable" for message in messages))
 
     def test_broker_error_uses_safe_variables_without_secret_or_content(self) -> None:
         def rejected_client(module):

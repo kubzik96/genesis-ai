@@ -22,15 +22,19 @@ CODE_ONLY Dify plugin 0.1.3 candidate for the fixed `genesis-broker` boundary.
 
 The plugin constructs `Authorization: Bearer <raw token>` only inside the transport call. Do not paste the `Bearer` prefix into the provider credential field.
 
-## 0.1.3 output-contract fix
+## 0.1.3 output-contract compatibility candidate
 
-Plugin 0.1.2 returned a single JSON tool message. The observed Dify runtime envelope
-reported `code=0` and `message=success`, but carried that result under
-`data.type=json` / `json_object` while the Tool node was displayed as failed. Local
-SDK reproduction confirmed that the Broker result itself was valid; the missing
-workflow-facing contract was the compatibility seam. Version 0.1.3 declares an
-`output_schema` and emits named variable messages, so successful repository content
-is available only through the normal `content` output.
+Plugin 0.1.2 returned one valid Dify JSON tool message. The captured runtime envelope
+reported `code=0` and `message=success`, carried the result under
+`data.type=json` / `json_object`, and was nevertheless displayed as a failed Tool
+node. Local SDK reproduction confirms that both the former JSON message and the new
+variable messages serialize successfully, so it does not establish the downstream
+Dify failure's root cause.
+
+Version 0.1.3 is a bounded compatibility candidate: it declares an `output_schema`
+and emits named variable messages, making successful repository content available
+only through the normal `content` output. Whether this changes the Dify Tool-node
+outcome remains unverified until a separately authorized consumer-level check.
 
 ## Local verification
 
