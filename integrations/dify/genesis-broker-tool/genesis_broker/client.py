@@ -10,7 +10,7 @@ from typing import Any, Protocol
 from urllib import error, request
 
 BROKER_BASE_URL = "https://genesis-broker.genesis-ai-kubzik96.workers.dev"
-PLUGIN_USER_AGENT = "GenesisBrokerDifyPlugin/0.1.3"
+PLUGIN_USER_AGENT = "GenesisBrokerDifyPlugin/0.1.4"
 CONTEXT_ALLOWLIST = frozenset(
     {
         "bridge/QUEUE.md",
