@@ -4,8 +4,9 @@ import unittest
 import zipfile
 
 
-EXPECTED_VERSION = "0.1.3"
-EXPECTED_REQUIREMENT = "dify-plugin>=0.9.0,<1.0.0"
+EXPECTED_VERSION = "0.1.4"
+EXPECTED_SDK_VERSION = "0.9.0"
+EXPECTED_REQUIREMENT = f"dify-plugin=={EXPECTED_SDK_VERSION}"
 PACKAGE_ENV = "GENESIS_BROKER_PACKAGE"
 
 
@@ -33,6 +34,7 @@ class PackageContractTests(unittest.TestCase):
                 archive.read("requirements.txt").decode("utf-8").strip(),
                 EXPECTED_REQUIREMENT,
             )
+            self.assertTrue(EXPECTED_REQUIREMENT.startswith("dify-plugin=="))
             self.assertTrue(
                 archive.read("manifest.yaml")
                 .decode("utf-8")

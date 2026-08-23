@@ -7,8 +7,9 @@ from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_VERSION = "0.1.3"
-EXPECTED_REQUIREMENT = "dify-plugin>=0.9.0,<1.0.0"
+EXPECTED_VERSION = "0.1.4"
+EXPECTED_SDK_VERSION = "0.9.0"
+EXPECTED_REQUIREMENT = f"dify-plugin=={EXPECTED_SDK_VERSION}"
 
 
 class RuntimeContractTests(unittest.TestCase):
@@ -22,6 +23,7 @@ class RuntimeContractTests(unittest.TestCase):
         pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
         self.assertEqual(requirements, [EXPECTED_REQUIREMENT])
+        self.assertTrue(EXPECTED_REQUIREMENT.startswith("dify-plugin=="))
         self.assertTrue(manifest.startswith(f"version: {EXPECTED_VERSION}\n"))
         self.assertIn(f'version = "{EXPECTED_VERSION}"', pyproject)
         self.assertIn(f'"{EXPECTED_REQUIREMENT}"', pyproject)
