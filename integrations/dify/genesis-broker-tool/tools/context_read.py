@@ -22,8 +22,11 @@ class GenesisBrokerContextReadTool(Tool):
             )
             return
         except BrokerClientError as exc:
+            safe_error = {"ok": False, "error": exc.code, "status": exc.status}
+            if exc.content_type is not None:
+                safe_error["content_type"] = exc.content_type
             yield self.create_json_message(
-                json={"ok": False, "error": exc.code, "status": exc.status}
+                json=safe_error
             )
             return
 

@@ -10,6 +10,7 @@ from typing import Any, Protocol
 from urllib import error, request
 
 BROKER_BASE_URL = "https://genesis-broker.genesis-ai-kubzik96.workers.dev"
+PLUGIN_USER_AGENT = "GenesisBrokerDifyPlugin/0.1.2"
 CONTEXT_ALLOWLIST = frozenset(
     {
         "bridge/QUEUE.md",
@@ -45,10 +46,17 @@ class CredentialValidationError(ValueError):
 class BrokerClientError(RuntimeError):
     """A safe client error whose message never includes request details."""
 
-    def __init__(self, code: str, *, status: int | None = None) -> None:
+    def __init__(
+        self,
+        code: str,
+        *,
+        status: int | None = None,
+        content_type: str | None = None,
+    ) -> None:
         super().__init__(code)
         self.code = code
         self.status = status
+        self.content_type = content_type
 
 
 class BrokerResponseError(BrokerClientError):
@@ -108,6 +116,21 @@ class _NoRedirectHandler(request.HTTPRedirectHandler):
         return None
 
 
+def _classify_content_type(value: str | None) -> str:
+    """Reduce an untrusted response header to a fixed non-sensitive class."""
+
+    if not value:
+        return "missing"
+    media_type = value.split(";", 1)[0].strip().lower()
+    if media_type == "application/json" or media_type.endswith("+json"):
+        return "json"
+    if media_type in {"text/html", "application/xhtml+xml"}:
+        return "html"
+    if media_type.startswith("text/"):
+        return "text"
+    return "other"
+
+
 class UrllibTransport:
     """Small runtime transport. It deliberately emits no logs or request objects."""
 
@@ -129,16 +152,22 @@ class UrllibTransport:
             with self.__opener.open(outbound, timeout=timeout) as response:
                 raw = response.read()
                 status = int(response.status)
+                content_type = response.headers.get("Content-Type")
         except error.HTTPError as exc:
             raw = exc.read()
             status = int(exc.code)
-        except (error.URLError, TimeoutError, OSError) as exc:
-            raise BrokerClientError("BROKER_REQUEST_FAILED") from exc
+            content_type = exc.headers.get("Content-Type") if exc.headers else None
+        except (error.URLError, TimeoutError, OSError):
+            raise BrokerClientError("BROKER_REQUEST_FAILED") from None
 
         try:
-            payload = json.loads(raw.decode("utf-8")) if raw else {}
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise BrokerClientError("BROKER_INVALID_RESPONSE", status=status) from exc
+            payload = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise BrokerClientError(
+                "BROKER_NON_JSON_RESPONSE",
+                status=status,
+                content_type=_classify_content_type(content_type),
+            ) from None
         return TransportResponse(status=status, payload=payload)
 
 
@@ -166,7 +195,9 @@ class GenesisBrokerClient:
             url=f"{BROKER_BASE_URL}/v1/context/read",
             headers={
                 "Authorization": f"Bearer {self.__raw_token}",
+                "Accept": "application/json",
                 "Content-Type": "application/json",
+                "User-Agent": PLUGIN_USER_AGENT,
             },
             body={"path": normalized},
             timeout=self.__timeout,

@@ -4,7 +4,7 @@ import unittest
 import zipfile
 
 
-EXPECTED_VERSION = "0.1.1"
+EXPECTED_VERSION = "0.1.2"
 EXPECTED_REQUIREMENT = "dify-plugin>=0.9.0,<1.0.0"
 PACKAGE_ENV = "GENESIS_BROKER_PACKAGE"
 

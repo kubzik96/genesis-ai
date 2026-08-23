@@ -1,5 +1,9 @@
+from email.message import Message
+from io import BytesIO
 import json
 import unittest
+from unittest.mock import patch
+from urllib import error
 
 from genesis_broker.client import (
     BROKER_BASE_URL,
@@ -8,6 +12,7 @@ from genesis_broker.client import (
     GenesisBrokerClient,
     TransportResponse,
     _NoRedirectHandler,
+    UrllibTransport,
 )
 
 
@@ -24,6 +29,28 @@ class RecordingTransport:
 class ExplodingTransport:
     def request_json(self, **kwargs):
         raise AssertionError("transport must not be called")
+
+
+class RaisingOpener:
+    def __init__(self, response_error: Exception) -> None:
+        self.response_error = response_error
+        self.requests = []
+
+    def open(self, outbound, timeout):
+        self.requests.append((outbound, timeout))
+        raise self.response_error
+
+
+def http_error(*, status: int, content_type: str, body: bytes) -> error.HTTPError:
+    headers = Message()
+    headers["Content-Type"] = content_type
+    return error.HTTPError(
+        f"{BROKER_BASE_URL}/v1/context/read",
+        status,
+        "rejected",
+        headers,
+        BytesIO(body),
+    )
 
 
 class ClientTests(unittest.TestCase):
@@ -49,6 +76,10 @@ class ClientTests(unittest.TestCase):
         call = transport.calls[0]
         self.assertEqual(call["url"], f"{BROKER_BASE_URL}/v1/context/read")
         self.assertEqual(call["headers"]["Authorization"], f"Bearer {self.token}")
+        self.assertEqual(call["headers"]["Accept"], "application/json")
+        self.assertEqual(
+            call["headers"]["User-Agent"], "GenesisBrokerDifyPlugin/0.1.2"
+        )
         serialized = json.dumps(result)
         self.assertNotIn(self.token, serialized)
         self.assertNotIn("Authorization", serialized)
@@ -81,6 +112,73 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, "UNAUTHORIZED")
         self.assertEqual(caught.exception.status, 401)
         self.assertNotIn(self.token, str(caught.exception))
+
+    def test_json_http_error_preserves_broker_code_without_raw_details(self) -> None:
+        response_error = http_error(
+            status=403,
+            content_type="application/json; charset=utf-8",
+            body=b'{"error":"PATH_NOT_ALLOWED","detail":"private"}',
+        )
+        opener = RaisingOpener(response_error)
+        with patch("genesis_broker.client.request.build_opener", return_value=opener):
+            transport = UrllibTransport()
+        client = GenesisBrokerClient(self.token, transport=transport)
+
+        with self.assertRaises(BrokerResponseError) as caught:
+            client.context_read("bridge/QUEUE.md")
+
+        self.assertEqual(caught.exception.code, "PATH_NOT_ALLOWED")
+        self.assertEqual(caught.exception.status, 403)
+        self.assertIsNone(caught.exception.content_type)
+        self.assertNotIn("private", str(caught.exception))
+
+    def test_non_json_http_error_exposes_only_safe_classification(self) -> None:
+        secret_body = f"<html>blocked {self.token}</html>".encode()
+        response_error = http_error(
+            status=403,
+            content_type="text/html; charset=utf-8",
+            body=secret_body,
+        )
+        opener = RaisingOpener(response_error)
+        with patch("genesis_broker.client.request.build_opener", return_value=opener):
+            transport = UrllibTransport()
+
+        with self.assertRaises(BrokerClientError) as caught:
+            transport.request_json(
+                method="POST",
+                url=f"{BROKER_BASE_URL}/v1/context/read",
+                headers={"Authorization": f"Bearer {self.token}"},
+                body={"path": "bridge/QUEUE.md"},
+                timeout=10.0,
+            )
+
+        self.assertEqual(caught.exception.code, "BROKER_NON_JSON_RESPONSE")
+        self.assertEqual(caught.exception.status, 403)
+        self.assertEqual(caught.exception.content_type, "html")
+        rendered = str(caught.exception)
+        self.assertNotIn(self.token, rendered)
+        self.assertNotIn("<html>", rendered)
+        self.assertEqual(len(opener.requests), 1)
+
+    def test_transport_failure_exposes_only_stable_code(self) -> None:
+        opener = RaisingOpener(error.URLError("private gateway detail"))
+        with patch("genesis_broker.client.request.build_opener", return_value=opener):
+            transport = UrllibTransport()
+
+        with self.assertRaises(BrokerClientError) as caught:
+            transport.request_json(
+                method="POST",
+                url=f"{BROKER_BASE_URL}/v1/context/read",
+                headers={"Authorization": f"Bearer {self.token}"},
+                body={"path": "bridge/QUEUE.md"},
+                timeout=10.0,
+            )
+
+        self.assertEqual(caught.exception.code, "BROKER_REQUEST_FAILED")
+        self.assertIsNone(caught.exception.status)
+        self.assertIsNone(caught.exception.content_type)
+        self.assertNotIn("private gateway detail", str(caught.exception))
+        self.assertEqual(len(opener.requests), 1)
 
     def test_redirect_handler_never_forwards_request(self) -> None:
         handler = _NoRedirectHandler()

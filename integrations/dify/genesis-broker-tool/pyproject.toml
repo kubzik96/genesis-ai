@@ -1,6 +1,6 @@
 [project]
 name = "genesis-broker-dify-tool"
-version = "0.1.1"
+version = "0.1.2"
 description = "Private fail-closed Dify tool for Genesis Broker"
 readme = "README.md"
 requires-python = ">=3.12"
