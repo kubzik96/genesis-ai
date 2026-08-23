@@ -78,7 +78,7 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(call["headers"]["Authorization"], f"Bearer {self.token}")
         self.assertEqual(call["headers"]["Accept"], "application/json")
         self.assertEqual(
-            call["headers"]["User-Agent"], "GenesisBrokerDifyPlugin/0.1.2"
+            call["headers"]["User-Agent"], "GenesisBrokerDifyPlugin/0.1.3"
         )
         serialized = json.dumps(result)
         self.assertNotIn(self.token, serialized)

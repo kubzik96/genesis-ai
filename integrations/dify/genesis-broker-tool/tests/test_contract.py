@@ -45,6 +45,12 @@ class PluginContractTests(unittest.TestCase):
         for forbidden in ("response.body", "response.headers", "request.headers"):
             self.assertNotIn(forbidden, source)
 
+    def test_tool_declares_named_workflow_outputs(self) -> None:
+        tool = (ROOT / "tools/context_read.yaml").read_text(encoding="utf-8")
+        self.assertIn("output_schema:", tool)
+        for name in ("ok", "path", "sha", "content", "repository", "ref", "error"):
+            self.assertIn(f"    {name}:\n", tool)
+
 
 if __name__ == "__main__":
     unittest.main()
