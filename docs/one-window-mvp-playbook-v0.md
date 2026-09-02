@@ -2,9 +2,9 @@
 
 ## Status
 
-**Draft — implementation playbook only.**
+**CEO-approved and merged (Playbook v0).**
 
-This document narrows the existing Genesis One-Window work to the shortest useful MVP path. It does not itself authorize runtime execution, merge, deployment, secret operations, LIVE activation, or authenticated writes.
+This document is the durable playbook for the shortest useful Genesis One-Window MVP path. Approval and merge of this playbook do not grant standing runtime execution, merge, deployment, secret operations, LIVE activation, or authenticated-write authority. Those remain behind existing CEO gates.
 
 ## Goal
 
