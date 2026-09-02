@@ -1,106 +1,132 @@
-# Genesis AI Memory
+# Genesis Long-Term Project Memory V1
 
-## Назначение
+## Status and purpose
 
-Долговременная память: подтверждённые сведения и знания между сессиями.
-**Не** заменяет `bridge/QUEUE.md` (оперативные статусы задач) и **не** заменяет Approved Specifications.
+**Candidate V1 for Issue #43.** It becomes the canonical operational-memory snapshot only after DR-0010 is accepted and this change is merged by a separate CEO decision.
 
----
+GitHub `kubzik96/genesis-ai` remains the durable Source of Record. This file is a compact recovery index over GitHub evidence; it is not a second Source of Truth and does not replace task, decision, specification, or implementation artifacts.
 
-## Основные сведения
+## Canonical boundaries
 
-- **Название:** Genesis AI
-- **Фаза:** 2 — Архитектура / One-Window + Limited Grok Executor
-- **SoR:** GitHub `kubzik96/genesis-ai`
-- **Контрольная точка main:** `e14faded46f61d0c32df117ced31480cf1b61062` (после PR #27)
-- **Stage 4 encoding squash (PR #20):** `99e6d153ac91b2bf25f9604d58fe51c387ba3d28`
-- **Главная цель:** управляемая ИИ-команда для проектирования, разработки и сопровождения продуктов
-- **Практический приоритет:** рабочий One-Window; limited Grok/xAI executor path (S-0005) как альтернатива недоступному Copilot Cloud Agent
-
----
-
-## Specifications (устойчивые факты)
-
-| ID | Status | Revision | Note |
-|---|---|---|---|
-| S-0001 | **Approved** | **3** | Approved 2026-08-11 (PR #27); documents continuation via S-0005; Approval itself did not grant EA |
-| S-0002 | Approved | 1 | Broker MVP |
-| S-0003 | **Superseded** | 1 | Superseded by S-0004 |
-| S-0004 | **Approved** | 1 | Authoritative Specification for Post-Stage-4 SoR synchronization |
-| S-0005 | **Approved** | **1** | Limited Grok/xAI executor path; Approved 2026-08-11 (PR #27) |
-
-Next specification number: **S-0006**.
-
----
-
-## Decision Records (устойчивые факты)
-
-| ID | Status | Note |
-|---|---|---|
-| DR-0001 | Принято | Архитектурная структура |
-| DR-0002 | Принято | GitHub Copilot = Engineer |
-| DR-0004 | Принято | Repository of Approved Specifications |
-| DR-0005 | Принято | Operational AI Team Roles |
-| DR-0007 | **Принято** | Grok Limited Executor through Genesis Broker (2026-08-11, PR #27) |
-
----
-
-## Участники (актуальные, DR-0005)
-
-| Роль | Исполнитель |
+| Question | Canonical source |
 |---|---|
-| CEO | Человек — окончательные решения |
-| COO | ChatGPT — процессы, координация, review; без GitHub write |
-| Chief Architect | Grok — архитектура, dissent; limited executor по T-011 Stage 1 EA |
-| Lead Engineer | GitHub Copilot — реализация через Issue → PR (DR-0002); Cloud Agent unavailable on Free |
-| CTO (постоянный) | **Вакансия** — отбор T-002…T-005 (BACKLOG) |
-| Codex | **Не формализован** — DR-0006 **deferred** |
+| What is the cross-session project snapshot? | `MEMORY.md` |
+| What task is active, who owns it, and what is its status? | `bridge/QUEUE.md` |
+| What context and acceptance criteria were handed to an executor? | `bridge/HANDOFF.md` and the bounded GitHub Issue |
+| Why was an architecture or policy choice made? | `decisions/` |
+| What are the approved functional requirements? | `specifications/` |
+| What was actually implemented, reviewed, and accepted? | Issues, PRs, commits, reviews, and `main` |
 
-Устаревшее: «ChatGPT временно CTO» — **снято** (DR-0005).
+If this summary conflicts with a higher-priority or canonical artifact, the canonical artifact wins and an agent must propose a memory correction.
 
----
+## New-agent recovery protocol
 
-## Завершённые циклы (высокоуровнево)
+1. Read the exact current `main` HEAD and this file from that HEAD.
+2. Compare current `main` with `CURRENT_BASELINE.verified_main`. If newer, inspect the intervening merged PRs/commits for memory-impacting changes before recommending an action.
+3. Read `bridge/QUEUE.md` only for current task status and ownership.
+4. Read `bridge/HANDOFF.md` only for the assigned task, then follow linked Approved Specifications and active Decision Records.
+5. Respect `FAILED_PATHS / DO_NOT_REPEAT` and `CEO_GATES`; chat history never overrides GitHub evidence.
+6. Ask the CEO for history only when a material fact cannot be recovered from GitHub or a required decision is genuinely missing.
 
-1. **Основание** — GitHub, Constitution, Roles, Principles, Standards, Vision, Roadmap.
-2. **Структура** — каталоги, Decision Records (DR-0001, DR-0002).
-3. **Governance bootstrap** — T-007 Development Workflow, T-008 / DR-0004 Specifications repo (**DONE**).
-4. **Broker MVP (T-010)** — Stage 1 CODE_ONLY + Stage 2 DEPLOY_READONLY → Bridge **REVIEW** (не DONE).
-5. **One-Window (T-009)** — Stages 1–3 Dify/Broker; Stage 3 PARTIAL PASS (Issue #15); Stage 4 **PARTIAL PASS** (Issue #19 CLOSED, PR #20 MERGED `99e6d153…`); T-009 → **REVIEW** (не DONE).
-6. **DR-0005** — Operational AI Team Roles (2026-07-27).
-7. **S-0004** — Approved in main (PR #23, 2026-08-07): Post-Stage-4 SoR synchronization; S-0003 Superseded.
-8. **S-0001 Revision 3 / S-0005 / DR-0007** — Approved/Accepted 2026-08-11 (PR #27); documentation boundary for limited Grok executor; Approval did not grant EA.
-9. **T-011 Stage 1 EA** — 2026-08-11 CEO granted **CODE_AND_TESTS_ONLY** for `POST /v1/executions/grok/draft-pr`; deployment/secrets/live/smoke forbidden.
+## CURRENT_STATE
 
-### Stage 4 — подтверждённые факты
+- **One-Window v0:** the FIRST ONE-WINDOW TRIAL completed through bounded Issue [#41](https://github.com/kubzik96/genesis-ai/issues/41), Draft PR, independent Git-artifact review, separate CEO Ready and merge gates, and durable `main` state.
+- **Trial result:** PR [#42](https://github.com/kubzik96/genesis-ai/pull/42) was squash-merged; Issue #41 is closed as `completed`.
+- **Capability boundary:** the thin GitHub-first cycle is demonstrated, but transfer of the task from ChatGPT/orchestrator to an executor still requires a manual user step. This is the remaining primary One-Window UX blocker.
+- **Dify:** OPTIONAL / NON-BLOCKING for the One-Window MVP. No Dify operation is required for the next project step.
+- **Durability:** GitHub remains the only durable Source of Record. Chats are working memory only.
+- **Task status:** this snapshot does not promote T-009, T-010, or T-011 to `DONE`; `bridge/QUEUE.md` and separate CEO acceptance remain authoritative.
 
-- Issue [#19](https://github.com/kubzik96/genesis-ai/issues/19): CLOSED / completed
-- PR [#20](https://github.com/kubzik96/genesis-ai/pull/20): MERGED (squash)
-- Squash commit: `99e6d153ac91b2bf25f9604d58fe51c387ba3d28`
-- Result: **PARTIAL PASS** — target diff accepted; full One-Window automation without manual steps **not** achieved
-- CI: `CI_NOT_CONFIGURED`
+## DONE
 
-### PR #27 — подтверждённые факты
+- Playbook v0 defined and merged in PR [#40](https://github.com/kubzik96/genesis-ai/pull/40).
+- Playbook status synchronized by completed Issue [#41](https://github.com/kubzik96/genesis-ai/issues/41) and squash-merged PR [#42](https://github.com/kubzik96/genesis-ai/pull/42).
+- Exact post-trial baseline independently verified at `5c86f03df38004bb638d0bbacfdfeb7f3c1ac557`.
+- Existing specifications, Decision Records, Bridge, Broker code, and Dify plugin candidate remain in GitHub; their presence does not imply runtime authorization.
 
-- Squash merge: `e14faded46f61d0c32df117ced31480cf1b61062`
-- S-0001 R3 Approved; S-0005 R1 Approved; DR-0007 Accepted
-- Execution Authorization **NOT_GRANTED** by the Approval itself
+## KNOWN_BLOCKERS
 
----
+- **Manual executor handoff:** the CEO still has to copy or restate a bounded task between the ChatGPT orchestrator and a coding executor.
+- **No approved direct handoff path:** a direct orchestrator-to-executor route has not yet been selected, specified, and proven under existing governance.
+- **CI:** repository documentation records `CI_NOT_CONFIGURED`; absence of CI is not a passing check.
+- **Broker quarantine:** DR-0008 remains active in repository evidence; DR-0009 states that the controlled authenticated check and safe Dify logging confirmation were not completed. Do not infer that quarantine is lifted.
 
-## Активный фокус (детали в QUEUE)
+## FAILED_PATHS / DO_NOT_REPEAT
 
-- **T-011 READY** — Stage 1 CODE_AND_TESTS_ONLY EA GRANTED; implement mocked composite endpoint; draft PR; independent non-Grok review.
-- T-009 **REVIEW** — Stage 4 PARTIAL PASS recorded; not DONE.
-- T-010 **REVIEW** — Broker deployed read path; PR #11 Draft; not DONE.
-- DR-0006 **deferred** (not blocking).
-- T-006 BLOCKED.
-- T-002…T-005 BACKLOG (CTO selection).
+| Path | State | Restart condition |
+|---|---|---|
+| Dify private plugin `0.1.4` install/upgrade | Frozen after failed-upgrade evidence; not an MVP prerequisite | New Dify/platform-support evidence plus a separately authorized bounded recovery action |
+| Raw authenticated Dify HTTP node to Broker | Rejected after the execution-details credential-exposure class recorded in DR-0008/DR-0009 | A new approved security design; never reuse the raw-header pattern by default |
+| Local Codex install/local-executor path | Unavailable/failed in the CEO environment; GitHub does not independently prove a recovery | New compatible environment, release, or diagnostic evidence plus a bounded authorization |
+| Repeating already verified trial steps | Do not recreate Issue #41 or PR #42 and do not re-prove their merged facts | Only a new, explicitly scoped trial with a new acceptance target |
 
----
+Failed-path entries are guardrails, not permanent bans. An agent may propose reconsideration only when it cites new evidence and the required CEO gate.
 
-## Принципы памяти
+## ACTIVE_DECISIONS
 
-- Если изменение не в GitHub — оно не часть Genesis AI.
-- QUEUE = оперативный SoR задач; MEMORY = устойчивые факты.
-- Секреты и значения PAT/token/API keys в MEMORY **не** хранятся.
+Canonical wording and status remain in `decisions/INDEX.md` and the linked records.
+
+- [DR-0001](decisions/DR-0001.md) — repository architecture.
+- [DR-0002](decisions/DR-0002-GitHub-Copilot.md) — GitHub Copilot role.
+- [DR-0004](decisions/DR-0004.md) — Approved Specifications repository.
+- [DR-0005](decisions/DR-0005-Operational-AI-Team-Roles.md) — operational AI-team roles.
+- [DR-0007](decisions/DR-0007-Grok-Limited-Executor.md) — limited Grok executor boundary.
+- [DR-0008](decisions/DR-0008-Broker-Token-Exposure-Quarantine.md) — Broker-token quarantine; no repository evidence of CEO removal.
+- [DR-0009](decisions/DR-0009-Private-Dify-Broker-Tool-Plugin.md) — typed private plugin architecture; operational use is not implied.
+- DR-0010 — proposed Memory V1 model in the current Draft PR; not active until separately accepted and merged.
+
+## CURRENT_BASELINE
+
+| Field | Value |
+|---|---|
+| `verified_main` | `5c86f03df38004bb638d0bbacfdfeb7f3c1ac557` |
+| Meaning | Exact `main` used to verify this snapshot after the FIRST ONE-WINDOW TRIAL |
+| Freshness rule | Git history identifies the memory commit itself; do not embed a self-referential future merge SHA. If `main` advances, inspect the delta and update this field after the next meaningful accepted change. |
+
+## NEXT_ACTION
+
+Prepare one bounded GitHub task/specification to remove the manual ChatGPT-to-executor transfer by selecting and proving the smallest direct orchestrator-to-authorized-cloud-executor path. Keep GitHub as the durable task contract and keep Dify non-blocking. No implementation, runtime, deploy, LIVE, or secret action is implied by this memory entry.
+
+For the current Memory V1 candidate, the immediate next action is independent review of the exact Draft PR HEAD; Ready and merge require separate CEO decisions.
+
+## CEO_GATES
+
+- Memory content records gates; it never grants or chains them.
+- Proposed DR acceptance, Ready, merge, deployment, secrets operations, Dify operations, Broker HTTP, Cloudflare changes, LIVE activation, and production writes remain separately gated where governance requires.
+- A successful step does not authorize the next step.
+- Only the CEO can accept task completion and authorize merge.
+- Memory maintenance does not give any agent standing write authority. An authorized executor may update memory only inside the current bounded scope or a separately authorized linked docs-only PR.
+
+## OPEN_EXTERNAL_DEPENDENCIES
+
+- A direct cloud executor/tool route that the orchestrator can invoke without the CEO manually transferring the task; no route is yet approved as the Genesis default.
+- Dify/platform-support or compatibility evidence, but only if the optional plugin path is deliberately resumed.
+- A separately authorized controlled non-Dify Broker authentication check and explicit CEO quarantine removal, but only before future authenticated Broker use.
+
+## Agent-owned maintenance contract
+
+The CEO is not the editor or manual carrier of this memory.
+
+Every bounded Issue or task that may change durable project state must declare `Memory impact: YES/NO`. The authorized executor owns the check and the resulting update:
+
+1. Update `MEMORY.md` in the same scoped PR when documentation scope allows it.
+2. If the task scope forbids that file, prepare a linked bounded docs-only follow-up Draft PR after the applicable authorization; do not ask the CEO to copy the context.
+3. Cite exact Issues, PRs, commits, reviews, DRs, or Specifications. Mark external/CEO-provided facts that GitHub could not independently verify.
+4. Update only fields materially changed by evidence; do not reproduce full QUEUE, HANDOFF, DR, Specification, logs, or chat transcripts.
+5. Never store credentials, tokens, secret-like values, private execution payloads, or raw sensitive logs.
+6. Require independent review of the actual diff and exact HEAD. Merge remains a separate CEO gate.
+
+### Mandatory update triggers
+
+- accepted/merged work changes `CURRENT_STATE`, `DONE`, `CURRENT_BASELINE`, or `NEXT_ACTION`;
+- a blocker or external dependency is added, removed, or materially changed;
+- a path fails, is frozen, or becomes safe to retry based on new evidence;
+- a Decision Record or Approved Specification becomes active, superseded, or archived;
+- a CEO gate is granted, consumed, revoked, or remains explicitly pending;
+- a security incident, quarantine, deployment state, or end-to-end trial changes the safe next action.
+
+Routine formatting, comments, and changes with no durable project impact do not require a memory update.
+
+## CEO_MANUAL_MAINTENANCE_REQUIRED
+
+**NO.** The CEO supplies decisions and authorizations; agents recover evidence from GitHub and maintain this snapshot through controlled, reviewable PRs.
