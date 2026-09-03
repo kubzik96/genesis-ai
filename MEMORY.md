@@ -30,9 +30,10 @@ If this summary conflicts with a higher-priority or canonical artifact, the cano
 
 ## CURRENT_STATE
 
-- **One-Window v0:** the FIRST ONE-WINDOW TRIAL completed through bounded Issue [#41](https://github.com/kubzik96/genesis-ai/issues/41), Draft PR, independent Git-artifact review, separate CEO Ready and merge gates, and durable `main` state.
-- **Trial result:** PR [#42](https://github.com/kubzik96/genesis-ai/pull/42) was squash-merged; Issue #41 is closed as `completed`.
-- **Capability boundary:** the thin GitHub-first cycle is demonstrated, but transfer of the task from ChatGPT/orchestrator to an executor still requires a manual user step. This is the remaining primary One-Window UX blocker.
+- **One-Window Trial #2:** PASS for GitHub-backed memory recovery and bounded cloud-executor execution through Issue [#48](https://github.com/kubzik96/genesis-ai/issues/48) and PR [#49](https://github.com/kubzik96/genesis-ai/pull/49); it did **not** prove full One-Window transport.
+- **Provisional executor:** ChatGPT Work is the provisional proven cloud executor. A fresh Work task recovered the required Genesis context from GitHub Long-Term Project Memory and created bounded GitHub artifacts without a CEO history restatement.
+- **Accepted handoff discovery:** PR [#47](https://github.com/kubzik96/genesis-ai/pull/47) was independently reviewed, separately authorized Ready, and squash-merged as `60ed769e171aeb146dd61fbf0ae05a6c71069dec`.
+- **Capability boundary:** one manual CEO/orchestrator → Work task send remains the primary One-Window blocker. Direct launch from the current orchestrator surface remains unproven/not exposed; do not claim transport solved.
 - **Dify:** OPTIONAL / NON-BLOCKING for the One-Window MVP. No Dify operation is required for the next project step.
 - **Durability:** GitHub remains the only durable Source of Record. Chats are working memory only.
 - **Task status:** this snapshot does not promote T-009, T-010, or T-011 to `DONE`; `bridge/QUEUE.md` and separate CEO acceptance remain authoritative.
@@ -42,13 +43,17 @@ If this summary conflicts with a higher-priority or canonical artifact, the cano
 - Memory V1 was accepted and merged in PR [#44](https://github.com/kubzik96/genesis-ai/pull/44); DR-0010 is `Принято` and Issue [#43](https://github.com/kubzik96/genesis-ai/issues/43) is closed as `completed`.
 - Playbook v0 defined and merged in PR [#40](https://github.com/kubzik96/genesis-ai/pull/40).
 - Playbook status synchronized by completed Issue [#41](https://github.com/kubzik96/genesis-ai/issues/41) and squash-merged PR [#42](https://github.com/kubzik96/genesis-ai/pull/42).
+- Trial #2 proved GitHub-backed memory recovery by ChatGPT Work through completed Issue [#48](https://github.com/kubzik96/genesis-ai/issues/48) and squash-merged PR [#49](https://github.com/kubzik96/genesis-ai/pull/49) at `2942cedc9fdcbdfcb3c62325370b61b49c844057`.
+- The executor-handoff discovery in PR [#47](https://github.com/kubzik96/genesis-ai/pull/47) was independently reviewed, separately authorized Ready, and squash-merged as `60ed769e171aeb146dd61fbf0ae05a6c71069dec`.
 - Exact post-trial baseline independently verified at `5c86f03df38004bb638d0bbacfdfeb7f3c1ac557`.
 - Existing specifications, Decision Records, Bridge, Broker code, and Dify plugin candidate remain in GitHub; their presence does not imply runtime authorization.
 
 ## KNOWN_BLOCKERS
 
-- **Manual executor handoff:** the CEO still has to copy or restate a bounded task between the ChatGPT orchestrator and a coding executor.
-- **No approved direct handoff path:** a direct orchestrator-to-executor route has not yet been selected, specified, and proven under existing governance.
+- **Manual executor handoff:** one bounded CEO/orchestrator → ChatGPT Work task send remains necessary and is the primary One-Window blocker.
+- **Direct Work launch not exposed:** the current orchestrator surface has not proven or exposed a direct Work/cloud-executor task-launch action.
+- **Copilot assignment probe:** blocked under the current connector/UI evidence recorded by Issue [#46](https://github.com/kubzik96/genesis-ai/issues/46); revisit only when new capability evidence exists.
+- **No custom transport for this blocker:** Dify/Broker/custom transport remains frozen or deferred; do not build new infrastructure merely to remove one manual send.
 - **CI:** repository documentation records `CI_NOT_CONFIGURED`; absence of CI is not a passing check.
 - **Broker quarantine:** DR-0008 remains active in repository evidence; DR-0009 states that the controlled authenticated check and safe Dify logging confirmation were not completed. Do not infer that quarantine is lifted.
 
@@ -80,15 +85,15 @@ Canonical wording and status remain in `decisions/INDEX.md` and the linked recor
 
 | Field | Value |
 |---|---|
-| `verified_main` | `2258e312107c9d3d05eb4afb379cfc070e3d26d7` |
-| Meaning | Exact post-merge `main` used to recover context and verify PR #44 / DR-0010 acceptance at the start of Genesis One-Window Trial #2 |
+| `verified_main` | `60ed769e171aeb146dd61fbf0ae05a6c71069dec` |
+| Meaning | Exact accepted `main` after the Trial #2 memory sync and merged One-Window executor-handoff discovery in PR #47 |
 | Freshness rule | Git history identifies the memory commit itself; do not embed a self-referential future merge SHA. If `main` advances, inspect the delta and update this field after the next meaningful accepted change. |
 
 ## NEXT_ACTION
 
-Prepare one bounded GitHub task/specification to remove the manual ChatGPT-to-executor transfer by selecting and proving the smallest direct orchestrator-to-authorized-cloud-executor path. Keep GitHub as the durable task contract and keep Dify non-blocking. No implementation, runtime, deploy, LIVE, or secret action is implied by this memory entry.
+Use ChatGPT Work as the provisional cloud executor through one explicit bounded manual CEO/orchestrator → Work send while direct launch remains unproven. When new product-capability evidence exists, the next bounded investigation may verify a product-native direct Chat/Genesis → Work dispatch surface; do not implement a custom adapter or reopen Dify/Broker merely to remove this single manual send.
 
-Genesis One-Window Trial #2 is the current bounded post-merge memory-sync task. Its result is not recorded in advance. After its Draft PR exists, independent review of the exact HEAD is the next gate; Ready and merge remain separate CEO decisions.
+For the current Issue [#50](https://github.com/kubzik96/genesis-ai/issues/50) memory-sync candidate, independent review of the exact Draft PR HEAD is the next gate. Ready and merge remain separate CEO decisions; no implementation, runtime, deploy, LIVE, or secret action is implied.
 
 ## CEO_GATES
 
