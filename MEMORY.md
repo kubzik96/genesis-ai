@@ -35,6 +35,8 @@ If this summary conflicts with a higher-priority or canonical artifact, the cano
 - **Accepted handoff discovery:** PR [#47](https://github.com/kubzik96/genesis-ai/pull/47) was independently reviewed, separately authorized Ready, and squash-merged as `60ed769e171aeb146dd61fbf0ae05a6c71069dec`.
 - **One-Window Trial #3:** GitHub Issue `@codex` → Codex Cloud launch is proven through Issue [#54](https://github.com/kubzik96/genesis-ai/issues/54); Codex recovered project context from `MEMORY.md`, produced the bounded docs-only result, and the result-page **Create PR** action published PR [#56](https://github.com/kubzik96/genesis-ai/pull/56), later squash-merged as `e545cd07a4c961e3bea48511a963a091fdb7e67c`.
 - **Capability boundary:** product-native Issue → Codex launch no longer requires a manual CEO task handoff. Full zero-click One-Window is still **not proven** because publishing the completed Codex result required one CEO click on **Create PR**; Codex initially opened #56 non-Draft and the orchestrator restored Draft without content changes before review.
+- **S-0007 Revision 1:** Approved by the CEO on 2026-09-03 and merged through PR [#64](https://github.com/kubzik96/genesis-ai/pull/64). Approval alone did not grant Execution Authorization.
+- **One-Window Trial #4:** Issue [#65](https://github.com/kubzik96/genesis-ai/issues/65) recorded Execution Authorization as `NOT_GRANTED` when the bounded candidate was created. The later CEO `@codex` command granted one bounded EA solely to recover from `main`, update this file, run applicable docs/static checks, and attempt product-native PR publication. It does not authorize T-006 implementation, Ready, merge, deployment, runtime writes, or any follow-on step.
 - **Dify:** OPTIONAL / NON-BLOCKING for the One-Window MVP. No Dify operation is required for the next project step.
 - **Durability:** GitHub remains the only durable Source of Record. Chats are working memory only.
 - **Task status:** this snapshot does not promote T-009, T-010, or T-011 to `DONE`; `bridge/QUEUE.md` and separate CEO acceptance remain authoritative.
@@ -47,6 +49,7 @@ If this summary conflicts with a higher-priority or canonical artifact, the cano
 - Trial #2 proved GitHub-backed memory recovery by ChatGPT Work through completed Issue [#48](https://github.com/kubzik96/genesis-ai/issues/48) and squash-merged PR [#49](https://github.com/kubzik96/genesis-ai/pull/49) at `2942cedc9fdcbdfcb3c62325370b61b49c844057`.
 - The executor-handoff discovery in PR [#47](https://github.com/kubzik96/genesis-ai/pull/47) was independently reviewed, separately authorized Ready, and squash-merged as `60ed769e171aeb146dd61fbf0ae05a6c71069dec`.
 - Trial #3 launch/recovery evidence in PR [#56](https://github.com/kubzik96/genesis-ai/pull/56) was independently reviewed through Issue [#57](https://github.com/kubzik96/genesis-ai/issues/57), separately authorized Ready and merge, and squash-merged as `e545cd07a4c961e3bea48511a963a091fdb7e67c`.
+- S-0007 Revision 1 was drafted in PR [#62](https://github.com/kubzik96/genesis-ai/pull/62), independently reviewed at exact HEAD, CEO-approved, and promoted to `Approved` in squash-merged PR [#64](https://github.com/kubzik96/genesis-ai/pull/64).
 - Exact post-trial baseline independently verified at `5c86f03df38004bb638d0bbacfdfeb7f3c1ac557`.
 - Existing specifications, Decision Records, Bridge, Broker code, and Dify plugin candidate remain in GitHub; their presence does not imply runtime authorization.
 
@@ -87,13 +90,13 @@ Canonical wording and status remain in `decisions/INDEX.md` and the linked recor
 
 | Field | Value |
 |---|---|
-| `verified_main` | `e545cd07a4c961e3bea48511a963a091fdb7e67c` |
-| Meaning | Exact accepted `main` after independently reviewed and merged One-Window Trial #3 evidence in PR #56 |
+| `verified_main` | `176b5e0a80e10bceecf609632fdb76218833dcc4` |
+| Meaning | Exact accepted `main` after S-0007 Revision 1 was promoted to Approved in PR #64 |
 | Freshness rule | Git history identifies the memory commit itself; do not embed a self-referential future merge SHA. If `main` advances, inspect the delta and update this field after the next meaningful accepted change. |
 
 ## NEXT_ACTION
 
-Continue bounded discovery in Issue [#55](https://github.com/kubzik96/genesis-ai/issues/55) on the remaining publication gap: determine whether the existing product-native Codex path can eliminate the one CEO **Create PR** click and preserve Draft state without PAT/secrets, GitHub Actions, Dify, Broker, or custom transport. Do not rerun Trial #3 merely to re-prove launch/recovery. If the product cannot remove this last click under current supported capabilities, record that limitation explicitly rather than adding custom infrastructure.
+Complete the single bounded Trial #4 / T-006 exercise authorized in Issue [#65](https://github.com/kubzik96/genesis-ai/issues/65): publish this `MEMORY.md`-only result through the product-native path if available, then record the exact publication outcome without making a zero-click or Draft-preservation claim that was not directly observed. Stop after the result/publication attempt. Independent review, Ready, merge, and any later T-006 implementation require separate CEO gates; T-006 remains `BLOCKED` beyond this narrowly consumed Trial #4 EA.
 
 ## CEO_GATES
 
