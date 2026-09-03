@@ -113,7 +113,7 @@ Restrictions:
 - T-010 remains **REVIEW** until separate CEO acceptance;
 - T-010 is **not** DONE;
 - T-009 is **REVIEW**, not DONE;
-- T-006 remains BLOCKED;
+- T-006 is **DONE** by explicit CEO acceptance after S-0007 Revision 1 / Trial #4; this does not grant any new Execution Authorization;
 - T-011 Stage 1 does **not** authorize runtime live GitHub writes, deployment, secrets or smoke;
 - further stages of T-011 require **separate** CEO authorization.
 
@@ -121,21 +121,21 @@ Restrictions:
 
 ## Заблокированные задачи
 
-| ID | Название | Статус | Исполнитель | Причина |
-|---|---|---|---|---|
-| T-006 | Реализовать Orchestrator v0.1 | BLOCKED | GitHub Copilot | Нет Approved Specification и отдельного Execution Authorization. Реализация остановлена до нового решения CEO. |
+Нет текущей BLOCKED-записи для T-006; Genesis Orchestrator v0.1 принят CEO после Trial #4.
 
 ---
 
 ## Завершённые задачи
 
 | ID | Название | Статус | Исполнитель | Подтверждение |
-|---|---|---|---|
+|---|---|---|---|---|
 | T-001 | Создать инфраструктуру Bridge | DONE | GitHub Copilot | Bridge создан в main (`294eb9cc5805ae8f3d5a32b5e8a5588563a77231`) и фактически используется |
+| T-006 | Реализовать Orchestrator v0.1 | DONE | Genesis Orchestrator / Codex Cloud | S-0007 Revision 1; Trial #4 Issue #65; PR #66 squash merge `90c30542aa07c837859c3cf8055f092eb536b450`; CEO accepted completion after Issue #68 assessment |
 | T-007 | Development Workflow v1 | DONE | GitHub Engineer | PR #2; merge `7636f9872e4253d40688c45ef937db233175ef39`; post-merge verified |
 | T-008 | Repository of Approved Specifications / DR-0004 | DONE | GitHub Engineer | PR #1; merge `e6f696270fad4173ac45dddc237b81210ba4aeea`; post-merge verified |
 
 T-001 закрыт решением CEO: Bridge создан и используется.
+T-006 принят CEO как DONE после выполнения критериев S-0007 Revision 1 и принятого Trial #4; residual one-click Create PR / Draft-preservation limitations остаются известными product boundaries, а не незавершённой реализацией v0.1.
 T-007 и T-008 закрыты отдельным решением CEO после merge и post-merge verification.
 
 ---

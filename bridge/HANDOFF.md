@@ -120,7 +120,7 @@ CEO Execution Authorization: **GRANTED — Stage 1 CODE_AND_TESTS_ONLY** (2026-0
 **Связь с другими задачами:**
 - T-009 остаётся REVIEW (PARTIAL PASS); не DONE
 - T-010 остаётся REVIEW; не DONE
-- T-006 остаётся BLOCKED
+- T-006 принят CEO как DONE после S-0007 Revision 1 / Trial #4; это не расширяет T-011 EA и не авторизует Stage 2/runtime
 - S-0002 Revision 1 — foundations auth/idempotency/audit; allowlist не расширяется молча
 
 ### Задача (Stage 1 only)
