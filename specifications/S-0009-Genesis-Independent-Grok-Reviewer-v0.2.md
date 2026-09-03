@@ -73,18 +73,26 @@ REVIEWED_HEAD_SHA: <exact 40-character SHA>
 HEAD_CONFIRMED: YES | NO
 SCOPE: CLEAN | NOT_CLEAN
 FINDINGS:
-- <severity>: <concise finding with evidence>
+- SEVERITY: INFO | LOW | MEDIUM | HIGH | CRITICAL
+  DISPOSITION: NON_BLOCKING | BLOCKING
+  EVIDENCE: <concise finding with file/path or other bounded evidence>
 READY_GATE_SAFE: YES | NO
 STOP
 ```
 
-Findings SHOULD cite file/path and relevant evidence. Unknown, missing, malformed, or semantically contradictory fields are fail-closed.
+Every finding MUST use exactly one allowed `SEVERITY` and one allowed `DISPOSITION`. `DISPOSITION` is normative for gate safety: `BLOCKING` means the finding must be resolved before the reviewed artifact may be used as positive evidence for a consequential gate. `NON_BLOCKING` means the finding may remain advisory. `HIGH` and `CRITICAL` findings MUST always use `DISPOSITION: BLOCKING`; `INFO`, `LOW`, and `MEDIUM` MAY be `NON_BLOCKING` or `BLOCKING` according to whether the finding invalidates an applicable requirement or gate condition. Unknown severity/disposition values, missing fields, malformed findings, or semantically contradictory fields are fail-closed.
+
+Findings SHOULD cite file/path and relevant evidence.
 
 Cross-field invariants are normative:
 
 - `HEAD_CONFIRMED: NO` or `SCOPE: NOT_CLEAN` MUST produce `VERDICT: BLOCKED` and `READY_GATE_SAFE: NO`;
+- any `DISPOSITION: BLOCKING` finding MUST produce `VERDICT: REQUEST_CHANGES` or `BLOCKED` and `READY_GATE_SAFE: NO`;
+- any `SEVERITY: HIGH` or `CRITICAL` finding MUST be `DISPOSITION: BLOCKING` and therefore MUST have `READY_GATE_SAFE: NO`;
 - `VERDICT: REQUEST_CHANGES` or `VERDICT: BLOCKED` MUST have `READY_GATE_SAFE: NO`;
-- `READY_GATE_SAFE: YES` is permitted only with `HEAD_CONFIRMED: YES`, `SCOPE: CLEAN`, and `VERDICT: APPROVE` or `APPROVE_WITH_FINDINGS`;
+- `VERDICT: APPROVE` MUST contain no findings;
+- `VERDICT: APPROVE_WITH_FINDINGS` MAY contain only `DISPOSITION: NON_BLOCKING` findings;
+- `READY_GATE_SAFE: YES` is permitted only with `HEAD_CONFIRMED: YES`, `SCOPE: CLEAN`, no blocking findings, and `VERDICT: APPROVE` or `APPROVE_WITH_FINDINGS`;
 - `REVIEWED_HEAD_SHA` MUST equal the expected HEAD and the acceptance-time current HEAD;
 - any combination violating these invariants MUST normalize to `VERDICT: BLOCKED` and `READY_GATE_SAFE: NO`.
 
@@ -97,7 +105,7 @@ The review MUST stop without an approval recommendation when any of the followin
 1. request-time, reviewed, or acceptance-time PR HEAD values do not all match;
 2. repository or PR identity cannot be verified;
 3. required diff/context is unavailable, truncated beyond the bounded review contract, or exceeds configured limits;
-4. output violates the structured response contract or its cross-field invariants;
+4. output violates the structured response contract or its cross-field invariants, including missing/unknown severity or disposition, a `HIGH`/`CRITICAL` finding marked non-blocking, or any blocking finding paired with a gate-safe verdict;
 5. requested review would require GitHub credentials or write authority to be exposed to Grok/xAI;
 6. authentication, quarantine, secret-handling, or LIVE state is uncertain;
 7. the request attempts to expand reviewer authority into execution, GitHub writes, merge, deploy, secret operations, or another control plane;
@@ -130,7 +138,7 @@ After Specification Approval and a separate Execution Authorization, the minimum
 1. receives a repository/PR/exact-HEAD review request from Genesis;
 2. verifies request-time HEAD and obtains or is supplied only bounded read context;
 3. makes one bounded xAI review request under a default-off/LIVE gate;
-4. validates the structured response and cross-field invariants;
+4. validates the structured response, finding severity/disposition, and cross-field invariants;
 5. re-fetches and verifies acceptance-time current HEAD;
 6. for consequential-gate use, requires the trusted Genesis side to durably persist the validated verdict in GitHub with the exact reviewed HEAD before the verdict can be accepted as gate evidence;
 7. returns the advisory result to Genesis;
@@ -170,6 +178,10 @@ Before implementation can be considered review-ready, local/mock verification MU
 - request-time HEAD mismatch fails closed;
 - HEAD change during review / acceptance-time mismatch fails closed;
 - missing or malformed `REVIEWED_HEAD_SHA` fails closed;
+- missing/unknown finding severity or disposition fails closed;
+- every `HIGH` or `CRITICAL` finding is forced to `DISPOSITION: BLOCKING` and `READY_GATE_SAFE: NO`;
+- any blocking finding paired with `APPROVE`, `APPROVE_WITH_FINDINGS`, or `READY_GATE_SAFE: YES` fails closed;
+- `APPROVE_WITH_FINDINGS` is accepted only when every finding is explicitly non-blocking and all other invariants hold;
 - contradictory output combinations fail closed;
 - oversized/truncated/missing review context fails closed;
 - secret/credential fields are rejected or excluded from reviewer payloads;
@@ -200,7 +212,8 @@ S-0009 v0.2 is implementation-ready only when an independently reviewed Draft de
 - request-time, reviewed, and acceptance-time exact HEAD are bound and stale reviews are invalidated;
 - consequential-gate reviewer evidence must be durably recorded in GitHub by the trusted Genesis side with exact reviewed HEAD before use;
 - input context is bounded and secret-free;
-- output is structured, cross-field consistent, and fail-closed;
+- output is structured, finding severity/disposition is machine-checkable, every blocking finding forces a non-gate-safe result, and contradictory combinations fail closed;
+- `HIGH`/`CRITICAL` findings are always blocking, while `APPROVE_WITH_FINDINGS` can be gate-safe only when every finding is explicitly non-blocking and all other invariants hold;
 - Grok/xAI has no GitHub write authority or GitHub credentials;
 - future implementation file boundaries, dependencies, assumptions, verification methods, output artifacts, and Decision Record necessity are explicit;
 - DR-0011 remains the accepted architecture boundary before implementation EA can be exercised;
