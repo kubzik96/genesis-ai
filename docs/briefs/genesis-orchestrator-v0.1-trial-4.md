@@ -10,7 +10,7 @@ separate CEO Ready and merge gates.
 ## Git state
 
 - Relevant base: `176b5e0a80e10bceecf609632fdb76218833dcc4` — `main` immediately before the accepted Trial #4 change.
-- Reviewed PR HEAD: recorded in the exact-HEAD independent review in Issue [#67](https://github.com/kubzik96/genesis-ai/issues/67); it is the PR #66 source-branch commit, not the Codex local/task commit and not the squash merge commit.
+- Reviewed PR HEAD: `f5cd3e18c6a65761ee4da80377c944ef27cde495` — the exact PR #66 source-branch commit confirmed by the independent review in Issue [#67](https://github.com/kubzik96/genesis-ai/issues/67); it is not the Codex local/task commit and not the squash merge commit.
 - Accepted squash merge SHA: [`90c30542aa07c837859c3cf8055f092eb536b450`](https://github.com/kubzik96/genesis-ai/commit/90c30542aa07c837859c3cf8055f092eb536b450) — the commit added to `main` when PR #66 was accepted and squash-merged.
 - Acceptance-state merge SHA: [`5b9d1d90fd0f6bb5e31643793e6a26ff72ac4830`](https://github.com/kubzik96/genesis-ai/commit/5b9d1d90fd0f6bb5e31643793e6a26ff72ac4830) — the later `main` commit that records the CEO's T-006 acceptance; it is not PR #66's reviewed HEAD or merge SHA.
 
