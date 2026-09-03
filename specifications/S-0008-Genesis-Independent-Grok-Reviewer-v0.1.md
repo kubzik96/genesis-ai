@@ -174,7 +174,7 @@ Before implementation can be considered review-ready, local/mock verification MU
 - request-time HEAD mismatch fails closed;
 - HEAD change during review / acceptance-time mismatch fails closed;
 - missing or malformed `REVIEWED_HEAD_SHA` fails closed;
-- contradictory output combinations fails closed;
+- contradictory output combinations fail closed;
 - oversized/truncated/missing review context fails closed;
 - secret/credential fields are rejected or excluded from reviewer payloads;
 - Grok self-review of Grok-produced work is rejected as independent-review evidence;
