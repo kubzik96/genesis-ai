@@ -39,7 +39,7 @@ If this summary conflicts with a higher-priority or canonical artifact, the cano
 - **Production Habit #1 / Genesis Decision Brief v0:** accepted and merged through completed Issue [#71](https://github.com/kubzik96/genesis-ai/issues/71) and PR [#72](https://github.com/kubzik96/genesis-ai/pull/72) as `68d00b960692eed092584bb5cbadb3e37e2a7fc0`. The capability adds a short GitHub-native decision-brief template plus one filled Trial #4/T-006 example. The real run again required one CEO result-page **Create PR** click; publication was initially non-Draft and the orchestrator restored Draft before independent review.
 - **Capability boundary:** full zero-click One-Window is still **not proven**. The observed product-native path still requires one CEO **Create PR** click, and Draft preservation is not guaranteed; the orchestrator can restore Draft when supported.
 - **S-0007 Revision 1:** Approved by the CEO on 2026-09-03 and merged through PR [#64](https://github.com/kubzik96/genesis-ai/pull/64).
-- **S-0008 / S-0009 / DR-0011:** S-0008 Revision 1 was CEO-approved and DR-0011 separately CEO-accepted on 2026-09-03 against independently reviewed HEAD `0cdf9b50287e1c1250cbcd2fdcb4c3ab25f0023d`. Independent Qodo review later found that required persistence-before-use behavior changes acceptance criteria and is therefore a Major specification change. S-0008 Revision 1 is preserved as **Superseded**; corrected requirements are now **S-0009 Draft Revision 1**, which is NOT_APPROVED and requires fresh exact-HEAD review plus separate CEO Specification Approval. DR-0011 remains Accepted. **Execution Authorization remains NOT_GRANTED.**
+- **S-0008 / S-0009 / DR-0011:** S-0008 Revision 1 was CEO-approved and DR-0011 separately CEO-accepted on 2026-09-03 against independently reviewed HEAD `0cdf9b50287e1c1250cbcd2fdcb4c3ab25f0023d`. Independent Qodo review later established that the corrected requirements are a Major specification change, so S-0008 Revision 1 is preserved as **Superseded**. S-0009 Revision 1 was independently reviewed clean at exact HEAD `f3c4071244e0fe3e1540d3a68ad8e3cb4d37f7ae` and explicitly CEO-approved on 2026-09-03. DR-0011 remains Accepted. **Execution Authorization remains NOT_GRANTED.**
 - **Dify:** OPTIONAL / NON-BLOCKING for the One-Window MVP. No Dify operation is required for the next project step.
 - **Durability:** GitHub remains the only durable Source of Record. Chats are working memory only.
 - **Task status:** T-006 is DONE by explicit CEO acceptance; this snapshot does not promote T-009, T-010, or T-011 to `DONE`; `bridge/QUEUE.md` remains authoritative.
@@ -66,7 +66,7 @@ If this summary conflicts with a higher-priority or canonical artifact, the cano
 - **No custom transport for this blocker:** Dify/Broker/custom transport remains frozen or deferred; do not build new infrastructure merely to remove one manual send.
 - **CI:** repository documentation records `CI_NOT_CONFIGURED`; absence of CI is not a passing check.
 - **Broker quarantine:** DR-0008 remains active in repository evidence; DR-0009 states that the controlled authenticated check and safe Dify logging confirmation were not completed. Do not infer that quarantine is lifted.
-- **Independent Grok Reviewer runtime:** S-0009 Revision 1 is Draft and DR-0011 is Accepted; implementation EA, authenticated Broker use, secrets operations, deployment and first LIVE xAI call remain separately blocked pending explicit CEO gates.
+- **Independent Grok Reviewer runtime:** S-0009 Revision 1 is Approved and DR-0011 is Accepted, but implementation EA, authenticated Broker use, secrets operations, deployment and first LIVE xAI call remain separately blocked pending explicit CEO gates.
 
 ## FAILED_PATHS / DO_NOT_REPEAT
 
@@ -104,13 +104,13 @@ Canonical wording and status remain in `decisions/INDEX.md` and the linked recor
 
 ## NEXT_ACTION
 
-Obtain independent exact-HEAD review of S-0009 Draft Revision 1. If acceptable, obtain a separate explicit CEO Specification Approval before any promotion to Approved. DR-0011 remains Accepted. Only after S-0009 is durably approved may a separate bounded implementation EA be considered. No xAI LIVE call, authenticated Broker use, secrets operation, deploy, or quarantine removal is authorized by this memory update.
+Verify the bounded S-0009 approval promotion in PR #81, then obtain a separate CEO Ready authorization if the docs-only PR remains consistent. Merge remains a later separate CEO gate. Only after S-0009 is durable on `main` may a separate bounded implementation EA be considered. No xAI LIVE call, authenticated Broker use, secrets operation, deploy, or quarantine removal is authorized by this memory update.
 
 ## CEO_GATES
 
 - Memory content records gates; it never grants or chains them.
-- S-0008 Revision 1 was CEO-approved and is now Superseded because the corrected requirements are a Major change. S-0009 is **Draft Revision 1 / NOT_APPROVED** and requires fresh CEO Specification Approval after independent exact-HEAD review. DR-0011 remains CEO-accepted. **Execution Authorization remains NOT_GRANTED**.
-- Ready, merge, S-0009 Specification Approval, implementation EA, deployment, secrets operations, Dify operations, authenticated Broker use, Cloudflare changes, first xAI LIVE call and quarantine removal remain separately gated where governance requires.
+- S-0008 Revision 1 is Superseded. S-0009 Revision 1 was explicitly CEO-approved on 2026-09-03 against exact independently reviewed HEAD `f3c4071244e0fe3e1540d3a68ad8e3cb4d37f7ae`. DR-0011 remains CEO-accepted. **Execution Authorization remains NOT_GRANTED**.
+- Ready, merge, implementation EA, deployment, secrets operations, Dify operations, authenticated Broker use, Cloudflare changes, first xAI LIVE call and quarantine removal remain separately gated where governance requires.
 - A successful step does not authorize the next step.
 - Only the CEO can accept task completion and authorize merge.
 - Memory maintenance does not give any agent standing write authority. An authorized executor may update memory only inside the current bounded scope or a separately authorized linked docs-only PR.
@@ -118,7 +118,7 @@ Obtain independent exact-HEAD review of S-0009 Draft Revision 1. If acceptable, 
 ## OPEN_EXTERNAL_DEPENDENCIES
 
 - A supported product-native Codex result-publication path that removes the remaining CEO **Create PR** click and, ideally, preserves Draft state. Issue→Codex launch, memory recovery, and bounded result production are already proven; Production Habit #1 reproduced the remaining publication/Draft limitation.
-- A permanent independent-review implementation replacing temporary Qodo; S-0009 Revision 1 is Draft and DR-0011 defines the accepted architecture, but implementation and LIVE proof remain separately gated.
+- A permanent independent-review implementation replacing temporary Qodo; S-0009 Revision 1 is Approved and DR-0011 defines the accepted architecture, but implementation and LIVE proof remain separately gated.
 - Dify/platform-support or compatibility evidence, but only if the optional plugin path is deliberately resumed.
 - A separately authorized controlled non-Dify Broker authentication check and explicit CEO quarantine removal, but only before future authenticated Broker use.
 
