@@ -22,7 +22,8 @@
 | [S-0004](S-0004-Post-Stage-4-Source-of-Record-Synchronization-Governance-Correction.md) | Post-Stage-4 Source of Record Synchronization (Governance Correction) | Approved | 1 | T-009, T-010 | 2026-08-07 |
 | [S-0005](S-0005-Genesis-Limited-Grok-Executor-Path.md) | Genesis Limited Grok Executor Path | Approved | 2 | T-011 | 2026-08-12 |
 | [S-0006](S-0006-Private-Dify-Broker-Tool-Plugin.md) | Private Dify Genesis Broker Tool Plugin | Approved | 1 | T-009 | 2026-08-23 |
+| [S-0007](S-0007-Genesis-Orchestrator-v0.1.md) | Genesis Orchestrator v0.1 | Draft | 1 | T-006 | 2026-09-03 |
 
 ## Следующий номер
 
-`S-0007`
+`S-0008`
