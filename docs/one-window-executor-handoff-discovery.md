@@ -1,9 +1,9 @@
 # One-Window Executor Handoff Discovery
 
-Status: Draft discovery evidence for Issue #45, updated after Genesis One-Window Trial #2.
+Status: Accepted discovery evidence from Issue #45, with an Issue #52 product-capability update pending review.
 
 Original discovery baseline: `2258e312107c9d3d05eb4afb379cfc070e3d26d7`.
-Latest verified accepted main after Trial #2 memory sync: `2942cedc9fdcbdfcb3c62325370b61b49c844057`.
+Latest verified accepted main: `7dcef63cdcb71663ff2afd3631f6d4e9da6bb451`.
 
 ## Objective
 
@@ -24,12 +24,23 @@ Therefore project-memory recovery and the cloud executor itself are no longer th
 
 Trial #2 is a PASS for self-recovering executor workflow. It is **not** a full One-Window PASS.
 
+## Product-native launch evidence for Issue #52
+
+Official OpenAI documentation now exposes a narrower product-native candidate that was not recorded in the original discovery:
+
+- [Codex cloud](https://learn.chatgpt.com/docs/cloud) documents starting work from GitHub pull requests **and issues**;
+- the [OpenAI changelog](https://learn.chatgpt.com/docs/changelog) states that an `@codex` mention in a GitHub Issue can kick off a task;
+- [Work event-triggered tasks](https://learn.chatgpt.com/docs/automations) remain documented around supported pull-request activity and are still not evidence of an initial Issue/new-task trigger.
+
+This proves that a product-native **GitHub Issue → Codex cloud** launch surface exists in the supported product. During creation of the Issue #52 Draft PR, `chatgpt-codex-connector[bot]` automatically replied that a Codex environment must be created for this repository. No environment was created and no task started. This is repository-specific evidence that the integration recognizes the route, but the initial launch is currently blocked on missing environment configuration.
+
 ## Capability matrix
 
 | Path | Status | Evidence |
 |---|---|---|
 | ChatGPT Work as Genesis cloud executor | **PROVISIONALLY AVAILABLE / PROVEN IN TRIAL #2** | Work completed the bounded Trial #2 from GitHub-backed memory without CEO history restatement and produced a verifiable Issue + Draft PR. One manual CEO send into Work remained. |
 | Current main-chat GitHub connector: directly launch ChatGPT Work | **NOT EXPOSED** | The currently available GitHub actions can manage repository artifacts but expose no action that starts a Work chat/task from this orchestrator conversation. |
+| GitHub Issue `@codex` → Codex cloud initial task | **BLOCKED — REPOSITORY ENVIRONMENT REQUIRED** | Official OpenAI documentation says Codex cloud work can start from GitHub Issues. The Codex connector recognized the route on Draft PR #53 but requested creation of an environment for this repository; no task started. |
 | ChatGPT Work event-triggered task from GitHub | **AVAILABLE FOR SUPPORTED PR ACTIVITY, NOT A PROVEN INITIAL-TASK TRANSPORT** | Current OpenAI product documentation supports webhook-based Work tasks triggered by GitHub pull-request activity in an authorized repository. Documented triggers begin from PR activity, so this does not by itself prove a way to launch the initial coding executor before a PR exists. |
 | Current ChatGPT GitHub connector: launch/assign GitHub Copilot cloud agent | **BLOCKED** | Issue #46 probe: assignment to `copilot-swe-agent[bot]` failed through the current connector path (HTTP 422 during create-with-assignee; HTTP 403 on later assignment). No executor session or PR was created. |
 | GitHub Copilot cloud agent via GitHub platform API | **AVAILABLE IN PLATFORM, NOT EXPOSED THROUGH CURRENT CONNECTOR PATH** | Platform documentation supports cloud-agent task/assignment mechanisms, but the required launch surface is not available through the currently connected action set and the repository UI probe did not offer Copilot as an assignee. |
@@ -41,23 +52,30 @@ Trial #2 is a PASS for self-recovering executor workflow. It is **not** a full O
 
 Do **not** build a new executor runtime merely to remove one manual send. Do **not** return to Dify for this problem.
 
+A product-native initial-launch candidate now exists in official documentation:
+
+`bounded GitHub Issue with @codex → Codex cloud task`
+
+Its presence on the Genesis repository is now evidenced, but the required Codex environment does not exist and end-to-end behavior remains unproven. Therefore the manual-send blocker has changed from an unexposed launch surface to a missing product-native environment; it is not removed, and One-Window transport must not yet be called solved.
+
 The currently proven operating path is:
 
 `CEO → Genesis orchestrator → one bounded manual send → ChatGPT Work executor → GitHub Issue/Draft PR → Genesis verification + independent review when required → CEO consequential gate`
 
-The target path remains:
+The preferred target path is now:
 
-`CEO → Genesis orchestrator → direct supported Work/cloud-executor launch → GitHub Issue/Draft PR → Genesis verification + independent review when required → CEO consequential gate`
+`CEO → Genesis orchestrator → bounded GitHub Issue with @codex → Codex cloud executor → Draft PR → Genesis verification + independent review when required → CEO consequential gate`
 
 ChatGPT Work is therefore the **provisional default cloud executor**, not a claim that One-Window transport is solved.
 
 ## Smallest missing capability
 
-Only one narrow capability is still missing from the current orchestrator surface:
+Only one narrow configuration-and-proof sequence is still missing:
 
-- input: bounded task plus GitHub repository/context pointer;
-- action: start/dispatch that task to an authorized ChatGPT Work/cloud executor;
-- output: durable task/session reference and resulting GitHub Issue/PR when available;
+- configuration: under a separate authorization, create the minimum Codex cloud environment for `kubzik96/genesis-ai` without adding secrets, runtime deployment, or unrelated permissions;
+- input: one bounded Issue that points the executor to current `main` and `MEMORY.md` rather than carrying project history;
+- action: the Issue mention starts exactly one authorized Codex cloud task;
+- output: durable task/session evidence and one bounded Draft PR when requested;
 - default authority: executor may perform only the bounded task and create reviewable artifacts; it must not Ready, merge, deploy, access secrets, or activate production unless separately authorized;
 - verification: Genesis independently verifies GitHub artifacts and exact PR HEAD/diff;
 - failure behavior: fail closed; do not silently fall back to local Codex, Dify, secrets, or a new runtime.
@@ -68,16 +86,17 @@ A GitHub-PR-triggered Work task may later be useful for **post-PR** review, moni
 
 Prefer product-native transport over custom infrastructure. In order:
 
-1. watch for or verify a supported direct Chat/Genesis → Work dispatch/task-launch surface;
-2. if unavailable, perform only a short eligibility/capability re-check of official GitHub cloud-agent launch mechanisms when new evidence warrants it;
-3. do not implement an adapter, token bridge, Dify path, or custom executor runtime merely to remove the single manual send without a separate architecture/CEO gate.
+1. request a separate bounded gate for the minimum Codex environment creation explicitly requested by the connector; do not create it under this discovery gate;
+2. after environment verification, use a separately bounded probe Issue whose executor may create only one docs-only Draft PR and must recover context from current `main`/`MEMORY.md`;
+3. if the surface is absent or the probe fails, preserve the evidence and continue the single bounded manual send without retries or custom transport;
+4. do not implement an adapter, token bridge, Dify path, or custom executor runtime merely to remove the single manual send without a separate architecture/CEO gate.
 
 ## Memory impact
 
-`Memory impact: YES` for the proven Trial #2 fact: ChatGPT Work is a viable self-recovering cloud executor, while one manual orchestrator→Work send remains the unresolved blocker.
+`Memory impact: YES` because the blocker materially changed: the product-native route is recognized for the Genesis repository, while missing Codex environment configuration now blocks launch. This is not evidence that the route works end-to-end.
 
-Do not encode a future transport solution in Memory until that direct path is proven end-to-end.
+Do not encode the candidate as a working transport solution in Memory until that direct path is proven end-to-end.
 
 ## Authority boundary
 
-This discovery proposes no Ready, merge, deploy, secrets, LIVE, Dify, Broker HTTP, Cloudflare, production runtime, or standing write authority. PR #47 remains Draft. Any implementation of a missing executor-launch capability requires a separately bounded work item and the applicable review/CEO gates.
+This discovery proposes no environment creation, agent launch, Ready, merge, deploy, secrets, LIVE, Dify, Broker HTTP, Cloudflare, production runtime, or standing write authority. Environment setup and execution of the Issue `@codex` launch each require a separately bounded work item and the applicable review/CEO gates.
