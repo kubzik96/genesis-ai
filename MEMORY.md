@@ -31,15 +31,16 @@ If this summary conflicts with a higher-priority or canonical artifact, the cano
 ## CURRENT_STATE
 
 - **One-Window Trial #2:** PASS for GitHub-backed memory recovery and bounded cloud-executor execution through Issue [#48](https://github.com/kubzik96/genesis-ai/issues/48) and PR [#49](https://github.com/kubzik96/genesis-ai/pull/49); it did **not** prove full One-Window transport.
-- **Provisional executor:** ChatGPT Work is the provisional proven cloud executor. A fresh Work task recovered the required Genesis context from GitHub Long-Term Project Memory and created bounded GitHub artifacts without a CEO history restatement.
+- **Provisional executor:** ChatGPT Work is a proven fallback cloud executor. The preferred v0.1 coding route is the product-native GitHub Issue `@codex` → Codex Cloud path proven in Trials #3 and #4.
 - **Accepted handoff discovery:** PR [#47](https://github.com/kubzik96/genesis-ai/pull/47) was independently reviewed, separately authorized Ready, and squash-merged as `60ed769e171aeb146dd61fbf0ae05a6c71069dec`.
 - **One-Window Trial #3:** GitHub Issue `@codex` → Codex Cloud launch is proven through Issue [#54](https://github.com/kubzik96/genesis-ai/issues/54); Codex recovered project context from `MEMORY.md`, produced the bounded docs-only result, and the result-page **Create PR** action published PR [#56](https://github.com/kubzik96/genesis-ai/pull/56), later squash-merged as `e545cd07a4c961e3bea48511a963a091fdb7e67c`.
-- **Capability boundary:** product-native Issue → Codex launch no longer requires a manual CEO task handoff. Full zero-click One-Window is still **not proven** because publishing the completed Codex result required one CEO click on **Create PR**; Codex initially opened #56 non-Draft and the orchestrator restored Draft without content changes before review.
-- **S-0007 Revision 1:** Approved by the CEO on 2026-09-03 and merged through PR [#64](https://github.com/kubzik96/genesis-ai/pull/64). Approval alone did not grant Execution Authorization.
-- **One-Window Trial #4:** Issue [#65](https://github.com/kubzik96/genesis-ai/issues/65) recorded Execution Authorization as `NOT_GRANTED` when the bounded candidate was created. The later CEO `@codex` command granted one bounded EA solely to recover from `main`, update this file, run applicable docs/static checks, and attempt product-native PR publication. It does not authorize T-006 implementation, Ready, merge, deployment, runtime writes, or any follow-on step.
+- **One-Window Trial #4:** PASS under S-0007 v0.1. Issue [#65](https://github.com/kubzik96/genesis-ai/issues/65) used exactly one bounded EA and one `@codex` launch; Codex recovered context and produced the requested `MEMORY.md`-only result. Task-side automatic initial PR publication failed without credential expansion; one CEO result-page **Create PR** click published PR [#66](https://github.com/kubzik96/genesis-ai/pull/66), initially non-Draft. The orchestrator restored Draft, exact HEAD was independently reviewed through Issue [#67](https://github.com/kubzik96/genesis-ai/issues/67), Ready and merge were separately authorized, and #66 was squash-merged as `90c30542aa07c837859c3cf8055f092eb536b450`.
+- **Genesis Orchestrator v0.1 / T-006:** CEO accepted **DONE** after the post-merge S-0007 acceptance assessment in Issue [#68](https://github.com/kubzik96/genesis-ai/issues/68). This acceptance does not grant any new or continuing Execution Authorization.
+- **Capability boundary:** full zero-click One-Window is still **not proven**. The observed product-native path still requires one CEO **Create PR** click, and Draft preservation is not guaranteed; the orchestrator can restore Draft when supported.
+- **S-0007 Revision 1:** Approved by the CEO on 2026-09-03 and merged through PR [#64](https://github.com/kubzik96/genesis-ai/pull/64).
 - **Dify:** OPTIONAL / NON-BLOCKING for the One-Window MVP. No Dify operation is required for the next project step.
 - **Durability:** GitHub remains the only durable Source of Record. Chats are working memory only.
-- **Task status:** this snapshot does not promote T-009, T-010, or T-011 to `DONE`; `bridge/QUEUE.md` and separate CEO acceptance remain authoritative.
+- **Task status:** T-006 is DONE by explicit CEO acceptance; this snapshot does not promote T-009, T-010, or T-011 to `DONE`; `bridge/QUEUE.md` remains authoritative.
 
 ## DONE
 
@@ -50,13 +51,14 @@ If this summary conflicts with a higher-priority or canonical artifact, the cano
 - The executor-handoff discovery in PR [#47](https://github.com/kubzik96/genesis-ai/pull/47) was independently reviewed, separately authorized Ready, and squash-merged as `60ed769e171aeb146dd61fbf0ae05a6c71069dec`.
 - Trial #3 launch/recovery evidence in PR [#56](https://github.com/kubzik96/genesis-ai/pull/56) was independently reviewed through Issue [#57](https://github.com/kubzik96/genesis-ai/issues/57), separately authorized Ready and merge, and squash-merged as `e545cd07a4c961e3bea48511a963a091fdb7e67c`.
 - S-0007 Revision 1 was drafted in PR [#62](https://github.com/kubzik96/genesis-ai/pull/62), independently reviewed at exact HEAD, CEO-approved, and promoted to `Approved` in squash-merged PR [#64](https://github.com/kubzik96/genesis-ai/pull/64).
-- Exact post-trial baseline independently verified at `5c86f03df38004bb638d0bbacfdfeb7f3c1ac557`.
+- Trial #4 completed through Issue [#65](https://github.com/kubzik96/genesis-ai/issues/65) and independently reviewed PR [#66](https://github.com/kubzik96/genesis-ai/pull/66), squash-merged as `90c30542aa07c837859c3cf8055f092eb536b450`.
+- T-006 / Genesis Orchestrator v0.1 was explicitly accepted by the CEO as DONE after the S-0007 acceptance matrix was recorded in Issue [#68](https://github.com/kubzik96/genesis-ai/issues/68).
 - Existing specifications, Decision Records, Bridge, Broker code, and Dify plugin candidate remain in GitHub; their presence does not imply runtime authorization.
 
 ## KNOWN_BLOCKERS
 
 - **Residual publication click:** Issue → `@codex` → Codex Cloud execution is proven, but the completed result still required one CEO click on the Codex result-page **Create PR** action. Automatic task-side first-PR publication remains unproven.
-- **Draft publication semantics:** the proven result-page publication path created PR #56 as non-Draft despite the bounded task requiring Draft; the orchestrator corrected it back to Draft. Do not assume Codex result publication preserves Draft by default.
+- **Draft publication semantics:** the proven result-page publication path created Trial #3 PR #56 and Trial #4 PR #66 as non-Draft despite bounded Draft requirements; the orchestrator corrected them back to Draft. Do not assume Codex result publication preserves Draft by default.
 - **Copilot assignment probe:** blocked under the current connector/UI evidence recorded by Issue [#46](https://github.com/kubzik96/genesis-ai/issues/46); revisit only when new capability evidence exists.
 - **No custom transport for this blocker:** Dify/Broker/custom transport remains frozen or deferred; do not build new infrastructure merely to remove one manual send.
 - **CI:** repository documentation records `CI_NOT_CONFIGURED`; absence of CI is not a passing check.
@@ -69,7 +71,7 @@ If this summary conflicts with a higher-priority or canonical artifact, the cano
 | Dify private plugin `0.1.4` install/upgrade | Frozen after failed-upgrade evidence; not an MVP prerequisite | New Dify/platform-support evidence plus a separately authorized bounded recovery action |
 | Raw authenticated Dify HTTP node to Broker | Rejected after the execution-details credential-exposure class recorded in DR-0008/DR-0009 | A new approved security design; never reuse the raw-header pattern by default |
 | Local Codex install/local-executor path | Unavailable/failed in the CEO environment; GitHub does not independently prove a recovery | New compatible environment, release, or diagnostic evidence plus a bounded authorization |
-| Repeating already verified trial steps | Do not recreate Issue #41 / PR #42 or rerun Trial #3 Issue #54 merely to re-prove Issue→Codex launch/recovery | Only a new, explicitly scoped trial with a new acceptance target |
+| Repeating already verified trial steps | Do not recreate Issue #41 / PR #42 or rerun Trials #3/#4 merely to re-prove Issue→Codex launch/recovery | Only a new, explicitly scoped trial with a new acceptance target |
 
 Failed-path entries are guardrails, not permanent bans. An agent may propose reconsideration only when it cites new evidence and the required CEO gate.
 
@@ -90,13 +92,13 @@ Canonical wording and status remain in `decisions/INDEX.md` and the linked recor
 
 | Field | Value |
 |---|---|
-| `verified_main` | `176b5e0a80e10bceecf609632fdb76218833dcc4` |
-| Meaning | Exact accepted `main` after S-0007 Revision 1 was promoted to Approved in PR #64 |
+| `verified_main` | `90c30542aa07c837859c3cf8055f092eb536b450` |
+| Meaning | Exact accepted `main` after Trial #4 PR #66 was independently reviewed, separately authorized, and squash-merged |
 | Freshness rule | Git history identifies the memory commit itself; do not embed a self-referential future merge SHA. If `main` advances, inspect the delta and update this field after the next meaningful accepted change. |
 
 ## NEXT_ACTION
 
-Complete the single bounded Trial #4 / T-006 exercise authorized in Issue [#65](https://github.com/kubzik96/genesis-ai/issues/65): publish this `MEMORY.md`-only result through the product-native path if available, then record the exact publication outcome without making a zero-click or Draft-preservation claim that was not directly observed. Stop after the result/publication attempt. Independent review, Ready, merge, and any later T-006 implementation require separate CEO gates; T-006 remains `BLOCKED` beyond this narrowly consumed Trial #4 EA.
+Use the accepted Genesis Orchestrator v0.1 as the default bounded engineering workflow for the next approved Genesis product task: recover current GitHub context, form a bounded Issue against an Approved Specification, obtain any required separate Execution Authorization, route coding work through the proven product-native Issue `@codex` → Codex Cloud path, independently verify/review the published GitHub artifact, and preserve separate CEO consequential gates. Do not rerun Trial #4 merely to re-prove the path, and do not introduce Dify/Broker/custom transport solely to remove the residual Create PR click.
 
 ## CEO_GATES
 
