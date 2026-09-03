@@ -23,7 +23,9 @@
 | [S-0005](S-0005-Genesis-Limited-Grok-Executor-Path.md) | Genesis Limited Grok Executor Path | Approved | 2 | T-011 | 2026-08-12 |
 | [S-0006](S-0006-Private-Dify-Broker-Tool-Plugin.md) | Private Dify Genesis Broker Tool Plugin | Approved | 1 | T-009 | 2026-08-23 |
 | [S-0007](S-0007-Genesis-Orchestrator-v0.1.md) | Genesis Orchestrator v0.1 | Approved | 1 | T-006 | 2026-09-03 |
+| [S-0008](S-0008-Genesis-Independent-Grok-Reviewer-v0.1.md) | Genesis Independent Grok Reviewer v0.1 | Superseded | 1 | — (Issue #79 architecture tracker) | 2026-09-03 |
+| [S-0009](S-0009-Genesis-Independent-Grok-Reviewer-v0.2.md) | Genesis Independent Grok Reviewer v0.2 | Approved | 1 | — (Issue #79 architecture tracker) | 2026-09-03 |
 
 ## Следующий номер
 
-`S-0008`
+`S-0010`
