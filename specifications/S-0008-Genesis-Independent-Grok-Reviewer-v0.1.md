@@ -6,12 +6,12 @@
 |---|---|
 | ID | S-0008 |
 | Title | Genesis Independent Grok Reviewer v0.1 |
-| Status | **Draft** |
+| Status | **Approved** |
 | Revision | 1 |
 | Date | 2026-09-03 |
 | Related Issue | #79 |
 | Related Specification | S-0005 Revision 2 |
-| Related Decisions | DR-0007, DR-0008, DR-0009, DR-0011 (Proposed) |
+| Related Decisions | DR-0007, DR-0008, DR-0009, DR-0011 (Accepted) |
 | Execution Authorization | **NOT_GRANTED** |
 
 ## 1. Purpose
@@ -36,7 +36,7 @@ S-0008 does not revise or activate S-0005. The S-0005 Grok writer/executor contr
 
 Actor independence is mandatory. Grok/xAI under S-0008 MUST NOT be the sole independent reviewer of an implementation or artifact produced by Grok/xAI, including work produced under S-0005. Such work requires an independent non-Grok reviewer as required by repository governance and DR-0007.
 
-DR-0011 is the required architecture Decision Record for this new reviewer component. It remains **Proposed** until separately accepted by the CEO; neither this Draft Specification nor its review accepts DR-0011.
+DR-0011 is the accepted architecture Decision Record for this reviewer component. Its acceptance does not grant Execution Authorization, authenticated Broker use, secrets operations, deployment, or LIVE xAI.
 
 DR-0008 quarantine remains authoritative. This specification does not lift quarantine, authorize authenticated Broker calls, rotate credentials, unfreeze Dify, deploy anything, or authorize LIVE xAI calls.
 
@@ -229,16 +229,15 @@ This revision does not authorize or require:
 
 ## 10. Gates and next step
 
-Current state: **Draft / DR-0011 Proposed / Execution Authorization NOT_GRANTED**.
+Current state: **Approved / DR-0011 Accepted / Execution Authorization NOT_GRANTED**.
 
-Required sequence:
+The CEO approved S-0008 Revision 1 and accepted DR-0011 on 2026-09-03 against exact independently reviewed HEAD `0cdf9b50287e1c1250cbcd2fdcb4c3ab25f0023d`. This promotion records that decision only; it grants no Execution Authorization.
 
-1. independent review of this exact Draft PR, including S-0008 and proposed DR-0011;
-2. separate CEO Specification Approval for S-0008;
-3. separate CEO acceptance of DR-0011;
-4. controlled docs promotion of the approved/accepted artifacts;
-5. separate CEO Execution Authorization for bounded implementation;
-6. implementation and independent exact-HEAD review;
-7. separate CEO gates for any secret operation, authenticated Broker use/quarantine removal, deployment, or first LIVE xAI call as applicable.
+Required sequence from here:
+
+1. controlled docs promotion of the approved/accepted artifacts;
+2. separate CEO Execution Authorization for bounded implementation;
+3. implementation and independent exact-HEAD review;
+4. separate CEO gates for any secret operation, authenticated Broker use/quarantine removal, deployment, or first LIVE xAI call as applicable.
 
 No successful step implicitly authorizes the next one.
