@@ -114,7 +114,7 @@ If a future implementation uses Broker as transport, Broker remains the trusted 
 
 ## 7. Future implementation scope
 
-After Specification Approval and a separate Execution Authorization, the minimum implementation SHOULD be a thin reviewer-only contract that:
+After Specification Approval, an approved Decision Record for the new reviewer component, and a separate Execution Authorization, the minimum implementation SHOULD be a thin reviewer-only contract that:
 
 1. receives a repository/PR/exact-HEAD review request from Genesis;
 2. verifies request-time HEAD and obtains or is supplied only bounded read context;
@@ -188,7 +188,9 @@ A future implementation PR is expected to contain only the bounded reviewer impl
 
 ### 7.7 Decision Record necessity
 
-No new Decision Record is required for the architecture described by S-0008 because it narrows reviewer authority within the existing Genesis control model and preserves GitHub SoR, CEO gates, DR-0007, DR-0008, and DR-0009. If implementation requires a new control plane, new credential trust boundary, Dify unfreeze, Broker authority expansion, or another material architectural departure, implementation MUST stop and a separate Decision Record / architecture approval must precede that change.
+A new Decision Record is **required before implementation** because S-0008 introduces a new reviewer system component/capability: a distinct reviewer contract, reviewer routing/orchestration, and xAI review invocation within the Genesis/Broker control model. The Decision Record MUST define the component boundary, trust/credential boundary, relationship to S-0005/DR-0007, preservation of DR-0008 quarantine/default-off behavior, and confirm that Grok/xAI receives no GitHub write authority.
+
+Specification Approval does not approve that future Decision Record, and a Decision Record does not grant Execution Authorization. The future DR requires its own controlled review/acceptance under repository governance before S-0008 implementation may begin. If the proposed implementation later requires a new control plane, new credential trust boundary, Dify unfreeze, Broker authority expansion, or another material architectural departure beyond the approved DR, implementation MUST stop and the architecture decision must be revised or supplemented before proceeding.
 
 ## 8. Acceptance criteria
 
@@ -201,10 +203,11 @@ S-0008 v0.1 is implementation-ready only when an independently reviewed revision
 - output is structured, cross-field consistent, and fail-closed;
 - Grok/xAI has no GitHub write authority or GitHub credentials;
 - future implementation file boundaries, dependencies, assumptions, verification methods, output artifacts, and Decision Record necessity are explicit;
+- an approved Decision Record for the new reviewer component is required before implementation EA can be exercised;
 - GitHub remains the durable Source of Record;
 - Qodo is optional temporary scaffolding, not a dependency;
 - DR-0008 quarantine/default-off restrictions remain intact;
-- Specification Approval, implementation EA, first LIVE xAI call, Ready, merge, secrets, deploy and quarantine removal remain separate gates.
+- Specification Approval, Decision Record approval, implementation EA, first LIVE xAI call, Ready, merge, secrets, deploy and quarantine removal remain separate gates.
 
 ## 9. Explicit non-goals
 
@@ -231,8 +234,10 @@ Required sequence:
 1. independent review of this exact specification Draft PR;
 2. separate CEO Specification Approval;
 3. promotion of the approved specification through the repository's controlled documentation workflow;
-4. separate CEO Execution Authorization for bounded implementation;
-5. implementation and independent exact-HEAD review;
-6. separate CEO gates for any secret operation, authenticated Broker use/quarantine removal, deployment, or first LIVE xAI call as applicable.
+4. prepare and independently review the required Decision Record for the new reviewer component;
+5. separate CEO acceptance/approval of that Decision Record under repository governance;
+6. separate CEO Execution Authorization for bounded implementation;
+7. implementation and independent exact-HEAD review;
+8. separate CEO gates for any secret operation, authenticated Broker use/quarantine removal, deployment, or first LIVE xAI call as applicable.
 
 No successful step implicitly authorizes the next one.
