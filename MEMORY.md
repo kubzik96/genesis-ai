@@ -130,9 +130,22 @@ Every bounded Issue or task that may change durable project state must declare `
 
 1. Update `MEMORY.md` in the same scoped PR when documentation scope allows it.
 2. If the task scope forbids that file, prepare a linked bounded docs-only follow-up Draft PR after the applicable authorization; do not ask the CEO to copy the context.
-3. Cite exact Issues, PRs, commits, reviews, DRs, Specifications, or accepted CEO decisions. Mark external/CEO-provided facts that GitHub could not independently verify.
+3. Cite exact Issues, PRs, commits, reviews, DRs, or Specifications. Mark external/CEO-provided facts that GitHub could not independently verify.
 4. Update only fields materially changed by evidence; do not reproduce full QUEUE, HANDOFF, DR, Specification, logs, or chat transcripts.
-5. Keep `CURRENT_BASELINE` evidence-based. A changed file cannot know its own future merge SHA, so record the latest verified accepted `main` and let the next maintenance pass advance it.
-6. Memory maintenance never grants Ready, merge, deploy, secrets, LIVE, Dify, Broker HTTP, Cloudflare, or production-write authority.
+5. Never store credentials, tokens, secret-like values, private execution payloads, or raw sensitive logs.
+6. Require independent review of the actual diff and exact HEAD. Merge remains a separate CEO gate.
 
-A fresh agent should be able to recover the project without the CEO retelling history, while still following canonical artifacts for exact requirements.
+### Mandatory update triggers
+
+- accepted/merged work changes `CURRENT_STATE`, `DONE`, `CURRENT_BASELINE`, or `NEXT_ACTION`;
+- a blocker or external dependency is added, removed, or materially changed;
+- a path fails, is frozen, or becomes safe to retry based on new evidence;
+- a Decision Record or Approved Specification becomes active, superseded, or archived;
+- a CEO gate is granted, consumed, revoked, or remains explicitly pending;
+- a security incident, quarantine, deployment state, or end-to-end trial changes the safe next action.
+
+Routine formatting, comments, and changes with no durable project impact do not require a memory update.
+
+## CEO_MANUAL_MAINTENANCE_REQUIRED
+
+**NO.** The CEO supplies decisions and authorizations; agents recover evidence from GitHub and maintain this snapshot through controlled, reviewable PRs.
