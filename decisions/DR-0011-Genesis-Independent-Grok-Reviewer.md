@@ -10,7 +10,7 @@ Genesis Independent Grok Reviewer
 
 ## Статус
 
-**Предложено**
+**Принято**
 
 ## Дата
 
@@ -185,5 +185,6 @@ S-0008 определяет отдельный reviewer-only contract. Согл�
 
 # История изменений
 
-- 2026-09-03 — создано предложение для устранения governance finding независимого Qodo review S-0008. **CEO Approval не выдан. Execution Authorization не выдан.** Этот Draft не разрешает implementation, xAI calls, Broker/Dify/Cloudflare, secrets, deployment или LIVE.
+- 2026-09-03 — создано предложение для устранения governance finding независимого Qodo review S-0008.
 - 2026-09-03 — по independent Qodo finding добавлено обязательное durable GitHub recording reviewer evidence, влияющего на consequential gates; persistence остаётся обязанностью trusted Genesis side, reviewer zero-write boundary не изменена.
+- 2026-09-03 — **CEO принял DR-0011** по exact independently reviewed HEAD `0cdf9b50287e1c1250cbcd2fdcb4c3ab25f0023d`. Acceptance не выдаёт Execution Authorization и не разрешает implementation, xAI calls, authenticated Broker use, Broker/Dify/Cloudflare, secrets, deployment или LIVE.
