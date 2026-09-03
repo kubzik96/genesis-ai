@@ -6,16 +6,17 @@
 |---|---|
 | ID | S-0007 |
 | Title | Genesis Orchestrator v0.1 |
-| Status | Draft |
+| Status | Approved |
 | Revision | 1 |
 | Task | T-006 — Implement Orchestrator v0.1 |
 | Related Issues | #45, #52, #54, #55, #61 |
 | Related Decisions | DR-0004, DR-0005, DR-0010 |
 | Author | ChatGPT — COO / temporary CTO |
 | Date | 2026-09-03 |
+| Approved | 2026-09-03 — CEO Genesis AI |
 | Execution Authorization | NOT_GRANTED |
 
-> This document is a Draft Specification only. It does not authorize implementation, deployment, secrets, runtime writes, or any change to T-006 status.
+> **Revision 1 — Approved** by CEO Genesis AI on 2026-09-03 after independent exact-HEAD architecture/spec review of PR #62 (`6aa69818c1aba7fc0a0ff6f735ebaeca120ae595`). Approval does not grant Execution Authorization for Trial #4 or implementation, deployment, secrets, runtime writes, or any change to T-006 status.
 
 ## 1. Context
 
@@ -135,7 +136,7 @@ post-merge verification + durable Memory/Bridge maintenance when required
 
 The first implementation exercise for S-0007 MUST be **Genesis One-Window Trial #4** on one real, small, low-risk repository task.
 
-Trial #4 is not authorized by this Draft. A later separate EA MUST define the exact Issue and allowed files.
+Trial #4 is not authorized by this Approval. A later separate EA MUST define the exact Issue and allowed files.
 
 Trial #4 success criteria:
 
@@ -204,13 +205,13 @@ Before any implementation merge under S-0007:
 
 ## 10. Output artifacts
 
-Revision 1 Draft consists only of:
+Revision 1 Approval consists only of:
 
 - `specifications/S-0007-Genesis-Orchestrator-v0.1.md`;
 - corresponding `specifications/INDEX.md` entry.
 
-No implementation artifact is authorized by this Draft.
+No implementation artifact is authorized by this Approval.
 
 ## 11. Decision Record need
 
-No new Decision Record is required merely to review this Draft because it composes already accepted project principles and proven product-native evidence. If review concludes that S-0007 changes a durable architectural principle rather than specifying execution of existing principles, create a separate DR before Approval.
+No new Decision Record is required merely to approve Revision 1 because independent review concluded that S-0007 composes already accepted project principles and proven product-native evidence rather than changing a durable architectural principle.
