@@ -33,7 +33,7 @@ If this summary conflicts with a higher-priority or canonical artifact, the cano
 - **One-Window Trial #2:** PASS for GitHub-backed memory recovery and bounded cloud-executor execution through Issue [#48](https://github.com/kubzik96/genesis-ai/issues/48) and PR [#49](https://github.com/kubzik96/genesis-ai/pull/49); it did **not** prove full One-Window transport.
 - **Provisional executor:** ChatGPT Work is the provisional proven cloud executor. A fresh Work task recovered the required Genesis context from GitHub Long-Term Project Memory and created bounded GitHub artifacts without a CEO history restatement.
 - **Accepted handoff discovery:** PR [#47](https://github.com/kubzik96/genesis-ai/pull/47) was independently reviewed, separately authorized Ready, and squash-merged as `60ed769e171aeb146dd61fbf0ae05a6c71069dec`.
-- **Capability boundary:** one manual CEO/orchestrator → Work task send remains the primary One-Window blocker. Direct launch from the current orchestrator surface remains unproven/not exposed; do not claim transport solved.
+- **Capability boundary:** one manual CEO/orchestrator → Work task send remains necessary. Official OpenAI documentation and the Codex connector response on Draft PR #53 show a product-native GitHub `@codex` route, but the connector requires a Codex environment for this repository; no environment or end-to-end launch is proven.
 - **Dify:** OPTIONAL / NON-BLOCKING for the One-Window MVP. No Dify operation is required for the next project step.
 - **Durability:** GitHub remains the only durable Source of Record. Chats are working memory only.
 - **Task status:** this snapshot does not promote T-009, T-010, or T-011 to `DONE`; `bridge/QUEUE.md` and separate CEO acceptance remain authoritative.
@@ -51,7 +51,7 @@ If this summary conflicts with a higher-priority or canonical artifact, the cano
 ## KNOWN_BLOCKERS
 
 - **Manual executor handoff:** one bounded CEO/orchestrator → ChatGPT Work task send remains necessary and is the primary One-Window blocker.
-- **Direct Work launch not exposed:** the current orchestrator surface has not proven or exposed a direct Work/cloud-executor task-launch action.
+- **Product-native Issue launch blocked:** the Codex connector recognizes the GitHub `@codex` route but requires a Codex environment for `kubzik96/genesis-ai`. Environment creation and an end-to-end launch probe remain separately gated; do not claim transport solved.
 - **Copilot assignment probe:** blocked under the current connector/UI evidence recorded by Issue [#46](https://github.com/kubzik96/genesis-ai/issues/46); revisit only when new capability evidence exists.
 - **No custom transport for this blocker:** Dify/Broker/custom transport remains frozen or deferred; do not build new infrastructure merely to remove one manual send.
 - **CI:** repository documentation records `CI_NOT_CONFIGURED`; absence of CI is not a passing check.
@@ -85,15 +85,13 @@ Canonical wording and status remain in `decisions/INDEX.md` and the linked recor
 
 | Field | Value |
 |---|---|
-| `verified_main` | `60ed769e171aeb146dd61fbf0ae05a6c71069dec` |
-| Meaning | Exact accepted `main` after the Trial #2 memory sync and merged One-Window executor-handoff discovery in PR #47 |
+| `verified_main` | `7dcef63cdcb71663ff2afd3631f6d4e9da6bb451` |
+| Meaning | Exact accepted `main` used as the bounded baseline for Issue #52 product-native launch discovery |
 | Freshness rule | Git history identifies the memory commit itself; do not embed a self-referential future merge SHA. If `main` advances, inspect the delta and update this field after the next meaningful accepted change. |
 
 ## NEXT_ACTION
 
-Use ChatGPT Work as the provisional cloud executor through one explicit bounded manual CEO/orchestrator → Work send while direct launch remains unproven. When new product-capability evidence exists, the next bounded investigation may verify a product-native direct Chat/Genesis → Work dispatch surface; do not implement a custom adapter or reopen Dify/Broker merely to remove this single manual send.
-
-For the current Issue [#50](https://github.com/kubzik96/genesis-ai/issues/50) memory-sync candidate, independent review of the exact Draft PR HEAD is the next gate. Ready and merge remain separate CEO decisions; no implementation, runtime, deploy, LIVE, or secret action is implied.
+Use ChatGPT Work as the provisional cloud executor through one explicit bounded manual CEO/orchestrator → Work send while the product-native route remains blocked. After Issue #52 evidence is reviewed and accepted, the next bounded gate may create the minimum Codex environment for `kubzik96/genesis-ai`; a later separate gate may run one bounded GitHub Issue `@codex` launch probe. Do not implement a custom adapter or reopen Dify/Broker merely to remove this single manual send.
 
 ## CEO_GATES
 
@@ -105,7 +103,7 @@ For the current Issue [#50](https://github.com/kubzik96/genesis-ai/issues/50) me
 
 ## OPEN_EXTERNAL_DEPENDENCIES
 
-- A direct cloud executor/tool route that the orchestrator can invoke without the CEO manually transferring the task; no route is yet approved as the Genesis default.
+- A minimum Codex cloud environment for `kubzik96/genesis-ai`, followed by a separately authorized end-to-end GitHub Issue `@codex` launch probe; the documented route is not yet approved as the Genesis default.
 - Dify/platform-support or compatibility evidence, but only if the optional plugin path is deliberately resumed.
 - A separately authorized controlled non-Dify Broker authentication check and explicit CEO quarantine removal, but only before future authenticated Broker use.
 
