@@ -6,12 +6,12 @@
 |---|---|
 | ID | S-0008 |
 | Title | Genesis Independent Grok Reviewer v0.1 |
-| Status | **Approved** |
-| Revision | 1 |
+| Status | **Draft** |
+| Revision | 2 |
 | Author | ChatGPT — COO, по поручению CEO Genesis AI |
 | Creation date | 2026-09-03 |
-| Approval date | 2026-09-03 |
-| Approved by | CEO Genesis AI |
+| Approval date | NOT_APPROVED |
+| Approved by | NOT_APPROVED |
 | Related task | None yet; architecture tracker is Issue #79 |
 | Related Issue | #79 |
 | Related Specification | S-0005 Revision 2 |
@@ -214,15 +214,17 @@ This revision does not authorize or require implementation code or tests; any xA
 
 ## 10. Gates and next step
 
-Current state: **Approved / DR-0011 Accepted / Execution Authorization NOT_GRANTED**.
+Current state: **Draft Revision 2 / DR-0011 Accepted / Execution Authorization NOT_GRANTED**.
 
-The CEO approved S-0008 Revision 1 and accepted DR-0011 on 2026-09-03 against exact independently reviewed HEAD `0cdf9b50287e1c1250cbcd2fdcb4c3ab25f0023d`. The subsequent bounded promotion correction incorporates independent Qodo findings without granting new authority. This promotion records those decisions only; it grants no Execution Authorization.
+S-0008 Revision 1 was CEO-approved on 2026-09-03 against exact independently reviewed HEAD `0cdf9b50287e1c1250cbcd2fdcb4c3ab25f0023d`. DR-0011 was separately CEO-accepted against that HEAD and remains Accepted. Subsequent Qodo review of the promotion identified normative corrections to S-0008, including mandatory persistence-before-use behavior and acceptance-criteria changes. Under the repository post-approval change process, those corrected requirements are therefore prepared as **Draft Revision 2** and require fresh independent exact-HEAD review plus a new explicit CEO Specification Approval. No such Revision 2 approval is recorded yet.
 
 Required sequence from here:
 
-1. controlled docs promotion of the approved/accepted artifacts;
-2. separate CEO Execution Authorization for bounded implementation;
-3. implementation and independent exact-HEAD review whose consequential-gate evidence is durably persisted in GitHub before use;
-4. separate CEO gates for any secret operation, authenticated Broker use/quarantine removal, deployment, or first LIVE xAI call as applicable.
+1. independent exact-HEAD review of Draft Revision 2;
+2. separate explicit CEO Specification Approval for Revision 2 if review is acceptable;
+3. controlled docs promotion of Revision 2 to Approved;
+4. separate CEO Execution Authorization for bounded implementation;
+5. implementation and independent exact-HEAD review whose consequential-gate evidence is durably persisted in GitHub before use;
+6. separate CEO gates for any secret operation, authenticated Broker use/quarantine removal, deployment, or first LIVE xAI call as applicable.
 
 No successful step implicitly authorizes the next one.
