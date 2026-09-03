@@ -11,7 +11,7 @@
 | Date | 2026-09-03 |
 | Related Issue | #79 |
 | Related Specification | S-0005 Revision 2 |
-| Related Decisions | DR-0007, DR-0008, DR-0009 |
+| Related Decisions | DR-0007, DR-0008, DR-0009, DR-0011 (Proposed) |
 | Execution Authorization | **NOT_GRANTED** |
 
 ## 1. Purpose
@@ -35,6 +35,8 @@ GitHub `kubzik96/genesis-ai` remains the durable Source of Record. The orchestra
 S-0008 does not revise or activate S-0005. The S-0005 Grok writer/executor contract MUST NOT be reused as the reviewer contract as-is. Reviewer authority is strictly smaller and contains no GitHub write capability.
 
 Actor independence is mandatory. Grok/xAI under S-0008 MUST NOT be the sole independent reviewer of an implementation or artifact produced by Grok/xAI, including work produced under S-0005. Such work requires an independent non-Grok reviewer as required by repository governance and DR-0007.
+
+DR-0011 is the required architecture Decision Record for this new reviewer component. It remains **Proposed** until separately accepted by the CEO; neither this Draft Specification nor its review accepts DR-0011.
 
 DR-0008 quarantine remains authoritative. This specification does not lift quarantine, authorize authenticated Broker calls, rotate credentials, unfreeze Dify, deploy anything, or authorize LIVE xAI calls.
 
@@ -114,7 +116,7 @@ If a future implementation uses Broker as transport, Broker remains the trusted 
 
 ## 7. Future implementation scope
 
-After Specification Approval, an approved Decision Record for the new reviewer component, and a separate Execution Authorization, the minimum implementation SHOULD be a thin reviewer-only contract that:
+After Specification Approval, **CEO acceptance of DR-0011**, and a separate Execution Authorization, the minimum implementation SHOULD be a thin reviewer-only contract that:
 
 1. receives a repository/PR/exact-HEAD review request from Genesis;
 2. verifies request-time HEAD and obtains or is supplied only bounded read context;
@@ -188,9 +190,9 @@ A future implementation PR is expected to contain only the bounded reviewer impl
 
 ### 7.7 Decision Record necessity
 
-A new Decision Record is **required before implementation** because S-0008 introduces a new reviewer system component/capability: a distinct reviewer contract, reviewer routing/orchestration, and xAI review invocation within the Genesis/Broker control model. The Decision Record MUST define the component boundary, trust/credential boundary, relationship to S-0005/DR-0007, preservation of DR-0008 quarantine/default-off behavior, and confirm that Grok/xAI receives no GitHub write authority.
+DR-0011 is **required and must be CEO-accepted before implementation** because S-0008 introduces a new reviewer system component/capability: a distinct reviewer contract, reviewer routing/orchestration, and xAI review invocation within the Genesis/Broker control model. DR-0011 defines the component boundary, trust/credential boundary, relationship to S-0005/DR-0007, preservation of DR-0008 quarantine/default-off behavior, and confirms that Grok/xAI receives no GitHub write authority.
 
-Specification Approval does not approve that future Decision Record, and a Decision Record does not grant Execution Authorization. The future DR requires its own controlled review/acceptance under repository governance before S-0008 implementation may begin. If the proposed implementation later requires a new control plane, new credential trust boundary, Dify unfreeze, Broker authority expansion, or another material architectural departure beyond the approved DR, implementation MUST stop and the architecture decision must be revised or supplemented before proceeding.
+Specification Approval does not approve DR-0011, and acceptance of DR-0011 does not grant Execution Authorization. If the proposed implementation later requires a new control plane, new credential trust boundary, Dify unfreeze, Broker authority expansion, or another material architectural departure beyond DR-0011, implementation MUST stop and the architecture decision must be revised or supplemented before proceeding.
 
 ## 8. Acceptance criteria
 
@@ -203,11 +205,11 @@ S-0008 v0.1 is implementation-ready only when an independently reviewed revision
 - output is structured, cross-field consistent, and fail-closed;
 - Grok/xAI has no GitHub write authority or GitHub credentials;
 - future implementation file boundaries, dependencies, assumptions, verification methods, output artifacts, and Decision Record necessity are explicit;
-- an approved Decision Record for the new reviewer component is required before implementation EA can be exercised;
+- DR-0011 is independently reviewed and CEO-accepted before implementation EA can be exercised;
 - GitHub remains the durable Source of Record;
 - Qodo is optional temporary scaffolding, not a dependency;
 - DR-0008 quarantine/default-off restrictions remain intact;
-- Specification Approval, Decision Record approval, implementation EA, first LIVE xAI call, Ready, merge, secrets, deploy and quarantine removal remain separate gates.
+- Specification Approval, DR-0011 acceptance, implementation EA, first LIVE xAI call, Ready, merge, secrets, deploy and quarantine removal remain separate gates.
 
 ## 9. Explicit non-goals
 
@@ -227,17 +229,16 @@ This revision does not authorize or require:
 
 ## 10. Gates and next step
 
-Current state: **Draft / Execution Authorization NOT_GRANTED**.
+Current state: **Draft / DR-0011 Proposed / Execution Authorization NOT_GRANTED**.
 
 Required sequence:
 
-1. independent review of this exact specification Draft PR;
-2. separate CEO Specification Approval;
-3. promotion of the approved specification through the repository's controlled documentation workflow;
-4. prepare and independently review the required Decision Record for the new reviewer component;
-5. separate CEO acceptance/approval of that Decision Record under repository governance;
-6. separate CEO Execution Authorization for bounded implementation;
-7. implementation and independent exact-HEAD review;
-8. separate CEO gates for any secret operation, authenticated Broker use/quarantine removal, deployment, or first LIVE xAI call as applicable.
+1. independent review of this exact Draft PR, including S-0008 and proposed DR-0011;
+2. separate CEO Specification Approval for S-0008;
+3. separate CEO acceptance of DR-0011;
+4. controlled docs promotion of the approved/accepted artifacts;
+5. separate CEO Execution Authorization for bounded implementation;
+6. implementation and independent exact-HEAD review;
+7. separate CEO gates for any secret operation, authenticated Broker use/quarantine removal, deployment, or first LIVE xAI call as applicable.
 
 No successful step implicitly authorizes the next one.
