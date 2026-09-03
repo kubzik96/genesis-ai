@@ -6,12 +6,12 @@
 |---|---|
 | ID | S-0009 |
 | Title | Genesis Independent Grok Reviewer v0.2 |
-| Status | **Draft** |
+| Status | **Approved** |
 | Revision | 1 |
 | Author | ChatGPT — COO, по поручению CEO Genesis AI |
 | Creation date | 2026-09-03 |
-| Approval date | NOT_APPROVED |
-| Approved by | NOT_APPROVED |
+| Approval date | 2026-09-03 |
+| Approved by | CEO Genesis AI |
 | Related task | None yet; architecture tracker is Issue #79 |
 | Related Issue | #79 |
 | Supersedes | S-0008 Revision 1 |
@@ -42,7 +42,7 @@ S-0009 supersedes S-0008 Revision 1 because post-approval corrections changed ac
 
 Actor independence is mandatory. Grok/xAI under S-0009 MUST NOT be the sole independent reviewer of an implementation or artifact produced by Grok/xAI, including work produced under S-0005. Such work requires an independent non-Grok reviewer as required by repository governance and DR-0007.
 
-DR-0011 is the accepted architecture Decision Record for this reviewer component. Its acceptance does not approve S-0009, grant Execution Authorization, authorize authenticated Broker use, secrets operations, deployment, or LIVE xAI.
+DR-0011 is the accepted architecture Decision Record for this reviewer component. Its acceptance does not grant Execution Authorization, authorize authenticated Broker use, secrets operations, deployment, or LIVE xAI.
 
 DR-0008 quarantine remains authoritative. This specification does not lift quarantine, authorize authenticated Broker calls, rotate credentials, unfreeze Dify, deploy anything, or authorize LIVE xAI calls.
 
@@ -205,7 +205,7 @@ Approval of S-0009 does not itself grant Execution Authorization. If the propose
 
 ## 8. Acceptance criteria
 
-S-0009 v0.2 is implementation-ready only when an independently reviewed Draft demonstrates that:
+S-0009 v0.2 is implementation-ready only when the Approved Specification demonstrates that:
 
 - reviewer and writer/executor contracts are separate;
 - actor independence is explicit: Grok/xAI cannot be the sole independent reviewer of Grok/xAI-produced work;
@@ -228,16 +228,18 @@ This specification does not authorize or require implementation code or tests; a
 
 ## 10. Gates and next step
 
-Current state: **Draft Revision 1 / DR-0011 Accepted / Execution Authorization NOT_GRANTED**.
+Current state: **Approved Revision 1 / DR-0011 Accepted / Execution Authorization NOT_GRANTED**.
 
 S-0009 supersedes S-0008 Revision 1 because independent review found that the required persistence-before-use behavior changes acceptance criteria and therefore must be represented as a new Specification rather than a revision of S-0008. S-0008 preserves the historical CEO approval against reviewed HEAD `0cdf9b50287e1c1250cbcd2fdcb4c3ab25f0023d`; that approval does **not** transfer to S-0009. DR-0011 remains Accepted because the new specification stays within the same accepted reviewer-only architecture boundary.
 
+The CEO approved S-0009 Revision 1 on 2026-09-03 against exact independently reviewed HEAD `f3c4071244e0fe3e1540d3a68ad8e3cb4d37f7ae`. This promotion records that approval only. It grants no Execution Authorization, Ready, merge, implementation, authenticated Broker use, xAI call, secret operation, deployment, or LIVE authority.
+
 Required sequence from here:
 
-1. independent exact-HEAD review of Draft S-0009;
-2. separate explicit CEO Specification Approval for S-0009 if review is acceptable;
-3. controlled docs promotion of S-0009 to Approved;
-4. separate CEO Execution Authorization for bounded implementation;
+1. controlled docs promotion of S-0009 to Approved — this step;
+2. separate CEO Ready authorization for the documentation PR after bounded verification/review as required;
+3. separate CEO merge authorization;
+4. only after the Approved Specification is durable on `main`, separate CEO Execution Authorization for bounded implementation;
 5. implementation and independent exact-HEAD review whose consequential-gate evidence is durably persisted in GitHub before use;
 6. separate CEO gates for any secret operation, authenticated Broker use/quarantine removal, deployment, or first LIVE xAI call as applicable.
 
