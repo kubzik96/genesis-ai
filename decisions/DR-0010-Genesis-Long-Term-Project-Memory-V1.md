@@ -2,9 +2,9 @@
 
 ## Status
 
-**Предложено**
+**Принято**
 
-Acceptance requires an explicit CEO decision, status synchronization, and the normal Ready/merge gates. This Draft PR grants no standing authority.
+Accepted by explicit CEO decision on 2026-09-03. Ready and merge remain separate CEO gates. This acceptance grants no standing authority.
 
 ## Date
 
