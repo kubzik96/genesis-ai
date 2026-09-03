@@ -98,9 +98,10 @@ S-0008 определяет отдельный reviewer-only contract. Согл�
 7. Reviewer не создаёт и не изменяет Issues, comments, branches, commits, PRs или refs; не выполняет Ready/merge/deploy/secrets/LIVE.
 8. Structured reviewer output валидируется, включая cross-field invariants; malformed или contradictory output нормализуется в `BLOCKED` / `READY_GATE_SAFE: NO`.
 9. Grok/xAI не может быть sole independent reviewer артефакта, созданного Grok/xAI, включая S-0005 execution output.
-10. Qodo остаётся допустимым временным независимым reviewer до доказанного replacement path, но не является dependency нового компонента.
-11. DR-0008 quarantine/default-off остаётся полностью в силе. Этот DR не разрешает authenticated Broker calls, rotation, secrets operations, Dify unfreeze, deployment или LIVE xAI.
-12. Если будущая реализация потребует нового control plane, нового credential trust boundary, Dify unfreeze или расширения Broker authority за пределы этого решения, работа останавливается до нового/пересмотренного архитектурного решения.
+10. Любой reviewer verdict, который влияет на Ready, merge, Specification Approval, Decision Record acceptance или другой consequential gate, MUST быть durably recorded in GitHub вместе с exact reviewed HEAD до использования как gate evidence. Persist выполняет trusted Genesis orchestrator/control boundary, а не Grok/xAI reviewer; это не расширяет zero-write authority reviewer.
+11. Qodo остаётся допустимым временным независимым reviewer до доказанного replacement path, но не является dependency нового компонента.
+12. DR-0008 quarantine/default-off остаётся полностью в силе. Этот DR не разрешает authenticated Broker calls, rotation, secrets operations, Dify unfreeze, deployment или LIVE xAI.
+13. Если будущая реализация потребует нового control plane, нового credential trust boundary, Dify unfreeze или расширения Broker authority за пределы этого решения, работа останавливается до нового/пересмотренного архитектурного решения.
 
 ---
 
@@ -110,6 +111,7 @@ S-0008 определяет отдельный reviewer-only contract. Согл�
 - reviewer authority должна быть строго меньше executor authority;
 - exact-HEAD binding предотвращает использование устаревшего review после изменения PR;
 - отсутствие GitHub write credentials у модели уменьшает blast radius;
+- durable GitHub evidence сохраняет воспроизводимость consequential gates без выдачи reviewer write authority;
 - отдельный contract позволяет тестировать fail-closed semantics независимо от S-0005 writer path;
 - решение сохраняет существующие Genesis governance boundaries вместо создания второго control plane.
 
@@ -122,12 +124,14 @@ S-0008 определяет отдельный reviewer-only contract. Согл�
 - Genesis получает архитектурно определённый путь постоянного независимого review;
 - writer и reviewer разделены;
 - GitHub SoR и CEO gates сохраняются;
+- verdict, влияющий на consequential gate, не может оставаться off-record;
 - Qodo может быть заменён после доказанного reviewer path;
 - model output остаётся advisory и проверяется до использования как gate evidence.
 
 ## Отрицательные
 
 - потребуется отдельная bounded implementation и тесты;
+- trusted Genesis side должен сохранять применимое reviewer evidence в GitHub;
 - reviewer transport/API invocation добавит новую runtime capability после отдельной EA;
 - до разрешения DR-0008 prerequisites LIVE reviewer не может быть доказан end-to-end.
 
@@ -138,6 +142,7 @@ S-0008 определяет отдельный reviewer-only contract. Согл�
 - accidental reuse write-capable S-0005 primitives;
 - self-review Grok;
 - утечка credential/sensitive context в model input;
+- off-record gate evidence;
 - ошибочное толкование reviewer approval как CEO authorization.
 
 Все эти риски должны fail closed по S-0008 и локальным/mock tests до любого LIVE gate.
@@ -156,6 +161,7 @@ S-0008 определяет отдельный reviewer-only contract. Согл�
 - bounded secret-free payload;
 - запрет Grok self-review как independent evidence;
 - отсутствие GitHub credentials у Grok/xAI;
+- consequential-gate reviewer evidence durably recorded in GitHub by trusted Genesis side with exact reviewed HEAD before gate use;
 - сохранение DR-0008 quarantine/default-off;
 - независимый exact-HEAD review реализации;
 - отдельные CEO gates для EA, secrets/Broker/quarantine, deployment и первого LIVE xAI call.
@@ -180,3 +186,4 @@ S-0008 определяет отдельный reviewer-only contract. Согл�
 # История изменений
 
 - 2026-09-03 — создано предложение для устранения governance finding независимого Qodo review S-0008. **CEO Approval не выдан. Execution Authorization не выдан.** Этот Draft не разрешает implementation, xAI calls, Broker/Dify/Cloudflare, secrets, deployment или LIVE.
+- 2026-09-03 — по independent Qodo finding добавлено обязательное durable GitHub recording reviewer evidence, влияющего на consequential gates; persistence остаётся обязанностью trusted Genesis side, reviewer zero-write boundary не изменена.
