@@ -2,7 +2,7 @@
 
 ## Status and purpose
 
-**Candidate V1 for Issue #43.** It becomes the canonical operational-memory snapshot only after DR-0010 is accepted and this change is merged by a separate CEO decision.
+**Active — DR-0010 accepted; Memory V1 merged in PR #44.** The accepted model is the canonical operational-memory snapshot. PR [#44](https://github.com/kubzik96/genesis-ai/pull/44) was squash-merged as `2258e312107c9d3d05eb4afb379cfc070e3d26d7`; Issue [#43](https://github.com/kubzik96/genesis-ai/issues/43) is closed as `completed`.
 
 GitHub `kubzik96/genesis-ai` remains the durable Source of Record. This file is a compact recovery index over GitHub evidence; it is not a second Source of Truth and does not replace task, decision, specification, or implementation artifacts.
 
@@ -39,6 +39,7 @@ If this summary conflicts with a higher-priority or canonical artifact, the cano
 
 ## DONE
 
+- Memory V1 was accepted and merged in PR [#44](https://github.com/kubzik96/genesis-ai/pull/44); DR-0010 is `Принято` and Issue [#43](https://github.com/kubzik96/genesis-ai/issues/43) is closed as `completed`.
 - Playbook v0 defined and merged in PR [#40](https://github.com/kubzik96/genesis-ai/pull/40).
 - Playbook status synchronized by completed Issue [#41](https://github.com/kubzik96/genesis-ai/issues/41) and squash-merged PR [#42](https://github.com/kubzik96/genesis-ai/pull/42).
 - Exact post-trial baseline independently verified at `5c86f03df38004bb638d0bbacfdfeb7f3c1ac557`.
@@ -73,26 +74,26 @@ Canonical wording and status remain in `decisions/INDEX.md` and the linked recor
 - [DR-0007](decisions/DR-0007-Grok-Limited-Executor.md) — limited Grok executor boundary.
 - [DR-0008](decisions/DR-0008-Broker-Token-Exposure-Quarantine.md) — Broker-token quarantine; no repository evidence of CEO removal.
 - [DR-0009](decisions/DR-0009-Private-Dify-Broker-Tool-Plugin.md) — typed private plugin architecture; operational use is not implied.
-- DR-0010 — proposed Memory V1 model in the current Draft PR; not active until separately accepted and merged.
+- [DR-0010](decisions/DR-0010-Genesis-Long-Term-Project-Memory-V1.md) — accepted Genesis Long-Term Project Memory V1 model.
 
 ## CURRENT_BASELINE
 
 | Field | Value |
 |---|---|
-| `verified_main` | `5c86f03df38004bb638d0bbacfdfeb7f3c1ac557` |
-| Meaning | Exact `main` used to verify this snapshot after the FIRST ONE-WINDOW TRIAL |
+| `verified_main` | `2258e312107c9d3d05eb4afb379cfc070e3d26d7` |
+| Meaning | Exact post-merge `main` used to recover context and verify PR #44 / DR-0010 acceptance at the start of Genesis One-Window Trial #2 |
 | Freshness rule | Git history identifies the memory commit itself; do not embed a self-referential future merge SHA. If `main` advances, inspect the delta and update this field after the next meaningful accepted change. |
 
 ## NEXT_ACTION
 
 Prepare one bounded GitHub task/specification to remove the manual ChatGPT-to-executor transfer by selecting and proving the smallest direct orchestrator-to-authorized-cloud-executor path. Keep GitHub as the durable task contract and keep Dify non-blocking. No implementation, runtime, deploy, LIVE, or secret action is implied by this memory entry.
 
-For the current Memory V1 candidate, the immediate next action is independent review of the exact Draft PR HEAD; Ready and merge require separate CEO decisions.
+Genesis One-Window Trial #2 is the current bounded post-merge memory-sync task. Its result is not recorded in advance. After its Draft PR exists, independent review of the exact HEAD is the next gate; Ready and merge remain separate CEO decisions.
 
 ## CEO_GATES
 
 - Memory content records gates; it never grants or chains them.
-- Proposed DR acceptance, Ready, merge, deployment, secrets operations, Dify operations, Broker HTTP, Cloudflare changes, LIVE activation, and production writes remain separately gated where governance requires.
+- Ready, merge, deployment, secrets operations, Dify operations, Broker HTTP, Cloudflare changes, LIVE activation, and production writes remain separately gated where governance requires.
 - A successful step does not authorize the next step.
 - Only the CEO can accept task completion and authorize merge.
 - Memory maintenance does not give any agent standing write authority. An authorized executor may update memory only inside the current bounded scope or a separately authorized linked docs-only PR.
