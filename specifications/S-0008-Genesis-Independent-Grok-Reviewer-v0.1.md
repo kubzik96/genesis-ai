@@ -8,10 +8,15 @@
 | Title | Genesis Independent Grok Reviewer v0.1 |
 | Status | **Approved** |
 | Revision | 1 |
-| Date | 2026-09-03 |
+| Author | ChatGPT — COO, по поручению CEO Genesis AI |
+| Creation date | 2026-09-03 |
+| Approval date | 2026-09-03 |
+| Approved by | CEO Genesis AI |
+| Related task | None yet; architecture tracker is Issue #79 |
 | Related Issue | #79 |
 | Related Specification | S-0005 Revision 2 |
 | Related Decisions | DR-0007, DR-0008, DR-0009, DR-0011 (Accepted) |
+| Future executor (after Authorization) | bounded Codex Cloud implementation executor unless a later EA names another executor |
 | Execution Authorization | **NOT_GRANTED** |
 
 ## 1. Purpose
@@ -51,7 +56,9 @@ A review request MUST bind to:
 - only canonical GitHub context strictly necessary to judge the requested change;
 - explicit review criteria and known task/specification acceptance criteria when applicable.
 
-The orchestrator MUST fetch and verify the actual PR HEAD before preparing the request. The reviewer response MUST echo the exact reviewed SHA as `REVIEWED_HEAD_SHA`. Immediately before Genesis accepts or persists the review result as gate evidence, the orchestrator MUST fetch the current PR HEAD again and compare it with both the expected SHA and `REVIEWED_HEAD_SHA`. Any mismatch makes the review stale; the result MUST normalize to `BLOCKED` / `READY_GATE_SAFE: NO` and MUST NOT influence a Ready, merge, approval, or execution gate. A changed HEAD requires a fresh review of the new exact HEAD under the applicable authorization.
+The orchestrator MUST fetch and verify the actual PR HEAD before preparing the request. The reviewer response MUST echo the exact reviewed SHA as `REVIEWED_HEAD_SHA`. Immediately before Genesis persists a review result as gate evidence, the orchestrator MUST fetch the current PR HEAD again and compare it with both the expected SHA and `REVIEWED_HEAD_SHA`. Any mismatch makes the review stale; the result MUST normalize to `BLOCKED` / `READY_GATE_SAFE: NO` and MUST NOT influence a Ready, merge, approval, or execution gate. A changed HEAD requires a fresh review of the new exact HEAD under the applicable authorization.
+
+Any reviewer verdict that may influence Ready, merge, Specification Approval, Decision Record acceptance, Execution Authorization, or another consequential gate MUST be durably recorded in GitHub by the trusted Genesis orchestrator/control boundary together with the exact `REVIEWED_HEAD_SHA` **before** Genesis uses that verdict as gate evidence. Persistence is mandatory, not an alternative to acceptance. Grok/xAI itself receives no GitHub write authority.
 
 Secrets, PATs, service tokens, authorization headers, private execution payloads, raw sensitive logs, and unrelated repository context MUST NOT be included.
 
@@ -80,7 +87,7 @@ Cross-field invariants are normative:
 - `REVIEWED_HEAD_SHA` MUST equal the expected HEAD and the acceptance-time current HEAD;
 - any combination violating these invariants MUST normalize to `VERDICT: BLOCKED` and `READY_GATE_SAFE: NO`.
 
-`APPROVE` or `READY_GATE_SAFE: YES` is advisory evidence only. It does not mark a PR Ready, merge it, grant Specification Approval, grant Execution Authorization, authorize deployment/secrets/LIVE, or chain any later CEO gate.
+`APPROVE` or `READY_GATE_SAFE: YES` is advisory evidence only. It does not mark a PR Ready, merge it, grant Specification Approval, grant Execution Authorization, authorize deployment/secrets/LIVE, or chain any later CEO gate. A consequential gate MUST NOT rely on the verdict until the trusted Genesis side has durably recorded it in GitHub with the exact reviewed HEAD.
 
 ## 5. Fail-closed requirements
 
@@ -93,7 +100,8 @@ The review MUST stop without an approval recommendation when any of the followin
 5. requested review would require GitHub credentials or write authority to be exposed to Grok/xAI;
 6. authentication, quarantine, secret-handling, or LIVE state is uncertain;
 7. the request attempts to expand reviewer authority into execution, GitHub writes, merge, deploy, secret operations, or another control plane;
-8. Grok/xAI would be the sole independent reviewer of its own implementation or artifact.
+8. Grok/xAI would be the sole independent reviewer of its own implementation or artifact;
+9. a verdict intended for consequential-gate use cannot be durably persisted in GitHub by the trusted Genesis side with the exact reviewed HEAD before that use.
 
 A fail-closed result MUST normalize to `VERDICT: BLOCKED` and `READY_GATE_SAFE: NO` and MUST NOT be interpreted as approval.
 
@@ -122,35 +130,22 @@ After Specification Approval, **CEO acceptance of DR-0011**, and a separate Exec
 2. verifies request-time HEAD and obtains or is supplied only bounded read context;
 3. makes one bounded xAI review request under a default-off/LIVE gate;
 4. validates the structured response and cross-field invariants;
-5. re-fetches and verifies acceptance-time current HEAD before accepting the result;
-6. returns the advisory result to Genesis;
-7. performs zero GitHub writes and STOPs.
+5. re-fetches and verifies acceptance-time current HEAD;
+6. for consequential-gate use, requires the trusted Genesis side to durably persist the validated verdict in GitHub with the exact reviewed HEAD before the verdict can be accepted as gate evidence;
+7. returns the advisory result to Genesis;
+8. performs zero GitHub writes from the Grok/xAI reviewer and STOPs.
 
 Implementation SHOULD reuse existing safe read, validation, adapter, and budget-ledger primitives where compatible, but MUST NOT broaden the S-0005 writer endpoint or inherit its write authority merely for convenience.
 
 ### 7.1 Allowed files
 
-A future implementation EA MUST name the exact file allowlist. At specification level, implementation is limited to the smallest reviewer-only additions/changes under the existing `services/genesis-broker` code and test tree that are strictly necessary for:
-
-- reviewer request/response schema and validation;
-- exact-HEAD read verification;
-- bounded xAI adapter invocation using existing safe primitives where compatible;
-- reviewer-only routing/orchestration glue;
-- local/unit tests and fixtures for this contract.
+A future implementation EA MUST name the exact file allowlist. At specification level, implementation is limited to the smallest reviewer-only additions/changes under the existing `services/genesis-broker` code and test tree that are strictly necessary for reviewer request/response schema and validation, exact-HEAD read verification, bounded xAI adapter invocation using existing safe primitives where compatible, reviewer-only routing/orchestration glue, and local/unit tests and fixtures for this contract.
 
 Existing S-0005 writer behavior may be read or safely reused through shared non-write primitives, but its writer endpoint/authority MUST NOT be expanded by S-0008.
 
 ### 7.2 Prohibited files and changes
 
-A future S-0008 implementation MUST NOT modify, unless a later separately approved specification explicitly requires it:
-
-- Dify workflows/plugins/configuration;
-- Cloudflare deployment configuration or production bindings;
-- GitHub Actions/workflows;
-- secrets, credentials, PAT configuration, or secret-bearing files;
-- S-0005 writer contract/endpoint semantics;
-- unrelated product/runtime code;
-- governance or Decision Records merely to make implementation convenient.
+A future S-0008 implementation MUST NOT modify, unless a later separately approved specification explicitly requires it: Dify workflows/plugins/configuration; Cloudflare deployment configuration or production bindings; GitHub Actions/workflows; secrets, credentials, PAT configuration, or secret-bearing files; S-0005 writer contract/endpoint semantics; unrelated product/runtime code; governance or Decision Records merely to make implementation convenient.
 
 The implementation EA MUST narrow this boundary further to exact paths before coding begins.
 
@@ -179,6 +174,7 @@ Before implementation can be considered review-ready, local/mock verification MU
 - secret/credential fields are rejected or excluded from reviewer payloads;
 - Grok self-review of Grok-produced work is rejected as independent-review evidence;
 - zero GitHub write operation is available through the reviewer contract;
+- consequential-gate evidence cannot be used until the trusted Genesis side has durably persisted the verdict in GitHub with the exact reviewed HEAD;
 - xAI/API errors and malformed model output fail closed;
 - existing relevant S-0005/Broker tests remain passing where shared primitives are touched.
 
@@ -186,13 +182,13 @@ The first LIVE xAI smoke, if ever required, is NOT part of ordinary implementati
 
 ### 7.6 Expected output artifacts
 
-A future implementation PR is expected to contain only the bounded reviewer implementation and tests authorized by its EA, plus strictly necessary documentation synchronization. It MUST provide evidence of the exact implementation HEAD, changed-file scope, local/mock test results, independent exact-HEAD implementation review, and any remaining blocked LIVE/security gates. It MUST remain Draft until the applicable CEO Ready gate.
+A future implementation PR is expected to contain only the bounded reviewer implementation and tests authorized by its EA, plus strictly necessary documentation synchronization. It MUST provide evidence of the exact implementation HEAD, changed-file scope, local/mock test results, independent exact-HEAD implementation review, durable GitHub recording of any consequential-gate reviewer evidence, and any remaining blocked LIVE/security gates. It MUST remain Draft until the applicable CEO Ready gate.
 
 ### 7.7 Decision Record necessity
 
-DR-0011 is **required and must be CEO-accepted before implementation** because S-0008 introduces a new reviewer system component/capability: a distinct reviewer contract, reviewer routing/orchestration, and xAI review invocation within the Genesis/Broker control model. DR-0011 defines the component boundary, trust/credential boundary, relationship to S-0005/DR-0007, preservation of DR-0008 quarantine/default-off behavior, and confirms that Grok/xAI receives no GitHub write authority.
+DR-0011 is **required and CEO-accepted** because S-0008 introduces a new reviewer system component/capability: a distinct reviewer contract, reviewer routing/orchestration, and xAI review invocation within the Genesis/Broker control model. DR-0011 defines the component boundary, trust/credential boundary, relationship to S-0005/DR-0007, preservation of DR-0008 quarantine/default-off behavior, and confirms that Grok/xAI receives no GitHub write authority.
 
-Specification Approval does not approve DR-0011, and acceptance of DR-0011 does not grant Execution Authorization. If the proposed implementation later requires a new control plane, new credential trust boundary, Dify unfreeze, Broker authority expansion, or another material architectural departure beyond DR-0011, implementation MUST stop and the architecture decision must be revised or supplemented before proceeding.
+Specification Approval does not itself grant Execution Authorization. If the proposed implementation later requires a new control plane, new credential trust boundary, Dify unfreeze, Broker authority expansion, or another material architectural departure beyond DR-0011, implementation MUST stop and the architecture decision must be revised or supplemented before proceeding.
 
 ## 8. Acceptance criteria
 
@@ -201,6 +197,7 @@ S-0008 v0.1 is implementation-ready only when an independently reviewed revision
 - reviewer and writer/executor contracts are separate;
 - actor independence is explicit: Grok/xAI cannot be the sole independent reviewer of Grok/xAI-produced work;
 - request-time, reviewed, and acceptance-time exact HEAD are bound and stale reviews are invalidated;
+- consequential-gate reviewer evidence must be durably recorded in GitHub by the trusted Genesis side with exact reviewed HEAD before use;
 - input context is bounded and secret-free;
 - output is structured, cross-field consistent, and fail-closed;
 - Grok/xAI has no GitHub write authority or GitHub credentials;
@@ -213,31 +210,19 @@ S-0008 v0.1 is implementation-ready only when an independently reviewed revision
 
 ## 9. Explicit non-goals
 
-This revision does not authorize or require:
-
-- implementation code or tests;
-- any xAI/Grok API call;
-- secrets inspection, creation, rotation, or transfer;
-- authenticated Broker calls;
-- Dify or Cloudflare operations;
-- deployment or LIVE activation;
-- GitHub Actions, PAT additions, custom transport, or a new control plane;
-- multi-agent mesh, voting, debate, or always-on advisory swarm;
-- modification of S-0005 or existing runtime code in this specification step;
-- removal of Qodo before a replacement is proven;
-- Ready or merge of an implementation PR.
+This revision does not authorize or require implementation code or tests; any xAI/Grok API call; secrets inspection, creation, rotation, or transfer; authenticated Broker calls; Dify or Cloudflare operations; deployment or LIVE activation; GitHub Actions, PAT additions, custom transport, or a new control plane; multi-agent mesh, voting, debate, or always-on advisory swarm; modification of S-0005 or existing runtime code in this specification step; removal of Qodo before a replacement is proven; Ready or merge of an implementation PR.
 
 ## 10. Gates and next step
 
 Current state: **Approved / DR-0011 Accepted / Execution Authorization NOT_GRANTED**.
 
-The CEO approved S-0008 Revision 1 and accepted DR-0011 on 2026-09-03 against exact independently reviewed HEAD `0cdf9b50287e1c1250cbcd2fdcb4c3ab25f0023d`. This promotion records that decision only; it grants no Execution Authorization.
+The CEO approved S-0008 Revision 1 and accepted DR-0011 on 2026-09-03 against exact independently reviewed HEAD `0cdf9b50287e1c1250cbcd2fdcb4c3ab25f0023d`. The subsequent bounded promotion correction incorporates independent Qodo findings without granting new authority. This promotion records those decisions only; it grants no Execution Authorization.
 
 Required sequence from here:
 
 1. controlled docs promotion of the approved/accepted artifacts;
 2. separate CEO Execution Authorization for bounded implementation;
-3. implementation and independent exact-HEAD review;
+3. implementation and independent exact-HEAD review whose consequential-gate evidence is durably persisted in GitHub before use;
 4. separate CEO gates for any secret operation, authenticated Broker use/quarantine removal, deployment, or first LIVE xAI call as applicable.
 
 No successful step implicitly authorizes the next one.
