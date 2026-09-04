@@ -26,23 +26,37 @@ const run = ({ req = request(), response = output(), heads = [HEAD, HEAD], rejec
     reviewClient: { review: async () => { if (reject) throw new Error('provider'); return response; } },
   });
 };
+const persist = (result, { head = HEAD, verified = true, headError = false, persistenceError = false } = {}) => acknowledgeDurablePersistence(result, {
+  getCurrentHead: async () => { if (headError) throw new Error('head'); return head; },
+  verifyPersistence: async (record) => { if (persistenceError) throw new Error('persist'); assert.equal(record.reviewedHeadSha, HEAD); return verified; },
+});
 
 describe('Grok reviewer fail-closed orchestration', () => {
-  it('accepts a valid exact-HEAD APPROVE but withholds gate evidence until exact persistence acknowledgement', async () => {
+  it('accepts exact-HEAD APPROVE but requires fresh HEAD plus trusted persistence verification for gate evidence', async () => {
     const result = await run();
     assert.equal(result.ok, true);
     assert.equal(result.readyGateSafe, 'YES');
     assert.equal(result.consequentialGateEvidenceAvailable, false);
-    assert.equal(acknowledgeDurablePersistence(result, { persisted: true, persistedBy: 'TRUSTED_GENESIS', repository: 'kubzik96/genesis-ai', prNumber: 81, reviewedHeadSha: HEAD }).consequentialGateEvidenceAvailable, true);
-    assert.equal(acknowledgeDurablePersistence(result, { persisted: true, persistedBy: 'TRUSTED_GENESIS', repository: 'kubzik96/genesis-ai', prNumber: 81, reviewedHeadSha: 'b'.repeat(40) }).verdict, 'BLOCKED');
-    assert.equal(acknowledgeDurablePersistence(result, { persisted: true, repository: 'kubzik96/genesis-ai', prNumber: 81, reviewedHeadSha: HEAD }).code, 'PERSISTENCE_NOT_CONFIRMED');
+    assert.equal((await persist(result)).consequentialGateEvidenceAvailable, true);
+    assert.equal((await persist(result, { verified: false })).code, 'PERSISTENCE_NOT_CONFIRMED');
+    assert.equal((await acknowledgeDurablePersistence(result)).code, 'PERSISTENCE_BOUNDARY_UNAVAILABLE');
   });
 
-  it('fails request-time and acceptance-time HEAD mismatches closed', async () => {
+  it('fails request-time, acceptance-time, and pre-persistence HEAD changes closed', async () => {
     assert.equal((await run({ heads: ['b'.repeat(40)] })).code, 'REQUEST_HEAD_MISMATCH');
     const stale = await run({ heads: [HEAD, 'b'.repeat(40)] });
     assert.deepEqual([stale.verdict, stale.readyGateSafe], ['BLOCKED', 'NO']);
     assert.equal(stale.code, 'ACCEPTANCE_HEAD_MISMATCH');
+    const valid = await run();
+    assert.equal((await persist(valid, { head: 'b'.repeat(40) })).code, 'PERSISTENCE_HEAD_MISMATCH');
+    assert.equal((await persist(valid, { headError: true })).code, 'HEAD_READ_FAILED');
+  });
+
+  it('rejects forged, failed, and malformed persistence evidence without throwing', async () => {
+    const result = await run();
+    assert.equal((await acknowledgeDurablePersistence(result, { persisted: true, persistedBy: 'TRUSTED_GENESIS', reviewedHeadSha: HEAD })).verdict, 'BLOCKED');
+    assert.equal((await persist(result, { persistenceError: true })).code, 'PERSISTENCE_NOT_CONFIRMED');
+    assert.equal((await acknowledgeDurablePersistence({ ...result, reviewedHeadSha: 42 }, { getCurrentHead: async () => HEAD, verifyPersistence: async () => true })).code, 'PERSISTENCE_NOT_CONFIRMED');
   });
 
   it('rejects missing/malformed/mismatched reviewed SHAs', () => {
@@ -52,12 +66,27 @@ describe('Grok reviewer fail-closed orchestration', () => {
     }
   });
 
+  it('requires canonical closed producer provenance and rejects self-review aliases', () => {
+    assert.equal(validateReviewRequest(request()).ok, true);
+    for (const producer of [undefined, null, '', 'grok', 'GROK', 'XAI', 'xai', 'UNKNOWN', 42]) {
+      assert.equal(validateReviewRequest(request({ producer })).verdict, 'BLOCKED');
+    }
+    assert.equal(validateReviewRequest(request({ producer: 'HUMAN' })).ok, true);
+    assert.equal(validateReviewRequest(request({ producer: 'OTHER_AI' })).ok, true);
+  });
+
   it('rejects unknown or missing severity/disposition', () => {
     for (const finding of [
       { severity: 'UNKNOWN', disposition: 'NON_BLOCKING', evidence: 'a.js' },
       { severity: 'LOW', evidence: 'a.js' },
       { disposition: 'BLOCKING', evidence: 'a.js' },
     ]) assert.equal(validateReviewOutput(output({ verdict: 'APPROVE_WITH_FINDINGS', findings: [finding] }), HEAD).code, 'MALFORMED_FINDING');
+  });
+
+  it('enforces runtime finding-count and evidence-length output bounds', () => {
+    const finding = { severity: 'LOW', disposition: 'NON_BLOCKING', evidence: 'ok' };
+    assert.equal(validateReviewOutput(output({ verdict: 'APPROVE_WITH_FINDINGS', findings: Array.from({ length: 101 }, () => finding) }), HEAD).code, 'MALFORMED_OUTPUT');
+    assert.equal(validateReviewOutput(output({ verdict: 'APPROVE_WITH_FINDINGS', findings: [{ ...finding, evidence: 'x'.repeat(2001) }] }), HEAD).code, 'MALFORMED_FINDING');
   });
 
   it('forces HIGH/CRITICAL and all blocking findings to non-gate-safe fail-closed combinations', () => {
@@ -94,11 +123,9 @@ describe('Grok reviewer fail-closed orchestration', () => {
     }
   });
 
-  it('rejects credential-like input/output and Grok self-review', () => {
+  it('rejects credential-like input/output', () => {
     assert.equal(validateReviewRequest(request({ context: `Authorization: Bearer ${'a'.repeat(25)}` })).code, 'SECRET_INPUT_REJECTED');
     assert.equal(validateReviewOutput(output({ findings: [{ severity: 'LOW', disposition: 'NON_BLOCKING', evidence: `github_pat_${'a'.repeat(25)}` }], verdict: 'APPROVE_WITH_FINDINGS' }), HEAD).code, 'SECRET_OUTPUT_REJECTED');
-    assert.equal(validateReviewRequest(request({ producer: 'GROK' })).code, 'SELF_REVIEW_REJECTED');
-    assert.equal(validateReviewRequest(request({ producer: 'XAI' })).code, 'SELF_REVIEW_REJECTED');
   });
 
   it('fails API errors closed and exposes zero GitHub write capability', async () => {
