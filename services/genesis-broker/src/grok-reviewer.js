@@ -17,6 +17,7 @@ const CHANGED_FILE_KEYS = new Set(['path', 'status']);
 const MAX_FINDINGS = 100;
 const MAX_EVIDENCE_LENGTH = 2000;
 const bytes = (value) => new TextEncoder().encode(value).byteLength;
+const codePoints = (value) => Array.from(value).length;
 const plainObject = (value) => value && typeof value === 'object' && !Array.isArray(value);
 const onlyKeys = (value, keys) => Object.keys(value).every((key) => keys.has(key));
 
@@ -80,7 +81,7 @@ export function validateReviewOutput(output, expectedHeadSha) {
   for (const finding of output.findings) {
     if (!plainObject(finding) || !onlyKeys(finding, FINDING_KEYS) || Object.keys(finding).length !== FINDING_KEYS.size
       || !SEVERITIES.has(finding.severity) || !DISPOSITIONS.has(finding.disposition)
-      || typeof finding.evidence !== 'string' || !finding.evidence.trim() || finding.evidence.length > MAX_EVIDENCE_LENGTH) {
+      || typeof finding.evidence !== 'string' || !finding.evidence.trim() || codePoints(finding.evidence) > MAX_EVIDENCE_LENGTH) {
       return blocked('MALFORMED_FINDING', 'Every finding requires bounded evidence and known severity/disposition', reviewedHeadSha);
     }
     if (['HIGH', 'CRITICAL'].includes(finding.severity) && finding.disposition !== 'BLOCKING') {
