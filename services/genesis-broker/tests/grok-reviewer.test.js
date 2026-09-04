@@ -83,10 +83,12 @@ describe('Grok reviewer fail-closed orchestration', () => {
     ]) assert.equal(validateReviewOutput(output({ verdict: 'APPROVE_WITH_FINDINGS', findings: [finding] }), HEAD).code, 'MALFORMED_FINDING');
   });
 
-  it('enforces runtime finding-count and evidence-length output bounds', () => {
+  it('enforces runtime finding-count and Unicode code-point evidence-length bounds', () => {
     const finding = { severity: 'LOW', disposition: 'NON_BLOCKING', evidence: 'ok' };
     assert.equal(validateReviewOutput(output({ verdict: 'APPROVE_WITH_FINDINGS', findings: Array.from({ length: 101 }, () => finding) }), HEAD).code, 'MALFORMED_OUTPUT');
     assert.equal(validateReviewOutput(output({ verdict: 'APPROVE_WITH_FINDINGS', findings: [{ ...finding, evidence: 'x'.repeat(2001) }] }), HEAD).code, 'MALFORMED_FINDING');
+    assert.equal(validateReviewOutput(output({ verdict: 'APPROVE_WITH_FINDINGS', findings: [{ ...finding, evidence: '😀'.repeat(2000) }] }), HEAD).ok, true);
+    assert.equal(validateReviewOutput(output({ verdict: 'APPROVE_WITH_FINDINGS', findings: [{ ...finding, evidence: '😀'.repeat(2001) }] }), HEAD).code, 'MALFORMED_FINDING');
   });
 
   it('forces HIGH/CRITICAL and all blocking findings to non-gate-safe fail-closed combinations', () => {
