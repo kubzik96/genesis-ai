@@ -9,10 +9,13 @@ const SHA = /^[a-f0-9]{40}$/i;
 const VERDICTS = new Set(['APPROVE', 'APPROVE_WITH_FINDINGS', 'REQUEST_CHANGES', 'BLOCKED']);
 const SEVERITIES = new Set(['INFO', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL']);
 const DISPOSITIONS = new Set(['NON_BLOCKING', 'BLOCKING']);
+const PRODUCERS = new Set(['CODEX', 'HUMAN', 'OTHER_AI']);
 const OUTPUT_KEYS = new Set(['verdict', 'reviewed_head_sha', 'head_confirmed', 'scope', 'findings', 'ready_gate_safe']);
 const FINDING_KEYS = new Set(['severity', 'disposition', 'evidence']);
 const REQUEST_KEYS = new Set(['repository', 'prNumber', 'expectedHeadSha', 'diff', 'diffTruncated', 'changedFiles', 'context', 'contextTruncated', 'criteria', 'producer']);
 const CHANGED_FILE_KEYS = new Set(['path', 'status']);
+const MAX_FINDINGS = 100;
+const MAX_EVIDENCE_LENGTH = 2000;
 const bytes = (value) => new TextEncoder().encode(value).byteLength;
 const plainObject = (value) => value && typeof value === 'object' && !Array.isArray(value);
 const onlyKeys = (value, keys) => Object.keys(value).every((key) => keys.has(key));
@@ -55,8 +58,8 @@ export function validateReviewRequest(request) {
   if (!Array.isArray(request.criteria) || request.criteria.length === 0 || request.criteria.some((v) => typeof v !== 'string' || !v.trim())) {
     return blocked('INVALID_CRITERIA', 'Explicit review criteria are required');
   }
-  if (request.producer === 'GROK' || request.producer === 'XAI') {
-    return blocked('SELF_REVIEW_REJECTED', 'Grok-produced work requires a non-Grok independent reviewer');
+  if (typeof request.producer !== 'string' || !PRODUCERS.has(request.producer)) {
+    return blocked('INVALID_PRODUCER', 'Producer identity must be a canonical trusted-orchestrator value');
   }
   if (containsCredentialLikeValue(JSON.stringify(request))) return blocked('SECRET_INPUT_REJECTED', 'Credential-like reviewer input is forbidden');
   return { ok: true, value: { ...request, expectedHeadSha: request.expectedHeadSha.toLowerCase() } };
@@ -69,16 +72,16 @@ export function validateReviewOutput(output, expectedHeadSha) {
   if (containsCredentialLikeValue(JSON.stringify(output))) return blocked('SECRET_OUTPUT_REJECTED', 'Credential-like reviewer output is forbidden');
   if (!VERDICTS.has(output.verdict) || !SHA.test(output.reviewed_head_sha || '') || !['YES', 'NO'].includes(output.head_confirmed)
     || !['CLEAN', 'NOT_CLEAN'].includes(output.scope) || !Array.isArray(output.findings)
-    || !['YES', 'NO'].includes(output.ready_gate_safe)) {
-    return blocked('MALFORMED_OUTPUT', 'Reviewer output contains missing or unknown values');
+    || output.findings.length > MAX_FINDINGS || !['YES', 'NO'].includes(output.ready_gate_safe)) {
+    return blocked('MALFORMED_OUTPUT', 'Reviewer output contains missing, unknown, or out-of-bounds values');
   }
   const reviewedHeadSha = output.reviewed_head_sha.toLowerCase();
   if (reviewedHeadSha !== expectedHeadSha.toLowerCase()) return blocked('REVIEWED_HEAD_MISMATCH', 'Reviewed HEAD differs from expected HEAD', reviewedHeadSha);
   for (const finding of output.findings) {
     if (!plainObject(finding) || !onlyKeys(finding, FINDING_KEYS) || Object.keys(finding).length !== FINDING_KEYS.size
       || !SEVERITIES.has(finding.severity) || !DISPOSITIONS.has(finding.disposition)
-      || typeof finding.evidence !== 'string' || !finding.evidence.trim()) {
-      return blocked('MALFORMED_FINDING', 'Every finding requires known severity, disposition, and evidence', reviewedHeadSha);
+      || typeof finding.evidence !== 'string' || !finding.evidence.trim() || finding.evidence.length > MAX_EVIDENCE_LENGTH) {
+      return blocked('MALFORMED_FINDING', 'Every finding requires bounded evidence and known severity/disposition', reviewedHeadSha);
     }
     if (['HIGH', 'CRITICAL'].includes(finding.severity) && finding.disposition !== 'BLOCKING') {
       return blocked('CONTRADICTORY_OUTPUT', 'HIGH and CRITICAL findings must be blocking', reviewedHeadSha);
@@ -129,14 +132,34 @@ export async function runGrokReview({ request, getCurrentHead, reviewClient }) {
   return Object.freeze({ ...validated, repository: request.repository, prNumber: request.prNumber });
 }
 
-export function acknowledgeDurablePersistence(result, acknowledgement) {
+export async function acknowledgeDurablePersistence(result, { getCurrentHead, verifyPersistence } = {}) {
   if (!result?.ok) return blocked('INVALID_REVIEW_RESULT', 'Only a validated review result can be persisted');
-  if (!plainObject(acknowledgement) || acknowledgement.persisted !== true
-    || acknowledgement.persistedBy !== 'TRUSTED_GENESIS'
-    || acknowledgement.repository !== result.repository
-    || acknowledgement.prNumber !== result.prNumber
-    || acknowledgement.reviewedHeadSha?.toLowerCase() !== result.reviewedHeadSha) {
-    return blocked('PERSISTENCE_NOT_CONFIRMED', 'Trusted Genesis persistence acknowledgement must bind the exact reviewed HEAD', result.reviewedHeadSha);
+  if (typeof getCurrentHead !== 'function' || typeof verifyPersistence !== 'function') {
+    return blocked('PERSISTENCE_BOUNDARY_UNAVAILABLE', 'Trusted HEAD and persistence verification boundaries are required', result.reviewedHeadSha);
+  }
+  if (typeof result.reviewedHeadSha !== 'string' || !SHA.test(result.reviewedHeadSha)) {
+    return blocked('PERSISTENCE_NOT_CONFIRMED', 'Reviewed HEAD is malformed', null);
+  }
+  let currentHead;
+  try { currentHead = await getCurrentHead(result.repository, result.prNumber); } catch {
+    return blocked('HEAD_READ_FAILED', 'Could not verify HEAD immediately before persistence', result.reviewedHeadSha);
+  }
+  if (typeof currentHead !== 'string' || !SHA.test(currentHead) || currentHead.toLowerCase() !== result.reviewedHeadSha.toLowerCase()) {
+    return blocked('PERSISTENCE_HEAD_MISMATCH', 'Current PR HEAD differs from reviewed HEAD immediately before persistence', result.reviewedHeadSha);
+  }
+  let persisted;
+  try {
+    persisted = await verifyPersistence(Object.freeze({
+      repository: result.repository,
+      prNumber: result.prNumber,
+      reviewedHeadSha: result.reviewedHeadSha,
+      verdict: result.verdict,
+    }));
+  } catch {
+    return blocked('PERSISTENCE_NOT_CONFIRMED', 'Trusted persistence verification failed', result.reviewedHeadSha);
+  }
+  if (persisted !== true) {
+    return blocked('PERSISTENCE_NOT_CONFIRMED', 'Trusted persistence boundary did not confirm exact-HEAD durability', result.reviewedHeadSha);
   }
   return Object.freeze({ ...result, consequentialGateEvidenceAvailable: true });
 }
