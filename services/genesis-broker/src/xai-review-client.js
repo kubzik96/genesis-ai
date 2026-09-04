@@ -4,7 +4,9 @@ import {
   XAI_REVIEW_ENDPOINT,
   XAI_REVIEW_OUTPUT_TOKEN_LIMIT,
   XAI_REVIEW_REQUEST_BYTE_LIMIT,
+  XAI_REVIEW_RESPONSE_BYTE_LIMIT,
   XAI_REVIEW_RESPONSE_SCHEMA,
+  XAI_REVIEW_TIMEOUT_MS,
 } from './xai-review-contract.js';
 
 const SYSTEM_PROMPT = [
@@ -73,6 +75,13 @@ export function createXaiReviewClient({ invoke } = {}) {
   });
 }
 
+async function readBoundedResponseText(response, byteLimit) {
+  if (typeof response?.text !== 'function') throw new Error('xAI response body is unavailable');
+  const text = await response.text();
+  if (bytes(text) > byteLimit) throw new Error('xAI response exceeds byte ceiling');
+  return text;
+}
+
 // This is a reviewer-only transport. Its activation must be supplied as the
 // literal boolean true by a later, separately authorized runtime gate. Merely
 // configuring a key or a fetch implementation can never activate it.
@@ -80,6 +89,8 @@ export function createProductionXaiReviewClient({
   productionEnabled = false,
   xaiApiKey,
   fetchImpl = globalThis.fetch,
+  timeoutMs = XAI_REVIEW_TIMEOUT_MS,
+  responseByteLimit = XAI_REVIEW_RESPONSE_BYTE_LIMIT,
 } = {}) {
   let used = false;
   return Object.freeze({
@@ -90,24 +101,35 @@ export function createProductionXaiReviewClient({
       if (typeof xaiApiKey !== 'string' || !xaiApiKey || typeof fetchImpl !== 'function') {
         throw new XaiReviewAdapterError('REVIEW_PRODUCTION_UNAVAILABLE', 'Production reviewer transport is unavailable');
       }
+      if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || !Number.isSafeInteger(responseByteLimit) || responseByteLimit <= 0) {
+        throw new XaiReviewAdapterError('REVIEW_PRODUCTION_UNAVAILABLE', 'Production reviewer transport bounds are invalid');
+      }
       if (used) throw new XaiReviewAdapterError('REVIEW_REQUEST_LIMIT', 'Only one model request is allowed');
       used = true;
 
       const client = createXaiReviewClient({
         invoke: async (body) => {
-          const response = await fetchImpl(XAI_REVIEW_ENDPOINT, {
-            method: 'POST',
-            headers: Object.freeze({
-              authorization: `Bearer ${xaiApiKey}`,
-              'content-type': 'application/json',
-            }),
-            body: JSON.stringify(body),
-          });
-          if (!response?.ok || typeof response.json !== 'function') throw new Error('xAI request failed');
-          const envelope = await response.json();
-          const content = envelope?.choices?.[0]?.message?.content;
-          if (typeof content !== 'string') throw new Error('xAI response is malformed');
-          return JSON.parse(content);
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), timeoutMs);
+          try {
+            const response = await fetchImpl(XAI_REVIEW_ENDPOINT, {
+              method: 'POST',
+              headers: Object.freeze({
+                authorization: `Bearer ${xaiApiKey}`,
+                'content-type': 'application/json',
+              }),
+              body: JSON.stringify(body),
+              signal: controller.signal,
+            });
+            if (!response?.ok) throw new Error('xAI request failed');
+            const rawEnvelope = await readBoundedResponseText(response, responseByteLimit);
+            const envelope = JSON.parse(rawEnvelope);
+            const content = envelope?.choices?.[0]?.message?.content;
+            if (typeof content !== 'string') throw new Error('xAI response is malformed');
+            return JSON.parse(content);
+          } finally {
+            clearTimeout(timeout);
+          }
         },
       });
       return client.review(input);
