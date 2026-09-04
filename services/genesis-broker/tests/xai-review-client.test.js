@@ -171,6 +171,8 @@ describe('reviewer-only xAI local/mock adapter', () => {
     for (const options of [
       { productionEnabled: true, fetchImpl },
       { productionEnabled: true, xaiApiKey: 'local-mock-key', fetchImpl, timeoutMs: 0 },
+      { productionEnabled: true, xaiApiKey: 'local-mock-key', fetchImpl, timeoutMs: 1.5 },
+      { productionEnabled: true, xaiApiKey: 'local-mock-key', fetchImpl, timeoutMs: 2_147_483_648 },
       { productionEnabled: true, xaiApiKey: 'local-mock-key', fetchImpl, responseByteLimit: 0 },
     ]) {
       const client = createProductionXaiReviewClient(options);
