@@ -16,6 +16,7 @@ const SYSTEM_PROMPT = [
 ].join(' ');
 
 const bytes = (value) => new TextEncoder().encode(value).byteLength;
+const MAX_TIMEOUT_MS = 2_147_483_647;
 
 export class XaiReviewAdapterError extends Error {
   constructor(code, message, { called = false } = {}) {
@@ -101,7 +102,7 @@ export function createProductionXaiReviewClient({
       if (typeof xaiApiKey !== 'string' || !xaiApiKey || typeof fetchImpl !== 'function') {
         throw new XaiReviewAdapterError('REVIEW_PRODUCTION_UNAVAILABLE', 'Production reviewer transport is unavailable');
       }
-      if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || !Number.isSafeInteger(responseByteLimit) || responseByteLimit <= 0) {
+      if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > MAX_TIMEOUT_MS || !Number.isSafeInteger(responseByteLimit) || responseByteLimit <= 0) {
         throw new XaiReviewAdapterError('REVIEW_PRODUCTION_UNAVAILABLE', 'Production reviewer transport bounds are invalid');
       }
       if (used) throw new XaiReviewAdapterError('REVIEW_REQUEST_LIMIT', 'Only one model request is allowed');
