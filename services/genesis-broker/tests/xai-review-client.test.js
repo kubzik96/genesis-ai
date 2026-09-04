@@ -1,7 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildXaiReviewRequest, createXaiReviewClient, XaiReviewAdapterError } from '../src/xai-review-client.js';
-import { GROK_REVIEWER_CONFIG, XAI_REVIEW_REQUEST_BYTE_LIMIT } from '../src/xai-review-contract.js';
+import { readFile } from 'node:fs/promises';
+import {
+  buildXaiReviewRequest,
+  createProductionXaiReviewClient,
+  createXaiReviewClient,
+  XaiReviewAdapterError,
+} from '../src/xai-review-client.js';
+import { GROK_REVIEWER_CONFIG, XAI_REVIEW_ENDPOINT, XAI_REVIEW_REQUEST_BYTE_LIMIT } from '../src/xai-review-contract.js';
 
 const input = (context = 'safe context') => ({
   repository: 'kubzik96/genesis-ai', prNumber: 81, expectedHeadSha: 'a'.repeat(40), diff: '+safe',
@@ -32,6 +38,14 @@ describe('reviewer-only xAI local/mock adapter', () => {
     assert.equal('fetch' in client, false);
   });
 
+  it('has no static or runtime GitHub mutation surface', async () => {
+    const source = await readFile(new URL('../src/xai-review-client.js', import.meta.url), 'utf8');
+    assert.equal(source.includes('github-client'), false);
+    assert.equal(/createPullRequest|createIssue|mergePull|updateRef|deleteRef/.test(source), false);
+    const client = createProductionXaiReviewClient();
+    assert.deepEqual(Object.keys(client), ['review']);
+  });
+
   it('rejects credential-like input and output at the adapter boundary', async () => {
     assert.throws(() => buildXaiReviewRequest(input(`api_key=${'a'.repeat(25)}`)), (error) => error.code === 'REVIEW_SECRET_INPUT_REJECTED');
     const client = createXaiReviewClient({ invoke: async () => ({ ...validOutput, leak: `xai-${'a'.repeat(25)}` }) });
@@ -47,5 +61,62 @@ describe('reviewer-only xAI local/mock adapter', () => {
     const client = createXaiReviewClient({ invoke: async () => { calls += 1; throw new Error('sensitive provider detail'); } });
     await assert.rejects(() => client.review(input()), (error) => error instanceof XaiReviewAdapterError && error.code === 'REVIEW_API_FAILED' && !error.message.includes('sensitive'));
     assert.equal(calls, 1);
+  });
+
+  it('keeps production default-OFF and blocks before any network access', async () => {
+    let calls = 0;
+    const fetchImpl = async () => { calls += 1; throw new Error('must not run'); };
+    for (const productionEnabled of [undefined, false, 'true', 1]) {
+      const client = createProductionXaiReviewClient({ productionEnabled, xaiApiKey: 'configured-but-unused', fetchImpl });
+      await assert.rejects(() => client.review(input()), (error) => error.code === 'REVIEW_PRODUCTION_OFF' && error.called === false);
+    }
+    assert.equal(calls, 0);
+  });
+
+  it('issues exactly one reviewer-only chat-completions request with no retry, tools, or streaming', async () => {
+    let calls = 0;
+    const client = createProductionXaiReviewClient({
+      productionEnabled: true,
+      xaiApiKey: 'local-mock-key',
+      fetchImpl: async (url, init) => {
+        calls += 1;
+        assert.equal(url, XAI_REVIEW_ENDPOINT);
+        assert.equal(init.method, 'POST');
+        assert.equal(init.headers.authorization, 'Bearer local-mock-key');
+        const body = JSON.parse(init.body);
+        assert.equal(body.model, 'grok-4.3');
+        assert.equal(body.stream, false);
+        assert.equal('tools' in body, false);
+        return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify(validOutput) } }] }) };
+      },
+    });
+    assert.deepEqual(await client.review(input()), validOutput);
+    await assert.rejects(() => client.review(input()), (error) => error.code === 'REVIEW_REQUEST_LIMIT');
+    assert.equal(calls, 1);
+    assert.equal('apiKey' in client, false);
+    assert.equal('fetch' in client, false);
+  });
+
+  it('fails malformed production envelopes and non-schema content closed without retry', async () => {
+    for (const json of [
+      {},
+      { choices: [{ message: { content: '{not-json' } }] },
+    ]) {
+      let calls = 0;
+      const client = createProductionXaiReviewClient({
+        productionEnabled: true,
+        xaiApiKey: 'local-mock-key',
+        fetchImpl: async () => { calls += 1; return { ok: true, json: async () => json }; },
+      });
+      await assert.rejects(() => client.review(input()), (error) => error.code === 'REVIEW_API_FAILED' && error.called === true);
+      assert.equal(calls, 1);
+    }
+  });
+
+  it('rejects missing production prerequisites without attempting a request', async () => {
+    let calls = 0;
+    const client = createProductionXaiReviewClient({ productionEnabled: true, fetchImpl: async () => { calls += 1; } });
+    await assert.rejects(() => client.review(input()), (error) => error.code === 'REVIEW_PRODUCTION_UNAVAILABLE');
+    assert.equal(calls, 0);
   });
 });

@@ -1,6 +1,7 @@
 import { containsCredentialLikeValue } from './secret-scan.js';
 import {
   XAI_REVIEW_MODEL,
+  XAI_REVIEW_ENDPOINT,
   XAI_REVIEW_OUTPUT_TOKEN_LIMIT,
   XAI_REVIEW_REQUEST_BYTE_LIMIT,
   XAI_REVIEW_RESPONSE_SCHEMA,
@@ -68,6 +69,48 @@ export function createXaiReviewClient({ invoke } = {}) {
         throw new XaiReviewAdapterError('REVIEW_SECRET_OUTPUT_REJECTED', 'Credential-like reviewer output is forbidden', { called: true });
       }
       return output;
+    },
+  });
+}
+
+// This is a reviewer-only transport. Its activation must be supplied as the
+// literal boolean true by a later, separately authorized runtime gate. Merely
+// configuring a key or a fetch implementation can never activate it.
+export function createProductionXaiReviewClient({
+  productionEnabled = false,
+  xaiApiKey,
+  fetchImpl = globalThis.fetch,
+} = {}) {
+  let used = false;
+  return Object.freeze({
+    async review(input) {
+      if (productionEnabled !== true) {
+        throw new XaiReviewAdapterError('REVIEW_PRODUCTION_OFF', 'Production reviewer transport is disabled');
+      }
+      if (typeof xaiApiKey !== 'string' || !xaiApiKey || typeof fetchImpl !== 'function') {
+        throw new XaiReviewAdapterError('REVIEW_PRODUCTION_UNAVAILABLE', 'Production reviewer transport is unavailable');
+      }
+      if (used) throw new XaiReviewAdapterError('REVIEW_REQUEST_LIMIT', 'Only one model request is allowed');
+      used = true;
+
+      const client = createXaiReviewClient({
+        invoke: async (body) => {
+          const response = await fetchImpl(XAI_REVIEW_ENDPOINT, {
+            method: 'POST',
+            headers: Object.freeze({
+              authorization: `Bearer ${xaiApiKey}`,
+              'content-type': 'application/json',
+            }),
+            body: JSON.stringify(body),
+          });
+          if (!response?.ok || typeof response.json !== 'function') throw new Error('xAI request failed');
+          const envelope = await response.json();
+          const content = envelope?.choices?.[0]?.message?.content;
+          if (typeof content !== 'string') throw new Error('xAI response is malformed');
+          return JSON.parse(content);
+        },
+      });
+      return client.review(input);
     },
   });
 }
