@@ -4,6 +4,8 @@ export const XAI_REVIEW_OUTPUT_TOKEN_LIMIT = 4096;
 export const XAI_REVIEW_DIFF_BYTE_LIMIT = 64 * 1024;
 export const XAI_REVIEW_CONTEXT_BYTE_LIMIT = 32 * 1024;
 export const XAI_REVIEW_REQUEST_BYTE_LIMIT = 128 * 1024;
+export const XAI_REVIEW_RESPONSE_BYTE_LIMIT = 128 * 1024;
+export const XAI_REVIEW_TIMEOUT_MS = 30_000;
 
 const finding = {
   type: 'object',
@@ -38,6 +40,8 @@ export const GROK_REVIEWER_CONFIG = Object.freeze({
   diff_byte_limit: XAI_REVIEW_DIFF_BYTE_LIMIT,
   context_byte_limit: XAI_REVIEW_CONTEXT_BYTE_LIMIT,
   request_byte_limit: XAI_REVIEW_REQUEST_BYTE_LIMIT,
+  response_byte_limit: XAI_REVIEW_RESPONSE_BYTE_LIMIT,
+  timeout_ms: XAI_REVIEW_TIMEOUT_MS,
   requests_per_operation: 1,
   automatic_retry: 0,
   streaming: false,
