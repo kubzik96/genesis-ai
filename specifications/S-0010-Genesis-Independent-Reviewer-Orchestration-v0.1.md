@@ -6,12 +6,12 @@
 |---|---|
 | ID | S-0010 |
 | Title | Genesis Independent Reviewer Orchestration v0.1 |
-| Status | **Draft** |
+| Status | **Approved** |
 | Revision | 1 |
 | Author | ChatGPT — COO, по поручению CEO Genesis AI |
 | Creation date | 2026-09-05 |
-| Approval date | — |
-| Approved by | — |
+| Approval date | 2026-09-05 |
+| Approved by | CEO Genesis AI |
 | Related Issue | #89 |
 | Related Specifications | S-0007 Revision 1; S-0009 Revision 1 |
 | Related Decisions | DR-0010; DR-0011; DR-0008 remains authoritative where applicable |
@@ -207,21 +207,16 @@ S-0010 v0.1 is approval-ready only when the specification makes all of the follo
 
 ## 13. Non-goals
 
-This Draft Specification does not implement orchestration, authorize code changes, invoke xAI, deploy anything, change secrets, change Cloudflare, resume Dify/Broker runtime, remove quarantine, merge a PR, or approve itself.
+This Approved Specification does not implement orchestration, authorize code changes, invoke xAI, deploy anything, change secrets, change Cloudflare, resume Dify/Broker runtime, remove quarantine, merge a PR, or approve itself.
 
 It does not attempt to solve the separate Codex initial-PR publication limitation.
 
 ## 14. Gates and next step
 
-Current state: **Draft Revision 1 / Execution Authorization NOT_GRANTED**.
+Current state: **Approved Revision 1 / Execution Authorization NOT_GRANTED**.
 
-Required sequence:
+The CEO approved S-0010 Revision 1 on 2026-09-05 against independently reviewed PR #91 HEAD `aa53292d3c7e8063a3da58bbebf7c05dd6f760ca`.
 
-1. publish this Draft Specification in a Draft PR;
-2. independently review the exact PR HEAD;
-3. resolve any blocking findings through a new exact HEAD and fresh review as required;
-4. obtain separate CEO Specification Approval for the reviewed exact HEAD;
-5. promote the specification to `Approved` through a controlled docs change;
-6. only then consider a separately bounded implementation Execution Authorization.
+Next step: after this controlled status promotion is verified, obtain a separate CEO Ready authorization for PR #91 if the promoted exact HEAD remains consistent. Merge remains a later separate CEO gate. Only after S-0010 is durable on `main` may a separately bounded implementation Execution Authorization be considered.
 
-No step above implicitly grants the next one.
+No Specification Approval or successful review implicitly grants Ready, merge, implementation EA, deploy, LIVE/model calls, Dify, Broker, Cloudflare, secrets changes, or quarantine removal.
