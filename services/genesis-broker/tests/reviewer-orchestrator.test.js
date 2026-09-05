@@ -92,7 +92,8 @@ function harness({ auth = authorization(), req = request(), heads = [HEAD, HEAD,
 
 describe('S-0010 reviewer orchestration', () => {
   it('blocks missing or malformed authorization before any model call', async () => {
-    for (const auth of [undefined, {}, authorization({ modelCallAuthorized: false }), authorization({ modelRequestLimit: 2 }), authorization({ durablePersistenceAuthorized: false })]) {
+    assert.equal(validateReviewerAuthorization(undefined, request()).nextAction, 'STOP_BLOCKED');
+    for (const auth of [null, {}, authorization({ modelCallAuthorized: false }), authorization({ modelRequestLimit: 2 }), authorization({ durablePersistenceAuthorized: false })]) {
       const h = harness({ auth });
       const result = await h.run();
       assert.equal(result.nextAction, 'STOP_BLOCKED');
@@ -129,8 +130,7 @@ describe('S-0010 reviewer orchestration', () => {
     const auth = authorization({ artifactProducer: 'GROK_XAI' });
     const req = request({ producer: 'OTHER_AI' });
     const h = harness({ auth, req });
-    const result = await h.run();
-    assert.equal(result.code, 'REVIEW_SELF_REVIEW_FORBIDDEN');
+    assert.equal((await h.run()).code, 'REVIEW_SELF_REVIEW_FORBIDDEN');
     assert.equal(h.counts().reviewCalls, 0);
   });
 
@@ -138,9 +138,8 @@ describe('S-0010 reviewer orchestration', () => {
     const h = harness();
     const result = await h.run();
     assert.equal(result.ok, true);
-    assert.equal(result.verdict, 'APPROVE');
-    assert.equal(result.consequentialGateEvidenceAvailable, true);
     assert.equal(result.nextAction, 'NEXT_CEO_GATE');
+    assert.equal(result.consequentialGateEvidenceAvailable, true);
     assert.deepEqual(h.counts(), { reviewCalls: 1, persistCalls: 1, verifyCalls: 1 });
   });
 
@@ -148,8 +147,8 @@ describe('S-0010 reviewer orchestration', () => {
     const h = harness({ heads: [OTHER_HEAD] });
     const result = await h.run();
     assert.equal(result.code, 'REQUEST_HEAD_MISMATCH');
-    assert.equal(h.counts().reviewCalls, 0);
-    assert.equal(h.counts().persistCalls, 0);
+    assert.equal(result.nextAction, 'STOP_BLOCKED');
+    assert.deepEqual(h.counts(), { reviewCalls: 0, persistCalls: 0, verifyCalls: 0 });
   });
 
   it('blocks acceptance-time HEAD change after exactly one model call and never persists positive evidence', async () => {
@@ -162,7 +161,7 @@ describe('S-0010 reviewer orchestration', () => {
 
   it('blocks malformed reviewer output and provider failure without retry or persistence', async () => {
     for (const options of [
-      { response: output({ verdict: 'APPROVE', findings: [{ severity: 'LOW', disposition: 'NON_BLOCKING', evidence: 'contradiction' }] }) },
+      { response: output({ verdict: 'APPROVE', findings: [{ severity: 'LOW', disposition: 'NON_BLOCKING', evidence: 'unexpected' }] }) },
       { apiError: true },
     ]) {
       const h = harness(options);
@@ -173,16 +172,12 @@ describe('S-0010 reviewer orchestration', () => {
   });
 
   it('requires both trusted persistence boundaries before invoking the model', async () => {
-    let reviewCalls = 0;
-    const result = await orchestrateIndependentReview({
-      authorization: authorization(),
-      request: request(),
-      getCurrentHead: async () => HEAD,
-      reviewClient: { review: async () => { reviewCalls += 1; return output(); } },
-    });
-    assert.equal(result.code, 'PERSISTENCE_BOUNDARY_UNAVAILABLE');
-    assert.equal(result.nextAction, 'STOP_BLOCKED');
-    assert.equal(reviewCalls, 0);
+    const base = {
+      authorization: authorization(), request: request(), getCurrentHead: async () => HEAD,
+      reviewClient: { review: async () => { throw new Error('must not call'); } },
+    };
+    assert.equal((await orchestrateIndependentReview({ ...base, persistEvidence: async () => true })).code, 'PERSISTENCE_BOUNDARY_UNAVAILABLE');
+    assert.equal((await orchestrateIndependentReview({ ...base, verifyPersistence: async () => true })).code, 'PERSISTENCE_BOUNDARY_UNAVAILABLE');
   });
 
   it('blocks persistence errors or unverified persistence and exposes no consequential evidence', async () => {
@@ -204,27 +199,25 @@ describe('S-0010 reviewer orchestration', () => {
   });
 
   it('persists a valid non-gate-safe reviewer verdict but still stops instead of chaining authority', async () => {
-    const finding = { severity: 'MEDIUM', disposition: 'BLOCKING', evidence: 'a.js:1 requirement not met' };
-    const h = harness({ response: output({ verdict: 'REQUEST_CHANGES', findings: [finding], ready_gate_safe: 'NO' }) });
+    const h = harness({ response: output({ verdict: 'REQUEST_CHANGES', findings: [{ severity: 'MEDIUM', disposition: 'BLOCKING', evidence: 'needs fix' }], ready_gate_safe: 'NO' }) });
     const result = await h.run();
     assert.equal(result.ok, true);
-    assert.equal(result.consequentialGateEvidenceAvailable, true);
     assert.equal(result.nextAction, 'STOP_BLOCKED');
+    assert.equal(result.consequentialGateEvidenceAvailable, true);
     assert.deepEqual(h.counts(), { reviewCalls: 1, persistCalls: 1, verifyCalls: 1 });
   });
 
   it('has no retry, reviewer GitHub-write, or automatic consequential-action capability surface', () => {
-    assert.equal(REVIEWER_ORCHESTRATOR_CAPABILITIES.modelRequestsPerAuthorization, 1);
-    assert.equal(REVIEWER_ORCHESTRATOR_CAPABILITIES.automaticRetry, false);
-    assert.deepEqual([...REVIEWER_ORCHESTRATOR_CAPABILITIES.githubWriteByReviewer], []);
-    assert.deepEqual([...REVIEWER_ORCHESTRATOR_CAPABILITIES.automaticConsequentialActions], []);
-    assert.equal('apiKey' in REVIEWER_ORCHESTRATOR_CAPABILITIES, false);
-    assert.equal('merge' in REVIEWER_ORCHESTRATOR_CAPABILITIES, false);
-    assert.equal('ready' in REVIEWER_ORCHESTRATOR_CAPABILITIES, false);
+    assert.deepEqual(REVIEWER_ORCHESTRATOR_CAPABILITIES, {
+      modelRequestsPerAuthorization: 1,
+      automaticRetry: false,
+      githubWriteByReviewer: [],
+      automaticConsequentialActions: [],
+    });
   });
 
   it('validates the exact closed authorization shape directly', () => {
     assert.equal(validateReviewerAuthorization(authorization(), request()).ok, true);
-    assert.equal(validateReviewerAuthorization({ ...authorization(), extraAuthority: true }, request()).ok, false);
+    assert.equal(validateReviewerAuthorization({ ...authorization(), extra: true }, request()).code, 'REVIEW_AUTH_MALFORMED');
   });
 });
