@@ -34,4 +34,28 @@ export class DurableObjectProxyStore {
     }
     return response.json();
   }
+
+  async executeReview({ idempotencyKey, requestHash, runId, authorization, context }) {
+    const response = await this.stub.fetch('https://do.internal/execute-review', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        idempotencyKey,
+        requestHash,
+        operation: 'review_grok',
+        runId,
+        authorization,
+        context,
+      }),
+    });
+    if (!response.ok) {
+      return {
+        status: 503,
+        body: { error: 'DO_UNAVAILABLE', message: 'Durable Object returned non-ok response' },
+        githubCalled: false,
+        modelCalled: false,
+      };
+    }
+    return response.json();
+  }
 }

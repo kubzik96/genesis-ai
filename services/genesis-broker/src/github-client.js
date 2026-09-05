@@ -32,6 +32,35 @@ export function createGithubClient({ pat, fetchImpl = fetch }) {
     return { status: res.status, ok: res.ok, data, headers: res.headers };
   }
 
+  async function readBoundedText(response, byteLimit) {
+    const declared = Number(response.headers?.get?.('content-length'));
+    if (Number.isFinite(declared) && declared > byteLimit) {
+      await response.body?.cancel?.();
+      return { ok: false, tooLarge: true, text: null };
+    }
+    const reader = response.body?.getReader?.();
+    if (!reader) throw new Error('response body stream unavailable');
+    const chunks = [];
+    let total = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > byteLimit) {
+        await reader.cancel();
+        return { ok: false, tooLarge: true, text: null };
+      }
+      chunks.push(value);
+    }
+    const buffer = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      buffer.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return { ok: true, tooLarge: false, text: new TextDecoder('utf-8', { fatal: true }).decode(buffer) };
+  }
+
   return {
     async getContent(path) {
       const encoded = path
@@ -110,7 +139,7 @@ export function createGithubClient({ pat, fetchImpl = fetch }) {
       return gh('GET', `/repos/${FIXED_OWNER}/${FIXED_REPO}/pulls/${pullNumber}/files?per_page=100`);
     },
 
-    async getPullDiff(pullNumber) {
+    async getPullDiff(pullNumber, byteLimit = 1024 * 1024) {
       const url = `https://${GITHUB_API_HOST}/repos/${FIXED_OWNER}/${FIXED_REPO}/pulls/${pullNumber}`;
       const res = await fetchImpl(url, {
         method: 'GET',
@@ -121,8 +150,11 @@ export function createGithubClient({ pat, fetchImpl = fetch }) {
           'User-Agent': 'genesis-broker-mvp',
         },
       });
-      const text = await res.text();
-      return { status: res.status, ok: res.ok, data: text, headers: res.headers };
+      const bounded = await readBoundedText(res, byteLimit);
+      if (!bounded.ok) {
+        return { status: 413, ok: false, data: null, headers: res.headers, tooLarge: true };
+      }
+      return { status: res.status, ok: res.ok, data: bounded.text, headers: res.headers, tooLarge: false };
     },
 
     async getCombinedStatus(ref) {

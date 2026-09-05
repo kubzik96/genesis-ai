@@ -716,3 +716,218 @@ describe('BrokerDurableObject crash-safe idempotency', () => {
     assert.equal(githubCallCount, 0, 'GitHub must not be called when storage is missing');
   });
 });
+
+describe('BrokerDurableObject reviewer authorization durability', () => {
+  const REVIEW_HEAD = 'd'.repeat(40);
+  const REVIEW_FORBIDDEN = [
+    'READY', 'MERGE', 'REMEDIATION', 'DEPLOY', 'DIFY', 'BROKER_AUTH_RUNTIME',
+    'CLOUDFLARE', 'SECRETS', 'QUARANTINE_REMOVAL', 'REPEAT_MODEL_CALL',
+  ];
+
+  function reviewAuthorization() {
+    return {
+      repository: 'kubzik96/genesis-ai',
+      prNumber: 95,
+      expectedHeadSha: REVIEW_HEAD,
+      reviewPurpose: 'Durable reviewer test',
+      criteria: ['Preserve S-0010'],
+      artifactProducer: 'CODEX',
+      modelCallAuthorized: true,
+      modelRequestLimit: 1,
+      durablePersistenceAuthorized: true,
+      forbiddenActions: [...REVIEW_FORBIDDEN],
+    };
+  }
+
+  function reviewPayload({ key = 'review-key', hash = 'review-hash', runId = 'review-run' } = {}) {
+    return {
+      idempotencyKey: key,
+      requestHash: hash,
+      operation: 'review_grok',
+      runId,
+      authorization: reviewAuthorization(),
+      context: 'bounded canonical context',
+    };
+  }
+
+  function reviewGithub({ throwInitial = false, throwPersist = false } = {}) {
+    let persistedBody = null;
+    const calls = { getPull: 0, addIssueComment: 0, getIssueComment: 0 };
+    return {
+      calls,
+      async getPull() {
+        calls.getPull += 1;
+        if (throwInitial && calls.getPull === 1) throw new Error('network');
+        return { ok: true, status: 200, data: { head: { sha: REVIEW_HEAD } } };
+      },
+      async getPullFiles() {
+        return { ok: true, status: 200, data: [{ filename: 'MEMORY.md', status: 'modified' }], headers: new Headers() };
+      },
+      async getPullDiff() {
+        return { ok: true, status: 200, data: 'diff --git a/MEMORY.md b/MEMORY.md\n+safe', headers: new Headers() };
+      },
+      async addIssueComment(_number, body) {
+        calls.addIssueComment += 1;
+        persistedBody = body;
+        if (throwPersist) throw new Error('timeout');
+        return { ok: true, status: 201, data: { id: 777 } };
+      },
+      async getIssueComment() {
+        calls.getIssueComment += 1;
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            issue_url: 'https://api.github.com/repos/kubzik96/genesis-ai/issues/95',
+            body: persistedBody,
+          },
+        };
+      },
+    };
+  }
+
+  function reviewClient(storage, { fail = false, delay = false } = {}) {
+    const state = { calls: 0, pendingAtCall: null };
+    return {
+      state,
+      async review() {
+        state.calls += 1;
+        state.pendingAtCall = await storage.get('idem:review-key');
+        if (delay) await new Promise((resolve) => setTimeout(resolve, 5));
+        if (fail) throw new Error('provider');
+        return {
+          verdict: 'APPROVE',
+          reviewed_head_sha: REVIEW_HEAD,
+          head_confirmed: 'YES',
+          scope: 'CLEAN',
+          findings: [],
+          ready_gate_safe: 'YES',
+        };
+      },
+    };
+  }
+
+  async function invokeReview(storage, github, client, payload) {
+    const instance = new BrokerDurableObject(
+      { storage },
+      { GITHUB_PAT: 'pat', _github: github, _reviewClient: client },
+    );
+    return instance.fetch(makeDoRequest(payload)).then((r) => r.text()).then(JSON.parse);
+  }
+
+  it('rejects a live production path with no API key before durable reservation', async () => {
+    const storage = new MockStorage();
+    const github = reviewGithub();
+    const instance = new BrokerDurableObject(
+      { storage },
+      { GITHUB_PAT: 'pat', _github: github, XAI_REVIEWER_LIVE_ENABLED: 'true' },
+    );
+    const result = await instance.fetch(makeDoRequest(reviewPayload())).then((r) => r.text()).then(JSON.parse);
+    assert.equal(result.status, 503);
+    assert.equal(result.body?.error, 'REVIEW_PRODUCTION_UNAVAILABLE');
+    assert.equal(await storage.get('idem:review-key'), undefined);
+    assert.equal(github.calls.getPull, 0);
+  });
+
+  it('atomically reserves before the model, then replays after reconstruction', async () => {
+    const storage = new MockStorage();
+    const github = reviewGithub();
+    const client = reviewClient(storage);
+    const payload = reviewPayload();
+    const first = await invokeReview(storage, github, client, payload);
+    assert.equal(first.status, 200);
+    assert.equal(client.state.calls, 1);
+    assert.equal(client.state.pendingAtCall?.state, IDEM_STATES.PENDING);
+    assert.equal((await storage.get('run:review-run'))?.review_grok, true);
+
+    const replay = await invokeReview(storage, github, client, payload);
+    assert.equal(replay.status, 200);
+    assert.equal(replay.replay, true);
+    assert.equal(client.state.calls, 1);
+    assert.equal(github.calls.addIssueComment, 1);
+  });
+
+  it('blocks same-key hash conflict and a different key for a consumed run', async () => {
+    const storage = new MockStorage();
+    const github = reviewGithub();
+    const client = reviewClient(storage);
+    await invokeReview(storage, github, client, reviewPayload());
+
+    const conflict = await invokeReview(storage, github, client, reviewPayload({ hash: 'different-hash' }));
+    assert.equal(conflict.status, 409);
+    assert.equal(conflict.body?.error, 'IDEMPOTENCY_CONFLICT');
+
+    const secondKey = await invokeReview(storage, github, client, reviewPayload({ key: 'review-key-2', hash: 'review-hash-2' }));
+    assert.equal(secondKey.status, 429);
+    assert.equal(client.state.calls, 1);
+    assert.equal(github.calls.addIssueComment, 1);
+  });
+
+  it('serializes concurrent different keys for one run and performs one model call', async () => {
+    const storage = new MockStorage();
+    const github = reviewGithub();
+    const client = reviewClient(storage, { delay: true });
+    const instance = new BrokerDurableObject(
+      { storage },
+      { GITHUB_PAT: 'pat', _github: github, _reviewClient: client },
+    );
+    const invoke = (payload) => instance.fetch(makeDoRequest(payload)).then((r) => r.text()).then(JSON.parse);
+    const [first, second] = await Promise.all([
+      invoke(reviewPayload()),
+      invoke(reviewPayload({ key: 'review-key-2', hash: 'review-hash-2' })),
+    ]);
+    assert.equal(first.status, 200);
+    assert.equal(second.status, 429);
+    assert.equal(client.state.calls, 1);
+    assert.equal(github.calls.addIssueComment, 1);
+  });
+
+  it('persists UNKNOWN on an indeterminate evidence write and blocks reconstruction', async () => {
+    const storage = new MockStorage();
+    const github = reviewGithub({ throwPersist: true });
+    const client = reviewClient(storage);
+    const first = await invokeReview(storage, github, client, reviewPayload());
+    assert.equal(first.status, 409);
+    assert.equal(first.body?.error, 'BLOCKED_RECONCILIATION_REQUIRED');
+    assert.equal((await storage.get('idem:review-key'))?.state, IDEM_STATES.UNKNOWN);
+
+    const retry = await invokeReview(storage, github, client, reviewPayload());
+    assert.equal(retry.status, 409);
+    assert.equal(retry.body?.error, 'BLOCKED_RECONCILIATION_REQUIRED');
+    assert.equal(client.state.calls, 1);
+    assert.equal(github.calls.addIssueComment, 1);
+  });
+
+  it('releases the run reservation after a deterministic pre-model GitHub failure', async () => {
+    const storage = new MockStorage();
+    const badGithub = reviewGithub({ throwInitial: true });
+    const client = reviewClient(storage);
+    const first = await invokeReview(storage, badGithub, client, reviewPayload());
+    assert.equal(first.status, 409);
+    assert.equal(first.body?.code, 'HEAD_READ_FAILED');
+    assert.equal(client.state.calls, 0);
+    assert.equal((await storage.get('run:review-run'))?.review_grok, false);
+
+    const goodGithub = reviewGithub();
+    const second = await invokeReview(
+      storage,
+      goodGithub,
+      client,
+      reviewPayload({ key: 'review-key-2', hash: 'review-hash-2' }),
+    );
+    assert.equal(second.status, 200);
+    assert.equal(client.state.calls, 1);
+  });
+
+  it('consumes the run after a model failure so a new key cannot repeat the call', async () => {
+    const storage = new MockStorage();
+    const github = reviewGithub();
+    const client = reviewClient(storage, { fail: true });
+    const first = await invokeReview(storage, github, client, reviewPayload());
+    assert.equal(first.status, 409);
+    assert.equal(first.body?.code, 'REVIEW_API_FAILED');
+    const second = await invokeReview(storage, github, client, reviewPayload({ key: 'review-key-2', hash: 'review-hash-2' }));
+    assert.equal(second.status, 429);
+    assert.equal(client.state.calls, 1);
+  });
+});
