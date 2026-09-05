@@ -25,7 +25,8 @@
 | [S-0007](S-0007-Genesis-Orchestrator-v0.1.md) | Genesis Orchestrator v0.1 | Approved | 1 | T-006 | 2026-09-03 |
 | [S-0008](S-0008-Genesis-Independent-Grok-Reviewer-v0.1.md) | Genesis Independent Grok Reviewer v0.1 | Superseded | 1 | — (Issue #79 architecture tracker) | 2026-09-03 |
 | [S-0009](S-0009-Genesis-Independent-Grok-Reviewer-v0.2.md) | Genesis Independent Grok Reviewer v0.2 | Approved | 1 | — (Issue #79 architecture tracker) | 2026-09-03 |
+| [S-0010](S-0010-Genesis-Independent-Reviewer-Orchestration-v0.1.md) | Genesis Independent Reviewer Orchestration v0.1 | Approved | 1 | — (Issue #89) | 2026-09-05 |
 
 ## Следующий номер
 
-`S-0010`
+`S-0011`
