@@ -82,6 +82,14 @@ export function createGithubClient({ pat, fetchImpl = fetch }) {
       return gh('GET', `/repos/${FIXED_OWNER}/${FIXED_REPO}/issues/${issueNumber}`);
     },
 
+    async addIssueComment(issueNumber, body) {
+      return gh('POST', `/repos/${FIXED_OWNER}/${FIXED_REPO}/issues/${issueNumber}/comments`, { body });
+    },
+
+    async getIssueComment(commentId) {
+      return gh('GET', `/repos/${FIXED_OWNER}/${FIXED_REPO}/issues/comments/${commentId}`);
+    },
+
     /**
      * Read-only Issue timeline for structured PR discovery (cross-referenced events).
      * per_page=100. Caller must fail-closed if incompletePages is true and it cannot continue.
@@ -99,7 +107,7 @@ export function createGithubClient({ pat, fetchImpl = fetch }) {
     },
 
     async getPullFiles(pullNumber) {
-      return gh('GET', `/repos/${FIXED_OWNER}/${FIXED_REPO}/pulls/${pullNumber}/files`);
+      return gh('GET', `/repos/${FIXED_OWNER}/${FIXED_REPO}/pulls/${pullNumber}/files?per_page=100`);
     },
 
     async getPullDiff(pullNumber) {

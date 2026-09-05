@@ -27,6 +27,7 @@ export const ALLOWED_ROUTES = Object.freeze([
   { method: 'POST', pattern: /^\/v1\/issues$/ },
   { method: 'POST', pattern: /^\/v1\/issues\/\d+\/assign-copilot$/ },
   { method: 'POST', pattern: /^\/v1\/executions\/grok\/draft-pr$/ },
+  { method: 'POST', pattern: /^\/v1\/reviews\/grok$/ },
   { method: 'GET', pattern: /^\/v1\/issues\/\d+\/status$/ },
   { method: 'GET', pattern: /^\/v1\/pulls\/\d+$/ },
   { method: 'GET', pattern: /^\/v1\/pulls\/\d+\/diff$/ },
