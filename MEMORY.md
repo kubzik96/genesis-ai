@@ -39,7 +39,9 @@ If this summary conflicts with a higher-priority or canonical artifact, the cano
 - **Production Habit #1 / Genesis Decision Brief v0:** accepted and merged through completed Issue [#71](https://github.com/kubzik96/genesis-ai/issues/71) and PR [#72](https://github.com/kubzik96/genesis-ai/pull/72) as `68d00b960692eed092584bb5cbadb3e37e2a7fc0`. The capability adds a short GitHub-native decision-brief template plus one filled Trial #4/T-006 example. The real run again required one CEO result-page **Create PR** click; publication was initially non-Draft and the orchestrator restored Draft before independent review.
 - **Capability boundary:** full zero-click One-Window is still **not proven**. The observed product-native path still requires one CEO **Create PR** click, and Draft preservation is not guaranteed; the orchestrator can restore Draft when supported.
 - **S-0007 Revision 1:** Approved by the CEO on 2026-09-03 and merged through PR [#64](https://github.com/kubzik96/genesis-ai/pull/64).
-- **S-0008 / S-0009 / DR-0011:** S-0008 Revision 1 was CEO-approved and DR-0011 separately CEO-accepted on 2026-09-03 against independently reviewed HEAD `0cdf9b50287e1c1250cbcd2fdcb4c3ab25f0023d`. Independent Qodo review later established that the corrected requirements are a Major specification change, so S-0008 Revision 1 is preserved as **Superseded**. S-0009 Revision 1 was independently reviewed clean at exact HEAD `f3c4071244e0fe3e1540d3a68ad8e3cb4d37f7ae` and explicitly CEO-approved on 2026-09-03. DR-0011 remains Accepted. **Execution Authorization remains NOT_GRANTED.**
+- **S-0008 / S-0009 / DR-0011:** S-0008 Revision 1 was CEO-approved and DR-0011 separately CEO-accepted on 2026-09-03 against independently reviewed HEAD `0cdf9b50287e1c1250cbcd2fdcb4c3ab25f0023d`. Independent Qodo review later established that the corrected requirements are a Major specification change, so S-0008 Revision 1 is preserved as **Superseded**. S-0009 Revision 1 was independently reviewed clean at exact HEAD `f3c4071244e0fe3e1540d3a68ad8e3cb4d37f7ae` and explicitly CEO-approved on 2026-09-03. DR-0011 remains Accepted. The bounded implementation EA for the reviewer production transport was granted in Issue [#85](https://github.com/kubzik96/genesis-ai/issues/85) and consumed by merged PR [#86](https://github.com/kubzik96/genesis-ai/pull/86); there is no standing implementation EA.
+- **Independent Grok Reviewer:** PR [#86](https://github.com/kubzik96/genesis-ai/pull/86) merged the dedicated default-OFF reviewer-only xAI transport as `1633bdd79db7a75b4e1f15d689fb383f5b84c46e`. A later bounded direct non-Dify/non-Broker LIVE smoke used the merged production reviewer modules against Draft PR [#78](https://github.com/kubzik96/genesis-ai/pull/78) exact HEAD `4ba808c13998e4b3fe94bce26625614435be4c95` and returned `APPROVE`, `head_confirmed=YES`, `scope=CLEAN`, no findings, `ready_gate_safe=YES`; the result was durably persisted on PR #78, then Ready and squash-merge were separately CEO-authorized. PR #78 merged as `49df57905fce1a5c1577c067b9ab6170ad349601`. This proves the reviewer contract end-to-end for the bounded local one-shot path only; it does not prove Worker deployment, Dify/Broker runtime, production-wide LIVE enablement, or zero-click review orchestration.
+- **Reviewer routing / token economy:** Grok/xAI is the preferred permanent independent reviewer for consequential changes, architecture, security, disputed decisions, and important Ready/Merge evidence. Routine read-only GitHub checks, housekeeping, minor documentation work, and ordinary diagnostics should not spend xAI tokens when independent review adds little value. Reviewer calls stay bounded: exact-HEAD context, one request, automatic retry 0, limited output. This routing preference does not itself grant standing LIVE/model-call authority where governance requires a separate CEO gate.
 - **Dify:** OPTIONAL / NON-BLOCKING for the One-Window MVP. No Dify operation is required for the next project step.
 - **Durability:** GitHub remains the only durable Source of Record. Chats are working memory only.
 - **Task status:** T-006 is DONE by explicit CEO acceptance; this snapshot does not promote T-009, T-010, or T-011 to `DONE`; `bridge/QUEUE.md` remains authoritative.
@@ -56,17 +58,20 @@ If this summary conflicts with a higher-priority or canonical artifact, the cano
 - Trial #4 completed through Issue [#65](https://github.com/kubzik96/genesis-ai/issues/65) and independently reviewed PR [#66](https://github.com/kubzik96/genesis-ai/pull/66), squash-merged as `90c30542aa07c837859c3cf8055f092eb536b450`.
 - T-006 / Genesis Orchestrator v0.1 was explicitly accepted by the CEO as DONE after the S-0007 acceptance matrix was recorded in Issue [#68](https://github.com/kubzik96/genesis-ai/issues/68).
 - Production Habit #1 / Genesis Decision Brief v0 completed through Issue [#71](https://github.com/kubzik96/genesis-ai/issues/71); PR [#72](https://github.com/kubzik96/genesis-ai/pull/72) was independently reviewed at exact HEAD, separately authorized Ready and merge, and squash-merged as `68d00b960692eed092584bb5cbadb3e37e2a7fc0`.
+- The S-0009 reviewer-only production transport implementation completed through bounded Issue [#85](https://github.com/kubzik96/genesis-ai/issues/85) and merged PR [#86](https://github.com/kubzik96/genesis-ai/pull/86) as `1633bdd79db7a75b4e1f15d689fb383f5b84c46e`, preserving default-OFF activation and zero GitHub mutation authority.
+- The first real Genesis Independent Grok Reviewer proof completed successfully against PR [#78](https://github.com/kubzik96/genesis-ai/pull/78) exact HEAD `4ba808c13998e4b3fe94bce26625614435be4c95`; durable review evidence recorded `APPROVE`, clean scope, no findings, and the exact HEAD was later separately authorized Ready and squash-merged as `49df57905fce1a5c1577c067b9ab6170ad349601`.
 - Existing specifications, Decision Records, Bridge, Broker code, and Dify plugin candidate remain in GitHub; their presence does not imply runtime authorization.
 
 ## KNOWN_BLOCKERS
 
 - **Residual publication click:** Issue → `@codex` → Codex Cloud execution is proven, but the completed result still required one CEO click on the Codex result-page **Create PR** action. Production Habit #1 reproduced the same limitation after Trials #3/#4. Automatic task-side first-PR publication remains unproven.
 - **Draft publication semantics:** the proven result-page publication path created Trial #3 PR #56, Trial #4 PR #66, and Production Habit #1 PR #72 as non-Draft despite bounded Draft requirements; the orchestrator corrected them back to Draft. Do not assume Codex result publication preserves Draft by default.
+- **Codex result publication in Issue #87:** the bounded Codex task produced a local `MEMORY.md` commit but could not publish it because its environment exposed neither configured GitHub authentication/remote nor `make_pr`; the orchestrator must publish the equivalent bounded docs-only change through a trusted GitHub path.
 - **Copilot assignment probe:** blocked under the current connector/UI evidence recorded by Issue [#46](https://github.com/kubzik96/genesis-ai/issues/46); revisit only when new capability evidence exists.
-- **No custom transport for this blocker:** Dify/Broker/custom transport remains frozen or deferred; do not build new infrastructure merely to remove one manual send.
+- **No custom transport for the Codex publication blocker:** Dify/Broker/custom transport remains frozen or deferred; do not build new infrastructure merely to remove one manual send.
 - **CI:** repository documentation records `CI_NOT_CONFIGURED`; absence of CI is not a passing check.
 - **Broker quarantine:** DR-0008 remains active in repository evidence; DR-0009 states that the controlled authenticated check and safe Dify logging confirmation were not completed. Do not infer that quarantine is lifted.
-- **Independent Grok Reviewer runtime:** S-0009 Revision 1 is Approved and DR-0011 is Accepted, but implementation EA, authenticated Broker use, secrets operations, deployment and first LIVE xAI call remain separately blocked pending explicit CEO gates.
+- **Reviewer production integration:** the reviewer contract and a bounded local LIVE xAI path are proven, but a permanent orchestrated runtime trigger, automated durable persistence, Worker deployment, authenticated Broker integration, and production-wide LIVE enablement remain unproven and separately gated.
 
 ## FAILED_PATHS / DO_NOT_REPEAT
 
@@ -77,6 +82,7 @@ If this summary conflicts with a higher-priority or canonical artifact, the cano
 | Local Codex install/local-executor path | Unavailable/failed in the CEO environment; GitHub does not independently prove a recovery | New compatible environment, release, or diagnostic evidence plus a bounded authorization |
 | Repeating already verified trial steps | Do not recreate Issue #41 / PR #42 or rerun Trials #3/#4 merely to re-prove Issue→Codex launch/recovery | Only a new, explicitly scoped trial with a new acceptance target |
 | Reusing S-0005 writer authority as independent-reviewer authority | Forbidden by S-0009/DR-0011 separation | New/revised approved architecture; do not inherit writer authority for convenience |
+| xAI Console Key ID used as API secret | Failed authentication/diagnostic path; earlier provider `400` results were not valid request-shape evidence because the local value was an identifier rather than the actual API secret | Verify credential type and safe shape locally before provider diagnostics; never store or paste the secret into GitHub/chat |
 
 Failed-path entries are guardrails, not permanent bans. An agent may propose reconsideration only when it cites new evidence and the required CEO gate.
 
@@ -92,33 +98,35 @@ Canonical wording and status remain in `decisions/INDEX.md` and the linked recor
 - [DR-0008](decisions/DR-0008-Broker-Token-Exposure-Quarantine.md) — Broker-token quarantine; no repository evidence of CEO removal.
 - [DR-0009](decisions/DR-0009-Private-Dify-Broker-Tool-Plugin.md) — typed private plugin architecture; operational use is not implied.
 - [DR-0010](decisions/DR-0010-Genesis-Long-Term-Project-Memory-V1.md) — accepted Genesis Long-Term Project Memory V1 model.
-- [DR-0011](decisions/DR-0011-Genesis-Independent-Grok-Reviewer.md) — accepted reviewer-only Grok/xAI architecture; no implementation or LIVE authority implied.
+- [DR-0011](decisions/DR-0011-Genesis-Independent-Grok-Reviewer.md) — accepted reviewer-only Grok/xAI architecture; no standing implementation or LIVE authority implied.
 
 ## CURRENT_BASELINE
 
 | Field | Value |
 |---|---|
-| `verified_main` | `68d00b960692eed092584bb5cbadb3e37e2a7fc0` |
-| Meaning | Exact accepted `main` after Production Habit #1 / Genesis Decision Brief v0 PR #72 was independently reviewed, separately authorized, and squash-merged |
+| `verified_main` | `49df57905fce1a5c1577c067b9ab6170ad349601` |
+| Meaning | Exact accepted `main` after the first successful bounded Genesis Independent Grok Reviewer proof was durably persisted on PR #78 and PR #78 was separately authorized and squash-merged |
 | Freshness rule | Git history identifies the memory commit itself; do not embed a self-referential future merge SHA. If `main` advances, inspect the delta and update this field after the next meaningful accepted change. |
 
 ## NEXT_ACTION
 
-Verify the bounded S-0009 approval promotion in PR #81, then obtain a separate CEO Ready authorization if the docs-only PR remains consistent. Merge remains a later separate CEO gate. Only after S-0009 is durable on `main` may a separate bounded implementation EA be considered. No xAI LIVE call, authenticated Broker use, secrets operation, deploy, or quarantine removal is authorized by this memory update.
+Complete Issue [#87](https://github.com/kubzik96/genesis-ai/issues/87) as a `MEMORY.md`-only Draft PR from current `main`, independently review its exact HEAD, and stop at the next required CEO gate. After the memory sync is durable, the next product step should be a separately bounded design/implementation task for permanent reviewer orchestration and trusted durable-persistence automation around the already-proven reviewer contract. Do not deploy, enable production-wide LIVE, resume Dify/Broker runtime, change secrets, or remove quarantine without the applicable separate gate.
 
 ## CEO_GATES
 
 - Memory content records gates; it never grants or chains them.
-- S-0008 Revision 1 is Superseded. S-0009 Revision 1 was explicitly CEO-approved on 2026-09-03 against exact independently reviewed HEAD `f3c4071244e0fe3e1540d3a68ad8e3cb4d37f7ae`. DR-0011 remains CEO-accepted. **Execution Authorization remains NOT_GRANTED**.
-- Ready, merge, implementation EA, deployment, secrets operations, Dify operations, authenticated Broker use, Cloudflare changes, first xAI LIVE call and quarantine removal remain separately gated where governance requires.
+- S-0008 Revision 1 is Superseded. S-0009 Revision 1 was explicitly CEO-approved on 2026-09-03 against exact independently reviewed HEAD `f3c4071244e0fe3e1540d3a68ad8e3cb4d37f7ae`. DR-0011 remains CEO-accepted.
+- The bounded implementation EA in Issue #85 was consumed by PR #86. The bounded first-LIVE-review smoke gate was also consumed by the successful exact-HEAD PR #78 proof. Neither creates standing implementation, deployment, secrets, Broker/Dify, or production-wide LIVE authority.
+- Grok/xAI is the preferred independent reviewer for important consequential changes, but token-economy routing is not itself a standing authorization to make future model calls when a separate CEO gate is required.
+- Ready, merge, new implementation EA, deployment, secrets operations, Dify operations, authenticated Broker use, Cloudflare changes, future LIVE/model calls where separately gated, and quarantine removal remain separately gated where governance requires.
 - A successful step does not authorize the next step.
 - Only the CEO can accept task completion and authorize merge.
 - Memory maintenance does not give any agent standing write authority. An authorized executor may update memory only inside the current bounded scope or a separately authorized linked docs-only PR.
 
 ## OPEN_EXTERNAL_DEPENDENCIES
 
-- A supported product-native Codex result-publication path that removes the remaining CEO **Create PR** click and, ideally, preserves Draft state. Issue→Codex launch, memory recovery, and bounded result production are already proven; Production Habit #1 reproduced the remaining publication/Draft limitation.
-- A permanent independent-review implementation replacing temporary Qodo; S-0009 Revision 1 is Approved and DR-0011 defines the accepted architecture, but implementation and LIVE proof remain separately gated.
+- A supported product-native Codex result-publication path that removes the remaining CEO **Create PR** click and, ideally, preserves Draft state. Issue→Codex launch, memory recovery, and bounded result production are already proven; Issue #87 again showed that the executor environment may finish with only a local commit and no publication surface.
+- A permanent orchestrated invocation/persistence path for the independent Grok reviewer. The reviewer-only transport and first bounded LIVE exact-HEAD proof are now proven; automated trigger, trusted durable evidence persistence, and any production runtime integration remain open.
 - Dify/platform-support or compatibility evidence, but only if the optional plugin path is deliberately resumed.
 - A separately authorized controlled non-Dify Broker authentication check and explicit CEO quarantine removal, but only before future authenticated Broker use.
 
