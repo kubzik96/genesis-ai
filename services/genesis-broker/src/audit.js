@@ -26,6 +26,7 @@ export function redact(value) {
     for (const [k, v] of Object.entries(value)) {
       if (
         REDACT_KEYS.has(k) ||
+        /^idempotency[-_]?key$/i.test(k) ||
         /(?:^|_)(?:token|secret|password|authorization|pat|api_?key)(?:$|_)/i.test(k)
       ) {
         out[k] = '[REDACTED]';
