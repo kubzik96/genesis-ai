@@ -21,6 +21,8 @@ import {
   XAI_BUDGET_RECONCILIATION_KEY,
 } from './budget-ledger.js';
 import { XAI_BUDGET_RESERVATION_TICKS } from './xai-contract.js';
+import { createProductionXaiReviewClient } from './xai-review-client.js';
+import { executeReviewerRuntimeOperation, validateReviewerRuntimeBody } from './reviewer-runtime.js';
 
 export class BrokerDurableObject {
   constructor(state, env) {
@@ -72,7 +74,258 @@ export class BrokerDurableObject {
         idempotencyState: null,
       });
     }
+    if (payload?.operation === 'review_grok') {
+      return this._withLock(() => this._processReview(payload, github));
+    }
     return this._withLock(() => this._processWrite(payload, github));
+  }
+
+  async _processReview({ idempotencyKey, requestHash, runId, authorization, context }, github) {
+    const storage = this.state.storage;
+    const checked = validateReviewerRuntimeBody({ authorization, context, run_id: runId });
+    if (!checked.ok) {
+      return this._json({
+        status: checked.status,
+        body: checked.body,
+        githubCalled: false,
+        githubStatus: null,
+        modelCalled: false,
+        persistenceAttempted: false,
+        idempotencyState: null,
+      });
+    }
+    if (typeof idempotencyKey !== 'string' || !idempotencyKey || typeof requestHash !== 'string' || !requestHash) {
+      return this._json({
+        status: 400,
+        body: { error: 'INVALID_IDEMPOTENCY_ENVELOPE', message: 'Idempotency key and request hash are required' },
+        githubCalled: false,
+        githubStatus: null,
+        modelCalled: false,
+        persistenceAttempted: false,
+        idempotencyState: null,
+      });
+    }
+
+    const existing = (await storage.get(`idem:${idempotencyKey}`)) ?? null;
+    const decision = evaluateIdempotency(existing, requestHash);
+    if (decision.action === 'CONFLICT' || decision.action === 'BLOCKED' || decision.action === 'IN_FLIGHT') {
+      const idempotencyState = decision.action === 'CONFLICT'
+        ? existing?.state ?? null
+        : decision.action === 'IN_FLIGHT'
+          ? IDEM_STATES.PENDING
+          : existing?.state ?? null;
+      return this._json({
+        status: decision.status,
+        body: { error: decision.error, message: decision.message },
+        githubCalled: false,
+        githubStatus: null,
+        modelCalled: false,
+        persistenceAttempted: false,
+        idempotencyState,
+      });
+    }
+    if (decision.action === 'REPLAY') {
+      return this._json({
+        status: decision.result?.status
+          || (decision.state === IDEM_STATES.FAILED ? 409 : 200),
+        body: decision.result?.body,
+        githubCalled: false,
+        githubStatus: null,
+        modelCalled: false,
+        persistenceAttempted: false,
+        idempotencyState: decision.state,
+        replay: true,
+      });
+    }
+
+    const runState = (await storage.get(`run:${runId}`)) ?? {
+      create_issue: false,
+      assign_copilot: false,
+      create_branch_commit_draft_pr: false,
+      create_branch_commit_draft_pr_blocked: false,
+      create_branch_commit_draft_pr_pending: null,
+      review_grok: false,
+      review_grok_blocked: false,
+      review_grok_pending: null,
+      created_issue_number: null,
+    };
+    const bounds = checkRunBounds(runState, 'review_grok');
+    if (!bounds.ok) {
+      return this._json({
+        status: bounds.status,
+        body: { error: bounds.error, message: bounds.message },
+        githubCalled: false,
+        githubStatus: null,
+        modelCalled: false,
+        persistenceAttempted: false,
+        idempotencyState: null,
+      });
+    }
+    const rate = checkHourlyWriteLimit((await storage.get('rate:timestamps')) ?? []);
+    if (!rate.ok) {
+      return this._json({
+        status: rate.status,
+        body: { error: rate.error, message: rate.message },
+        githubCalled: false,
+        githubStatus: null,
+        modelCalled: false,
+        persistenceAttempted: false,
+        idempotencyState: null,
+      });
+    }
+
+    const explicitReviewClient = this.env?._reviewClient;
+    if (!explicitReviewClient && this.env?.XAI_REVIEWER_LIVE_ENABLED !== 'true') {
+      return this._json({
+        status: 409,
+        body: { error: 'REVIEW_PRODUCTION_OFF', message: 'Production reviewer transport is disabled' },
+        githubCalled: false,
+        githubStatus: null,
+        modelCalled: false,
+        persistenceAttempted: false,
+        idempotencyState: null,
+      });
+    }
+    if (
+      !explicitReviewClient &&
+      (typeof this.env?.XAI_API_KEY !== 'string' || !this.env.XAI_API_KEY ||
+        typeof (this.env?._xaiFetchImpl || globalThis.fetch) !== 'function')
+    ) {
+      return this._json({
+        status: 503,
+        body: { error: 'REVIEW_PRODUCTION_UNAVAILABLE', message: 'Production reviewer transport is unavailable' },
+        githubCalled: false,
+        githubStatus: null,
+        modelCalled: false,
+        persistenceAttempted: false,
+        idempotencyState: null,
+      });
+    }
+    const baseReviewClient = explicitReviewClient || createProductionXaiReviewClient({
+      productionEnabled: true,
+      xaiApiKey: this.env?.XAI_API_KEY,
+      fetchImpl: this.env?._xaiFetchImpl || globalThis.fetch,
+    });
+    if (typeof baseReviewClient?.review !== 'function') {
+      return this._json({
+        status: 503,
+        body: { error: 'REVIEW_PRODUCTION_UNAVAILABLE', message: 'Production reviewer transport is unavailable' },
+        githubCalled: false,
+        githubStatus: null,
+        modelCalled: false,
+        persistenceAttempted: false,
+        idempotencyState: null,
+      });
+    }
+
+    const pending = {
+      idempotency_key: idempotencyKey,
+      request_hash: requestHash,
+      operation: 'review_grok',
+      run_id: runId,
+      gate: null,
+      state: IDEM_STATES.PENDING,
+      safe_result: null,
+    };
+    await storage.put(Object.fromEntries([
+      [`idem:${idempotencyKey}`, pending],
+      [`run:${runId}`, {
+        ...runState,
+        review_grok_pending: { idempotency_key: idempotencyKey, request_hash: requestHash },
+      }],
+    ]));
+
+    const calls = {
+      githubCalled: false,
+      githubStatus: null,
+      modelCalled: false,
+      persistenceAttempted: false,
+    };
+    const trackedGithub = {};
+    for (const method of ['getPull', 'getPullFiles', 'getPullDiff', 'addIssueComment', 'getIssueComment']) {
+      trackedGithub[method] = async (...args) => {
+        calls.githubCalled = true;
+        if (method === 'addIssueComment') calls.persistenceAttempted = true;
+        const response = await github[method](...args);
+        calls.githubStatus = response?.status ?? calls.githubStatus;
+        return response;
+      };
+    }
+    const reviewClient = {
+      async review(input) {
+        calls.modelCalled = true;
+        return baseReviewClient.review(input);
+      },
+    };
+
+    let operationResult;
+    try {
+      operationResult = await executeReviewerRuntimeOperation({
+        authorization: checked.value.authorization,
+        context: checked.value.context,
+        github: trackedGithub,
+        reviewClient,
+      });
+    } catch {
+      operationResult = {
+        status: 409,
+        body: {
+          ok: false,
+          code: 'REVIEW_RUNTIME_FAILED',
+          verdict: 'BLOCKED',
+          ready_gate_safe: 'NO',
+          consequential_gate_evidence_available: false,
+          next_action: 'STOP_BLOCKED',
+        },
+      };
+    }
+
+    const safeResult = { status: operationResult.status, body: operationResult.body };
+    if (operationResult.status === 200) {
+      await storage.put(Object.fromEntries([
+        [`idem:${idempotencyKey}`, markSucceeded(pending, safeResult)],
+        [`run:${runId}`, { ...runState, review_grok: true, review_grok_pending: null }],
+        ['rate:timestamps', rate.nextTimestamps],
+      ]));
+      return this._json({
+        status: 200,
+        body: operationResult.body,
+        ...calls,
+        idempotencyState: IDEM_STATES.SUCCEEDED,
+      });
+    }
+
+    if (calls.persistenceAttempted) {
+      const unknown = {
+        error: 'BLOCKED_RECONCILIATION_REQUIRED',
+        message: 'Review evidence write may be indeterminate; auto-retry forbidden',
+      };
+      await storage.put(Object.fromEntries([
+        [`idem:${idempotencyKey}`, markUnknown(pending, unknown)],
+        [`run:${runId}`, { ...runState, review_grok_blocked: true, review_grok_pending: null }],
+      ]));
+      return this._json({
+        status: 409,
+        body: unknown,
+        ...calls,
+        idempotencyState: IDEM_STATES.UNKNOWN,
+        unknown: true,
+      });
+    }
+
+    const failed = markFailed(pending, safeResult);
+    await storage.put(Object.fromEntries([
+      [`idem:${idempotencyKey}`, failed],
+      [`run:${runId}`, calls.modelCalled
+        ? { ...runState, review_grok: true, review_grok_pending: null }
+        : { ...runState, review_grok_pending: null }],
+    ]));
+    return this._json({
+      status: operationResult.status,
+      body: operationResult.body,
+      ...calls,
+      idempotencyState: IDEM_STATES.FAILED,
+    });
   }
 
   async _processWrite({ idempotencyKey, requestHash, operation, runId, gate, operationData }, github) {

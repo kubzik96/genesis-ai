@@ -29,6 +29,9 @@ export function checkRunBounds(runState, operation) {
     create_branch_commit_draft_pr: false,
     create_branch_commit_draft_pr_blocked: false,
     create_branch_commit_draft_pr_pending: null,
+    review_grok: false,
+    review_grok_blocked: false,
+    review_grok_pending: null,
     created_issue_number: null,
   };
   if (operation === 'create_branch_commit_draft_pr' && state.create_branch_commit_draft_pr_pending) {
@@ -45,6 +48,22 @@ export function checkRunBounds(runState, operation) {
       status: 409,
       error: 'BLOCKED_RECONCILIATION_REQUIRED',
       message: 'Prior post-branch draft-pr failure requires reconciliation; auto-retry forbidden',
+    };
+  }
+  if (operation === 'review_grok' && state.review_grok_pending) {
+    return {
+      ok: false,
+      status: 409,
+      error: 'BLOCKED_RECONCILIATION_REQUIRED',
+      message: 'Prior review operation is still reserved; reconciliation required before retry',
+    };
+  }
+  if (operation === 'review_grok' && state.review_grok_blocked) {
+    return {
+      ok: false,
+      status: 409,
+      error: 'BLOCKED_RECONCILIATION_REQUIRED',
+      message: 'Prior indeterminate review operation requires reconciliation; auto-retry forbidden',
     };
   }
   if (operation === 'create_issue' && state.create_issue) {
@@ -69,6 +88,14 @@ export function checkRunBounds(runState, operation) {
       status: 429,
       error: 'RATE_LIMITED',
       message: 'Only one successful grok draft-pr operation per run_id',
+    };
+  }
+  if (operation === 'review_grok' && state.review_grok) {
+    return {
+      ok: false,
+      status: 429,
+      error: 'RATE_LIMITED',
+      message: 'Only one model-consuming review operation per run_id',
     };
   }
   return { ok: true, state };

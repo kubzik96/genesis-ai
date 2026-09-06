@@ -1,6 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { handleReviewerRuntimeRequest, isReviewerRuntimeRoute } from '../src/index.js';
+import { executeReviewerRuntimeOperation } from '../src/reviewer-runtime.js';
+import { createProductionXaiReviewClient } from '../src/xai-review-client.js';
+import { createGithubClient } from '../src/github-client.js';
 
 const HEAD = 'a'.repeat(40);
 const OTHER_HEAD = 'b'.repeat(40);
@@ -39,10 +42,14 @@ function reviewerOutput(overrides = {}) {
   };
 }
 
-function makeRequest(body, { method = 'POST', path = '/v1/reviews/grok', token = 'svc' } = {}) {
+function makeRequest(body, { method = 'POST', path = '/v1/reviews/grok', token = 'svc', idempotencyKey = 'review-key' } = {}) {
   return new Request(`https://broker.test${path}`, {
     method,
-    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+      ...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {}),
+    },
     body: method === 'POST' ? JSON.stringify(body) : undefined,
   });
 }
@@ -54,6 +61,8 @@ function makeGithub({
   files = [{ filename: 'services/genesis-broker/src/index.js', status: 'modified' }],
   diff = 'diff --git a/a.js b/a.js\n+safe runtime integration',
   filesNext = false,
+  throwAt = null,
+  readBackTransform = null,
 } = {}) {
   let headIndex = 0;
   let persistedBody = null;
@@ -62,10 +71,12 @@ function makeGithub({
   return {
     api: {
       async getPull() {
+        if (throwAt === 'getPull') throw new Error('network');
         const sha = heads[Math.min(headIndex++, heads.length - 1)];
         return { ok: true, status: 200, data: { head: { sha } } };
       },
       async getPullFiles() {
+        if (throwAt === 'getPullFiles') throw new Error('network');
         return {
           ok: true,
           status: 200,
@@ -74,6 +85,7 @@ function makeGithub({
         };
       },
       async getPullDiff() {
+        if (throwAt === 'getPullDiff') throw new Error('network');
         return { ok: true, status: 200, data: diff, headers: new Headers() };
       },
       async addIssueComment(prNumber, body) {
@@ -89,7 +101,9 @@ function makeGithub({
           status: 200,
           data: {
             issue_url: `https://api.github.com/repos/kubzik96/genesis-ai/issues/${PR}`,
-            body: readBackMatches ? persistedBody : 'GENESIS_REVIEW_EVIDENCE_V1 {"wrong":true}',
+            body: readBackMatches
+              ? (typeof readBackTransform === 'function' ? readBackTransform(persistedBody) : persistedBody)
+              : 'GENESIS_REVIEW_EVIDENCE_V1 {"wrong":true}',
           },
         };
       },
@@ -98,11 +112,11 @@ function makeGithub({
   };
 }
 
-function env(github, overrides = {}) {
+function env(store, overrides = {}) {
   return {
     BROKER_SERVICE_TOKEN: 'svc',
     GITHUB_PAT: 'pat-for-test-boundary',
-    github,
+    store,
     ...overrides,
   };
 }
@@ -110,16 +124,26 @@ function env(github, overrides = {}) {
 async function run(body, { githubOptions, reviewImpl, envOverrides } = {}) {
   const gh = makeGithub(githubOptions);
   let reviewCalls = 0;
-  const reviewClient = reviewImpl === null ? undefined : {
+  const reviewClient = reviewImpl === null ? createProductionXaiReviewClient({
+    productionEnabled: envOverrides?.XAI_REVIEWER_LIVE_ENABLED === 'true',
+    xaiApiKey: envOverrides?.XAI_API_KEY,
+    fetchImpl: envOverrides?.xaiFetch,
+  }) : {
     async review(input) {
       reviewCalls += 1;
       if (typeof reviewImpl === 'function') return reviewImpl(input);
       return reviewerOutput();
     },
   };
+  const store = {
+    async executeReview({ authorization: auth, context }) {
+      return executeReviewerRuntimeOperation({ authorization: auth, context, github: gh.api, reviewClient });
+    },
+  };
+  const runtimeBody = { ...body, run_id: body?.run_id ?? 'review-run' };
   const response = await handleReviewerRuntimeRequest(
-    makeRequest(body),
-    env(gh.api, { ...(reviewClient ? { reviewClient } : {}), ...envOverrides }),
+    makeRequest(runtimeBody),
+    env(store, envOverrides),
   );
   return { response, body: JSON.parse(response.body), reviewCalls, github: gh };
 }
@@ -139,6 +163,62 @@ describe('S-0010 reviewer runtime integration', () => {
       assert.equal(r.reviewCalls, 0);
       assert.equal(r.github.counts().persistCalls, 0);
     }
+  });
+
+  it('requires idempotency and run identifiers before the durable boundary', async () => {
+    let storeCalls = 0;
+    const store = { async executeReview() { storeCalls += 1; throw new Error('must not run'); } };
+    const missingKey = await handleReviewerRuntimeRequest(
+      makeRequest({ authorization: authorization(), context: 'bounded', run_id: 'review-run' }, { idempotencyKey: null }),
+      env(store),
+    );
+    assert.equal(missingKey.status, 400);
+    const missingRun = await handleReviewerRuntimeRequest(
+      makeRequest({ authorization: authorization(), context: 'bounded' }),
+      env(store),
+    );
+    assert.equal(missingRun.status, 400);
+    assert.equal(storeCalls, 0);
+  });
+
+  it('normalizes a rejected durable-boundary call and preserves same-key retry guidance', async () => {
+    const store = { async executeReview() { throw new Error('transport'); } };
+    const response = await handleReviewerRuntimeRequest(
+      makeRequest({ authorization: authorization(), context: 'bounded', run_id: 'review-run' }),
+      env(store),
+    );
+    const body = JSON.parse(response.body);
+    assert.equal(response.status, 503);
+    assert.equal(body.error, 'REVIEW_DURABLE_BOUNDARY_UNAVAILABLE');
+    assert.match(body.message, /same Idempotency-Key/);
+  });
+
+  it('rejects oversized context before the durable or GitHub boundary', async () => {
+    let storeCalls = 0;
+    const store = { async executeReview() { storeCalls += 1; throw new Error('must not run'); } };
+    const response = await handleReviewerRuntimeRequest(
+      makeRequest({ authorization: authorization(), context: 'x'.repeat(32 * 1024 + 1), run_id: 'review-run' }),
+      env(store),
+    );
+    assert.equal(response.status, 413);
+    assert.equal(storeCalls, 0);
+  });
+
+  it('stops streaming a GitHub diff once the byte ceiling is crossed', async () => {
+    let fetchCalls = 0;
+    const github = createGithubClient({
+      pat: 'pat-for-test-boundary',
+      fetchImpl: async () => {
+        fetchCalls += 1;
+        return new Response('x'.repeat(33), { status: 200 });
+      },
+    });
+    const result = await github.getPullDiff(PR, 32);
+    assert.equal(fetchCalls, 1);
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 413);
+    assert.equal(result.tooLarge, true);
+    assert.equal(result.data, null);
   });
 
   it('keeps production transport default-off even when an API-key-shaped value exists', async () => {
@@ -179,6 +259,19 @@ describe('S-0010 reviewer runtime integration', () => {
     );
     assert.equal(r.body.code, 'REVIEW_FILES_INCOMPLETE');
     assert.equal(r.reviewCalls, 0);
+  });
+
+  it('normalizes rejected GitHub reads without invoking the reviewer', async () => {
+    for (const throwAt of ['getPull', 'getPullFiles', 'getPullDiff']) {
+      const r = await run(
+        { authorization: authorization(), context: 'bounded context' },
+        { githubOptions: { throwAt } },
+      );
+      assert.equal(r.response.status, 409);
+      assert.equal(r.body.next_action, 'STOP_BLOCKED');
+      assert.equal(r.reviewCalls, 0);
+      assert.equal(r.github.counts().persistCalls, 0);
+    }
   });
 
   it('uses trusted GitHub diff/files, calls reviewer once, persists, verifies, then reaches next CEO gate', async () => {
@@ -251,6 +344,22 @@ describe('S-0010 reviewer runtime integration', () => {
       assert.equal(r.body.consequential_gate_evidence_available, false);
       assert.equal(r.body.next_action, 'STOP_BLOCKED');
     }
+  });
+
+  it('rejects read-back evidence when any normalized field differs', async () => {
+    const mutate = (body) => {
+      const prefix = 'GENESIS_REVIEW_EVIDENCE_V1 ';
+      const parsed = JSON.parse(body.slice(prefix.length));
+      parsed.ready_gate_safe = 'NO';
+      return `${prefix}${JSON.stringify(parsed)}`;
+    };
+    const r = await run(
+      { authorization: authorization(), context: 'bounded context' },
+      { githubOptions: { readBackTransform: mutate } },
+    );
+    assert.equal(r.response.status, 409);
+    assert.equal(r.body.code, 'PERSISTENCE_NOT_CONFIRMED');
+    assert.equal(r.body.consequential_gate_evidence_available, false);
   });
 
   it('rejects Grok/xAI self-review before model invocation', async () => {
