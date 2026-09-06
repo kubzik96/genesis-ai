@@ -126,8 +126,9 @@ export class BrokerDurableObject {
     }
     if (decision.action === 'REPLAY') {
       return this._json({
-        status: decision.state === IDEM_STATES.FAILED ? decision.result?.status || 409 : 200,
-        body: decision.result,
+        status: decision.result?.status
+          || (decision.state === IDEM_STATES.FAILED ? 409 : 200),
+        body: decision.result?.body,
         githubCalled: false,
         githubStatus: null,
         modelCalled: false,
@@ -279,7 +280,7 @@ export class BrokerDurableObject {
       };
     }
 
-    const safeResult = { ...operationResult.body, status: operationResult.status };
+    const safeResult = { status: operationResult.status, body: operationResult.body };
     if (operationResult.status === 200) {
       await storage.put(Object.fromEntries([
         [`idem:${idempotencyKey}`, markSucceeded(pending, safeResult)],

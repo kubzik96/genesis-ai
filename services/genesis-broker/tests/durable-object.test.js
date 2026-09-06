@@ -841,7 +841,8 @@ describe('BrokerDurableObject reviewer authorization durability', () => {
     assert.equal((await storage.get('run:review-run'))?.review_grok, true);
 
     const replay = await invokeReview(storage, github, client, payload);
-    assert.equal(replay.status, 200);
+    assert.equal(replay.status, first.status);
+    assert.deepEqual(replay.body, first.body);
     assert.equal(replay.replay, true);
     assert.equal(client.state.calls, 1);
     assert.equal(github.calls.addIssueComment, 1);
@@ -926,6 +927,15 @@ describe('BrokerDurableObject reviewer authorization durability', () => {
     const first = await invokeReview(storage, github, client, reviewPayload());
     assert.equal(first.status, 409);
     assert.equal(first.body?.code, 'REVIEW_API_FAILED');
+    const githubCallsAfterFirst = { ...github.calls };
+
+    const replay = await invokeReview(storage, github, client, reviewPayload());
+    assert.equal(replay.status, first.status);
+    assert.deepEqual(replay.body, first.body);
+    assert.equal(replay.replay, true);
+    assert.equal(client.state.calls, 1);
+    assert.deepEqual(github.calls, githubCallsAfterFirst);
+
     const second = await invokeReview(storage, github, client, reviewPayload({ key: 'review-key-2', hash: 'review-hash-2' }));
     assert.equal(second.status, 429);
     assert.equal(client.state.calls, 1);
