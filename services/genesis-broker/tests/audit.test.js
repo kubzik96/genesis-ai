@@ -48,19 +48,22 @@ describe('audit redact', () => {
     assert.equal(serialized.includes('svc-token'), false);
   });
 
-  it('auditEvent never emits caller-controlled idempotency keys', () => {
-    for (const idempotencyKey of [
-      'ordinary-review-key-123',
-      `xai-${'sensitive'.repeat(8)}`,
+  it('auditEvent never emits caller-controlled idempotency keys regardless of field casing', () => {
+    for (const [fieldName, idempotencyKey] of [
+      ['idempotency_key', 'ordinary-review-key-123'],
+      ['idempotencyKey', 'camel-case-field-key'],
+      ['IDEMPOTENCY-KEY', `xai-${'sensitive'.repeat(8)}`],
+      ['IDEMPOTENCY_KEY', 'uppercase-underscore-key'],
+      ['Idempotency-key', 'mixed-case-key'],
     ]) {
       const event = auditEvent({
         endpoint: '/v1/reviews/grok',
         outcome: 200,
-        idempotency_key: idempotencyKey,
+        [fieldName]: idempotencyKey,
         run_id: 'review-run',
       });
 
-      assert.equal(event.idempotency_key, '[REDACTED]');
+      assert.equal(event[fieldName], '[REDACTED]');
       assert.equal(JSON.stringify(event).includes(idempotencyKey), false);
       assert.equal(event.endpoint, '/v1/reviews/grok');
       assert.equal(event.run_id, 'review-run');
