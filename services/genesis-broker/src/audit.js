@@ -12,6 +12,10 @@ const REDACT_KEYS = new Set([
   'BROKER_SERVICE_TOKEN',
   'api_key',
   'apiKey',
+  'idempotency_key',
+  'idempotencyKey',
+  'idempotency-key',
+  'Idempotency-Key',
 ]);
 
 export function redact(value) {

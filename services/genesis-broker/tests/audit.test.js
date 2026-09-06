@@ -35,6 +35,7 @@ describe('audit redact', () => {
     assert.equal(event.Authorization, '[REDACTED]');
     assert.equal(event.GITHUB_PAT, '[REDACTED]');
     assert.equal(event.BROKER_SERVICE_TOKEN, '[REDACTED]');
+    assert.equal(event.idempotency_key, '[REDACTED]');
     assert.equal(event.github_status, 201);
     assert.equal(event.latency_ms, 12);
     assert.equal(event.idempotency_state, 'SUCCEEDED');
@@ -45,5 +46,24 @@ describe('audit redact', () => {
     assert.equal(serialized.includes('ghp_should_never_appear'), false);
     assert.equal(serialized.includes('secret-token'), false);
     assert.equal(serialized.includes('svc-token'), false);
+  });
+
+  it('auditEvent never emits caller-controlled idempotency keys', () => {
+    for (const idempotencyKey of [
+      'ordinary-review-key-123',
+      `xai-${'sensitive'.repeat(8)}`,
+    ]) {
+      const event = auditEvent({
+        endpoint: '/v1/reviews/grok',
+        outcome: 200,
+        idempotency_key: idempotencyKey,
+        run_id: 'review-run',
+      });
+
+      assert.equal(event.idempotency_key, '[REDACTED]');
+      assert.equal(JSON.stringify(event).includes(idempotencyKey), false);
+      assert.equal(event.endpoint, '/v1/reviews/grok');
+      assert.equal(event.run_id, 'review-run');
+    }
   });
 });

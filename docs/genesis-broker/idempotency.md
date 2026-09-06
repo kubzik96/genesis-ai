@@ -10,6 +10,10 @@ Authoritative store: **SQLite-backed Durable Object** (not KV).
 4. Concurrent writes serialized by one DO.
 5. Timeout / indeterminate → UNKNOWN → BLOCKED_RECONCILIATION_REQUIRED (no auto-retry).
 
+`Idempotency-Key` is caller-controlled and may contain an accidentally pasted
+credential. Audit events therefore always record its value as `[REDACTED]`;
+the raw header value must never be written to logs.
+
 ## Canonical request_hash identity (S-0002 §4.5)
 
 `request_hash` covers **GitHub side-effect identity only**:
