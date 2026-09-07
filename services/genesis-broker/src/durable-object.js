@@ -22,7 +22,7 @@ import {
 } from './budget-ledger.js';
 import { XAI_BUDGET_RESERVATION_TICKS } from './xai-contract.js';
 import { createProductionXaiReviewClient } from './xai-review-client.js';
-import { executeReviewerRuntimeOperation, validateReviewerRuntimeBody } from './reviewer-runtime.js';
+import { executeReviewerRuntimeOperation, normalizeReviewResult, validateReviewerRuntimeBody } from './reviewer-runtime.js';
 
 export class BrokerDurableObject {
   constructor(state, env) {
@@ -125,7 +125,7 @@ export class BrokerDurableObject {
       });
     }
     if (decision.action === 'REPLAY') {
-      return this._json({
+      const replay = {
         status: decision.result?.status
           || (decision.state === IDEM_STATES.FAILED ? 409 : 200),
         body: decision.result?.body,
@@ -135,7 +135,40 @@ export class BrokerDurableObject {
         persistenceAttempted: false,
         idempotencyState: decision.state,
         replay: true,
-      });
+      };
+      if (decision.state === IDEM_STATES.SUCCEEDED) {
+        // The immutable result is historical; each acceptance must verify current HEAD.
+        let current;
+        try {
+          if (typeof github?.getPull === 'function') {
+            replay.githubCalled = true;
+            current = await github.getPull(checked.value.authorization.prNumber);
+            replay.githubStatus = current?.status ?? null;
+          }
+        } catch {
+          // An uncertain read blocks this replay without retry or durable writes.
+        }
+        const currentHead = current?.data?.head?.sha;
+        const reviewedHead = decision.result?.body?.reviewed_head_sha;
+        const sha = /^[a-f0-9]{40}$/i;
+        let blockedCode = null;
+        if (current?.ok !== true || current?.status !== 200
+          || typeof currentHead !== 'string' || !sha.test(currentHead)) {
+          blockedCode = 'HEAD_READ_FAILED';
+        } else if (typeof reviewedHead !== 'string' || !sha.test(reviewedHead)
+          || reviewedHead.toLowerCase() !== checked.value.authorization.expectedHeadSha.toLowerCase()
+          || currentHead.toLowerCase() !== reviewedHead.toLowerCase()) {
+          blockedCode = 'ACCEPTANCE_HEAD_MISMATCH';
+        }
+        if (blockedCode) {
+          replay.status = 409;
+          replay.body = normalizeReviewResult({
+            code: blockedCode,
+            reviewedHeadSha: typeof reviewedHead === 'string' && sha.test(reviewedHead) ? reviewedHead : null,
+          });
+        }
+      }
+      return this._json(replay);
     }
 
     const runState = (await storage.get(`run:${runId}`)) ?? {
