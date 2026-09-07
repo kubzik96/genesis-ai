@@ -848,6 +848,114 @@ describe('BrokerDurableObject reviewer authorization durability', () => {
     assert.equal(github.calls.addIssueComment, 1);
   });
 
+  async function prepareSuccessfulReplay() {
+    const storage = new MockStorage();
+    const github = reviewGithub();
+    const client = reviewClient(storage);
+    const payload = reviewPayload();
+    const first = await invokeReview(storage, github, client, payload);
+    assert.equal(first.status, 200);
+    assert.equal(first.body.ready_gate_safe, 'YES');
+    assert.equal(first.body.consequential_gate_evidence_available, true);
+    const storedBefore = structuredClone(storage._data);
+    const callsBefore = { ...github.calls };
+    let storageWrites = 0;
+    const put = storage.put.bind(storage);
+    storage.put = async (...args) => {
+      storageWrites += 1;
+      return put(...args);
+    };
+    return {
+      storage, github, client, payload, first,
+      assertReadOnlyReplay(replay, headReads = 1) {
+        assert.equal(replay.replay, true);
+        assert.equal(replay.idempotencyState, IDEM_STATES.SUCCEEDED);
+        assert.equal(replay.githubCalled, headReads > 0);
+        assert.equal(replay.modelCalled, false);
+        assert.equal(replay.persistenceAttempted, false);
+        assert.equal(client.state.calls, 1, 'only the initial review may call the model');
+        assert.deepEqual(github.calls, { ...callsBefore, getPull: callsBefore.getPull + headReads });
+        assert.equal(github.calls.addIssueComment, 1, 'only the initial evidence may be persisted');
+        assert.equal(storageWrites, 0, 'replay must not write durable state');
+        assert.deepEqual(storage._data, storedBefore, 'historical result and authorization state stay immutable');
+      },
+    };
+  }
+
+  function assertBlockedReplay(replay, code) {
+    assert.equal(replay.status, 409);
+    assert.equal(replay.body.ok, false);
+    assert.equal(replay.body.code, code);
+    assert.equal(replay.body.verdict, 'BLOCKED');
+    assert.equal(replay.body.head_confirmed, 'NO');
+    assert.equal(replay.body.ready_gate_safe, 'NO');
+    assert.equal(replay.body.consequential_gate_evidence_available, false);
+    assert.equal(replay.body.next_action, 'STOP_BLOCKED');
+  }
+
+  for (const currentHead of [REVIEW_HEAD, REVIEW_HEAD.toUpperCase()]) {
+    it(`F1 T1 rechecks same HEAD ${currentHead.slice(0, 7)} and replays the immutable result`, async () => {
+      const fixture = await prepareSuccessfulReplay();
+      const { storage, github, client, payload, first } = fixture;
+      github.getPull = async (prNumber) => {
+        github.calls.getPull += 1;
+        assert.equal(prNumber, payload.authorization.prNumber);
+        return { ok: true, status: 200, data: { head: { sha: currentHead } } };
+      };
+      const replay = await invokeReview(storage, github, client, payload);
+      assert.equal(replay.status, first.status);
+      assert.deepEqual(replay.body, first.body);
+      assert.equal(replay.githubStatus, 200);
+      fixture.assertReadOnlyReplay(replay);
+    });
+  }
+
+  it('F1 T2 blocks a successful replay after HEAD changes without replacing historical evidence', async () => {
+    const fixture = await prepareSuccessfulReplay();
+    const { storage, github, client, payload } = fixture;
+    github.getPull = async () => {
+      github.calls.getPull += 1;
+      return { ok: true, status: 200, data: { head: { sha: 'e'.repeat(40) } } };
+    };
+    const replay = await invokeReview(storage, github, client, payload);
+    assertBlockedReplay(replay, 'ACCEPTANCE_HEAD_MISMATCH');
+    fixture.assertReadOnlyReplay(replay);
+  });
+
+  const unreadableHeads = [
+    ['throwing read', () => { throw new Error('network'); }],
+    ['failed read', () => ({ ok: false, status: 503, data: {} })],
+    ['missing response', () => undefined],
+    ['missing HEAD', () => ({ ok: true, status: 200, data: {} })],
+    ['short SHA', () => ({ ok: true, status: 200, data: { head: { sha: 'd'.repeat(39) } } })],
+    ['non-hex SHA', () => ({ ok: true, status: 200, data: { head: { sha: 'z'.repeat(40) } } })],
+    ['ambiguous SHA array', () => ({ ok: true, status: 200, data: { head: { sha: [REVIEW_HEAD] } } })],
+    ['contradictory status', () => ({ ok: true, status: 503, data: { head: { sha: REVIEW_HEAD } } })],
+    ['non-boolean success', () => ({ ok: 'true', status: 200, data: { head: { sha: REVIEW_HEAD } } })],
+  ];
+  for (const [label, readHead] of unreadableHeads) {
+    it(`F1 T3 fails closed on ${label} during replay without retry`, async () => {
+      const fixture = await prepareSuccessfulReplay();
+      const { storage, github, client, payload } = fixture;
+      github.getPull = async () => {
+        github.calls.getPull += 1;
+        return readHead();
+      };
+      const replay = await invokeReview(storage, github, client, payload);
+      assertBlockedReplay(replay, 'HEAD_READ_FAILED');
+      fixture.assertReadOnlyReplay(replay);
+    });
+  }
+
+  it('F1 T3 fails closed when the HEAD reader is unavailable', async () => {
+    const fixture = await prepareSuccessfulReplay();
+    const { storage, github, client, payload } = fixture;
+    github.getPull = undefined;
+    const replay = await invokeReview(storage, github, client, payload);
+    assertBlockedReplay(replay, 'HEAD_READ_FAILED');
+    fixture.assertReadOnlyReplay(replay, 0);
+  });
+
   it('blocks same-key hash conflict and a different key for a consumed run', async () => {
     const storage = new MockStorage();
     const github = reviewGithub();
