@@ -114,6 +114,7 @@ export class BrokerDurableObject {
     // immutable request to resume read-only canonical verification only; never unlock
     // mismatched keys/hashes/runs and never mint a new grant from this path.
     let resumeVerifyingClaim = false;
+    let resumeReservedGrant = null;
     if (decision.action === 'IN_FLIGHT') {
       const pendingAuth = checked.value.authorization;
       if (pendingAuth?.grantId && pendingAuth.manifestHash && pendingAuth.issuanceDigest
@@ -128,8 +129,7 @@ export class BrokerDurableObject {
         const resumeClaimKey = `review:claim:${pendingAuth.grantId}:${pendingAuth.manifestHash}:${pendingAuth.issuanceDigest}`;
         const resumeGrant = await storage.get(resumeGrantKey);
         const resumeClaim = await storage.get(resumeClaimKey);
-        if (resumeGrant === undefined
-          && resumeClaim?.state === 'VERIFYING'
+        const claimMatches = resumeClaim
           && resumeClaim.idempotency_key === idempotencyKey
           && resumeClaim.request_hash === requestHash
           && resumeClaim.run_id === runId
@@ -138,11 +138,29 @@ export class BrokerDurableObject {
           && resumeClaim.issuanceDigest === pendingAuth.issuanceDigest
           && resumeClaim.pr_number === pendingAuth.prNumber
           && resumeClaim.expected_head_sha === pendingAuth.expectedHeadSha
-          && resumeClaim.repository === FIXED_FULL_NAME) {
+          && resumeClaim.repository === FIXED_FULL_NAME;
+        if (resumeGrant === undefined
+          && resumeClaim?.state === 'VERIFYING'
+          && claimMatches) {
+          // Crash during pre-verify VERIFYING: resume read-only verification only.
           resumeVerifyingClaim = true;
+        } else if (resumeGrant?.state === 'RESERVED'
+          && resumeGrant.request_hash === requestHash
+          && resumeGrant.idempotency_key === idempotencyKey
+          && resumeGrant.run_id === runId
+          && resumeGrant.manifestHash === pendingAuth.manifestHash
+          && resumeGrant.issuanceDigest === pendingAuth.issuanceDigest
+          && resumeGrant.pr_number === pendingAuth.prNumber
+          && resumeGrant.expected_head_sha === pendingAuth.expectedHeadSha
+          && resumeGrant.repository === FIXED_FULL_NAME
+          && (resumeClaim?.state === 'VERIFIED' || resumeClaim?.grant_bound === true)
+          && claimMatches) {
+          // Crash after canonical RESERVED, before CONSUMED/model: resume same attempt.
+          // Never mint a new grant and never return RESERVED to unused.
+          resumeReservedGrant = resumeGrant;
         }
       }
-      if (!resumeVerifyingClaim) {
+      if (!resumeVerifyingClaim && !resumeReservedGrant) {
         return this._json({
           status: decision.status,
           body: { error: decision.error, message: decision.message },
@@ -227,9 +245,12 @@ export class BrokerDurableObject {
     // Provisional claim binds the full immutable tuple so a forged/guessed grantId alone
     // cannot permanently poison a future legitimate CEO issuance of the same comment id.
     const claimKey = `review:claim:${auth.grantId}:${auth.manifestHash}:${auth.issuanceDigest}`;
-    if (await storage.get(grantKey) !== undefined) return grantBlocked('REVIEW_GRANT_CLOSED');
+    // Already-admitted RESERVED resume keeps the existing grant; do not treat it as closed.
+    if (!resumeReservedGrant && await storage.get(grantKey) !== undefined) {
+      return grantBlocked('REVIEW_GRANT_CLOSED');
+    }
     const existingClaim = await storage.get(claimKey);
-    if (existingClaim !== undefined) {
+    if (!resumeReservedGrant && existingClaim !== undefined) {
       // Same idempotency recovery of an in-flight VERIFYING claim may continue.
       // CLOSED_NO_CALL without a bound canonical grant does not permanently poison a future
       // legitimate issuance of the same comment id with the same digests (forged pre-claim).
@@ -262,7 +283,7 @@ export class BrokerDurableObject {
     if (!bounds.ok) {
       // Same in-flight run reservation may continue when we are explicitly resuming the
       // exact VERIFYING claim; a different key/hash remains blocked by rate-limit rules.
-      const samePending = resumeVerifyingClaim
+      const samePending = (resumeVerifyingClaim || resumeReservedGrant)
         && runState.review_grok_pending?.idempotency_key === idempotencyKey
         && runState.review_grok_pending?.request_hash === requestHash;
       if (!samePending) {
@@ -331,6 +352,202 @@ export class BrokerDurableObject {
         modelCalled: false,
         persistenceAttempted: false,
         idempotencyState: null,
+      });
+    }
+
+    // Resume already-admitted RESERVED attempt: skip provisional admission/mint, keep grant,
+    // re-verify read-only, then continue to claimDispatch (≤1 model).
+    if (resumeReservedGrant) {
+      const auth = checked.value.authorization;
+      const grantKey = `review:grant:${auth.grantId}`;
+      const claimKey = `review:claim:${auth.grantId}:${auth.manifestHash}:${auth.issuanceDigest}`;
+      const pending = {
+        idempotency_key: idempotencyKey,
+        request_hash: requestHash,
+        operation: 'review_grok',
+        run_id: runId,
+        gate: null,
+        state: IDEM_STATES.PENDING,
+        safe_result: null,
+        grantId: auth.grantId,
+        manifestHash: auth.manifestHash,
+        issuanceDigest: auth.issuanceDigest,
+      };
+      const reservedGrant = {
+        ...resumeReservedGrant,
+        state: 'RESERVED',
+        operation: 'review_grok',
+        request_hash: requestHash,
+        run_id: runId,
+        idempotency_key: idempotencyKey,
+        repository: FIXED_FULL_NAME,
+        pr_number: auth.prNumber,
+        expected_head_sha: auth.expectedHeadSha,
+      };
+      const stillCanonical = await verifyCanonicalReviewerGrant(auth, github);
+      if (!stillCanonical.ok) {
+        const failed = markFailed(pending, {
+          status: 409,
+          body: normalizeReviewResult({ code: stillCanonical.code }),
+        });
+        await storage.put(Object.fromEntries([
+          [grantKey, { ...reservedGrant, state: 'CLOSED_NO_CALL', fail_code: stillCanonical.code }],
+          [claimKey, {
+            state: 'CLOSED_NO_CALL',
+            grantId: auth.grantId,
+            manifestHash: auth.manifestHash,
+            issuanceDigest: auth.issuanceDigest,
+            operation: 'review_grok',
+            request_hash: requestHash,
+            run_id: runId,
+            idempotency_key: idempotencyKey,
+            repository: FIXED_FULL_NAME,
+            pr_number: auth.prNumber,
+            expected_head_sha: auth.expectedHeadSha,
+            fail_code: stillCanonical.code,
+          }],
+          [`idem:${idempotencyKey}`, failed],
+          [`run:${runId}`, { ...runState, review_grok_pending: null }],
+        ]));
+        return grantBlocked(stillCanonical.code, {
+          githubCalled: stillCanonical.githubCalled === true,
+          githubStatus: stillCanonical.githubStatus ?? null,
+          idempotencyState: IDEM_STATES.FAILED,
+        });
+      }
+      // Ensure ledger still shows RESERVED for this exact attempt (no mint / no unused).
+      await storage.put(Object.fromEntries([
+        [grantKey, reservedGrant],
+        [claimKey, {
+          state: 'VERIFIED',
+          grantId: auth.grantId,
+          manifestHash: auth.manifestHash,
+          issuanceDigest: auth.issuanceDigest,
+          operation: 'review_grok',
+          request_hash: requestHash,
+          run_id: runId,
+          idempotency_key: idempotencyKey,
+          repository: FIXED_FULL_NAME,
+          pr_number: auth.prNumber,
+          expected_head_sha: auth.expectedHeadSha,
+          grant_bound: true,
+        }],
+        [`idem:${idempotencyKey}`, pending],
+      ]));
+
+      const calls = {
+        githubCalled: true,
+        githubStatus: stillCanonical.githubStatus ?? 200,
+        modelCalled: false,
+        persistenceAttempted: false,
+      };
+      const trackedGithub = {};
+      for (const method of ['getPull', 'getPullFiles', 'getPullDiff', 'addIssueComment', 'getIssueComment', 'getIssueCommentEditMetadata']) {
+        if (typeof github[method] !== 'function') continue;
+        trackedGithub[method] = async (...args) => {
+          calls.githubCalled = true;
+          if (method === 'addIssueComment') calls.persistenceAttempted = true;
+          const response = await github[method](...args);
+          calls.githubStatus = response?.status ?? calls.githubStatus;
+          return response;
+        };
+      }
+      const reviewClient = {
+        async review(input) {
+          calls.modelCalled = true;
+          return baseReviewClient.review(input);
+        },
+      };
+      let dispatchClaimed = false;
+      let dispatchUncertain = false;
+      const claimDispatch = async () => {
+        if (dispatchClaimed) return false;
+        dispatchClaimed = true;
+        const recheck = await verifyCanonicalReviewerGrant(checked.value.authorization, trackedGithub);
+        if (!recheck.ok) return false;
+        const current = await storage.get(grantKey);
+        if (current?.state !== 'RESERVED' || current.request_hash !== requestHash
+          || current.idempotency_key !== idempotencyKey || current.manifestHash !== reservedGrant.manifestHash) {
+          return false;
+        }
+        dispatchUncertain = true;
+        await storage.put(grantKey, { ...reservedGrant, state: 'CONSUMED' });
+        dispatchUncertain = false;
+        return true;
+      };
+
+      let operationResult;
+      try {
+        operationResult = await executeReviewerRuntimeOperation({
+          authorization: checked.value.authorization,
+          context: checked.value.context,
+          github: trackedGithub,
+          reviewClient,
+          claimDispatch,
+          executionIdentity: { run_id: runId, request_hash: requestHash },
+        });
+      } catch {
+        operationResult = {
+          status: 409,
+          body: {
+            ok: false,
+            code: 'REVIEW_RUNTIME_FAILED',
+            verdict: 'BLOCKED',
+            ready_gate_safe: 'NO',
+            consequential_gate_evidence_available: false,
+            next_action: 'STOP_BLOCKED',
+          },
+        };
+      }
+
+      const safeResult = { status: operationResult.status, body: operationResult.body };
+      const finalGrant = {
+        ...reservedGrant,
+        state: calls.modelCalled ? 'CONSUMED' : 'CLOSED_NO_CALL',
+        evidence_receipt: operationResult.evidenceReceipt ?? null,
+      };
+      if (operationResult.status === 200) {
+        await storage.put(Object.fromEntries([
+          [grantKey, finalGrant],
+          [`idem:${idempotencyKey}`, markSucceeded(pending, safeResult)],
+          [`run:${runId}`, { ...runState, review_grok: true, review_grok_pending: null }],
+          ['rate:timestamps', rate.nextTimestamps],
+        ]));
+        return this._json({
+          status: 200,
+          body: operationResult.body,
+          ...calls,
+          idempotencyState: IDEM_STATES.SUCCEEDED,
+        });
+      }
+      if (calls.persistenceAttempted || dispatchUncertain) {
+        const unknown = {
+          ...normalizeReviewResult({ code: 'BLOCKED_RECONCILIATION_REQUIRED' }),
+          error: 'BLOCKED_RECONCILIATION_REQUIRED',
+          message: 'Review evidence write may be indeterminate; auto-retry forbidden',
+        };
+        await storage.put(Object.fromEntries([
+          [grantKey, { ...finalGrant, state: 'UNKNOWN' }],
+          [`idem:${idempotencyKey}`, markUnknown(pending, unknown)],
+          [`run:${runId}`, { ...runState, review_grok_blocked: true, review_grok_pending: null }],
+        ]));
+        return this._json({
+          status: 409,
+          body: unknown,
+          ...calls,
+          idempotencyState: IDEM_STATES.UNKNOWN,
+        });
+      }
+      await storage.put(Object.fromEntries([
+        [grantKey, finalGrant],
+        [`idem:${idempotencyKey}`, markFailed(pending, safeResult)],
+        [`run:${runId}`, { ...runState, review_grok_pending: null }],
+      ]));
+      return this._json({
+        status: operationResult.status,
+        body: operationResult.body,
+        ...calls,
+        idempotencyState: IDEM_STATES.FAILED,
       });
     }
 

@@ -368,6 +368,77 @@ it('F2 exact in-flight request resumes verification after crash during VERIFYING
   assert.equal(h.counts.model, 1);
 });
 
+it('F2 exact in-flight request resumes after crash in RESERVED before CONSUMED', async () => {
+  const h = harness();
+  const context = 'Bounded offline canonical audit context';
+  const request_hash = await requestHash({
+    op: 'review_grok',
+    run_id: 'audit-a',
+    authorization: GRANT.authorization,
+    context,
+  });
+  const claimKey = 'review:claim:' + GRANT.authorization.grantId + ':' + GRANT.authorization.manifestHash
+    + ':' + GRANT.authorization.issuanceDigest;
+  // Crash after canonical RESERVED, before claimDispatch/CONSUMED/model.
+  h.state.set('idem:audit-key-a', {
+    idempotency_key: 'audit-key-a',
+    request_hash,
+    operation: 'review_grok',
+    run_id: 'audit-a',
+    gate: null,
+    state: 'PENDING',
+    safe_result: null,
+    grantId: GRANT.authorization.grantId,
+    manifestHash: GRANT.authorization.manifestHash,
+    issuanceDigest: GRANT.authorization.issuanceDigest,
+  });
+  h.state.set(claimKey, {
+    state: 'VERIFIED',
+    grantId: GRANT.authorization.grantId,
+    manifestHash: GRANT.authorization.manifestHash,
+    issuanceDigest: GRANT.authorization.issuanceDigest,
+    operation: 'review_grok',
+    request_hash,
+    run_id: 'audit-a',
+    idempotency_key: 'audit-key-a',
+    repository: 'kubzik96/genesis-ai',
+    pr_number: 112,
+    expected_head_sha: HEAD,
+    grant_bound: true,
+  });
+  h.state.set(GRANT_KEY, {
+    state: 'RESERVED',
+    grantId: GRANT.authorization.grantId,
+    manifestHash: GRANT.authorization.manifestHash,
+    issuanceDigest: GRANT.authorization.issuanceDigest,
+    operation: 'review_grok',
+    request_hash,
+    run_id: 'audit-a',
+    idempotency_key: 'audit-key-a',
+    repository: 'kubzik96/genesis-ai',
+    pr_number: 112,
+    expected_head_sha: HEAD,
+  });
+  h.state.set('run:audit-a', {
+    create_issue: false, assign_copilot: false, create_branch_commit_draft_pr: false,
+    create_branch_commit_draft_pr_blocked: false, create_branch_commit_draft_pr_pending: null,
+    review_grok: false, review_grok_blocked: false,
+    review_grok_pending: { idempotency_key: 'audit-key-a', request_hash },
+    created_issue_number: null,
+  });
+  assert.equal(h.state.get(GRANT_KEY).state, 'RESERVED');
+  assert.equal(h.state.get('idem:audit-key-a').state, 'PENDING');
+  h.reconstruct();
+  assert.equal((await h.post('audit-a', 'audit-key-a')).status, 200);
+  assert.equal(h.counts.model, 1);
+  assert.equal(h.state.get(GRANT_KEY).state, 'CONSUMED');
+  // Mismatched identities cannot hijack the reserved grant.
+  assert.equal((await h.post('audit-b', 'audit-key-b')).status, 409);
+  assert.equal((await h.post('audit-a', 'audit-key-c')).status, 409);
+  assert.equal(h.counts.model, 1);
+});
+
+
 it('F2 failed reservation cannot dispatch', async () => {
   const h = harness({ failReservation: true });
   assert.equal((await h.post('audit-a', 'audit-key-a')).status, 503);
