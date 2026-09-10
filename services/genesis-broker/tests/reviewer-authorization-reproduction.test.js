@@ -32,7 +32,7 @@ function issuedGrant(id = 9001, manifest = AUTHORIZATION) {
 const GRANT = issuedGrant();
 const GRANT_KEY = 'review:grant:' + GRANT.authorization.grantId;
 
-function harness({ interruptFinalization = false, failReadback = false, holdFirstModel = false, providerFailure = null, failReservation = false, failConsumption = false, mutateAfterAdmission = false } = {}) {
+function harness({ interruptFinalization = false, failReadback = false, holdFirstModel = false, providerFailure = null, failReservation = false, failConsumption = false, mutateAfterAdmission = false, crashDuringVerify = false } = {}) {
   const state = new Map();
   const grants = new Map([[9001, structuredClone(GRANT.receipt)]]);
   let currentHead = HEAD;
@@ -42,6 +42,7 @@ function harness({ interruptFinalization = false, failReadback = false, holdFirs
   const counts = { model: 0, persistence: 0, headReads: 0, githubCalls: 0 };
   const modelRequests = [];
   let interrupted = false;
+  let verifyCrashes = crashDuringVerify ? 1 : 0;
   let signalModelStarted;
   let signalSecondForwarded;
   let forwarded = 0;
@@ -86,6 +87,10 @@ function harness({ interruptFinalization = false, failReadback = false, holdFirs
     },
     async getIssueComment(id) {
       counts.githubCalls++;
+      if (verifyCrashes > 0 && grants.has(id)) {
+        verifyCrashes -= 1;
+        throw new Error('simulated crash during canonical grant verification');
+      }
       if (grants.has(id)) return { ok: true, status: 200, data: structuredClone(grants.get(id)) };
       if (failReadback) return { ok: false, status: 503 };
       return { ok: true, status: 200, data: {
@@ -303,6 +308,63 @@ it('F2 reservation is atomic with execution identities and precedes dispatch', a
   assert.ok(reserve, 'canonical grant RESERVED must appear after successful verification');
   assert.ok(reserve.some(([key]) => key === GRANT_KEY));
   assert.equal(h.state.get(GRANT_KEY).state, 'CONSUMED');
+  assert.equal(h.counts.model, 1);
+});
+
+it('F2 exact in-flight request resumes verification after crash during VERIFYING', async () => {
+  const h = harness();
+  const context = 'Bounded offline canonical audit context';
+  const request_hash = await requestHash({
+    op: 'review_grok',
+    run_id: 'audit-a',
+    authorization: GRANT.authorization,
+    context,
+  });
+  const claimKey = 'review:claim:' + GRANT.authorization.grantId + ':' + GRANT.authorization.manifestHash
+    + ':' + GRANT.authorization.issuanceDigest;
+  // Simulate durable provisional admission that survived process crash before verification finished.
+  // Soft verifier errors become FAILED; a true crash leaves PENDING + VERIFYING without grantKey.
+  h.state.set('idem:audit-key-a', {
+    idempotency_key: 'audit-key-a',
+    request_hash,
+    operation: 'review_grok',
+    run_id: 'audit-a',
+    gate: null,
+    state: 'PENDING',
+    safe_result: null,
+    grantId: GRANT.authorization.grantId,
+    manifestHash: GRANT.authorization.manifestHash,
+    issuanceDigest: GRANT.authorization.issuanceDigest,
+  });
+  h.state.set(claimKey, {
+    state: 'VERIFYING',
+    grantId: GRANT.authorization.grantId,
+    manifestHash: GRANT.authorization.manifestHash,
+    issuanceDigest: GRANT.authorization.issuanceDigest,
+    operation: 'review_grok',
+    request_hash,
+    run_id: 'audit-a',
+    idempotency_key: 'audit-key-a',
+    repository: 'kubzik96/genesis-ai',
+    pr_number: 112,
+    expected_head_sha: HEAD,
+  });
+  h.state.set('run:audit-a', {
+    create_issue: false, assign_copilot: false, create_branch_commit_draft_pr: false,
+    create_branch_commit_draft_pr_blocked: false, create_branch_commit_draft_pr_pending: null,
+    review_grok: false, review_grok_blocked: false,
+    review_grok_pending: { idempotency_key: 'audit-key-a', request_hash },
+    created_issue_number: null,
+  });
+  assert.equal(h.state.get('idem:audit-key-a').state, 'PENDING');
+  assert.equal(h.state.get(claimKey).state, 'VERIFYING');
+  assert.equal(h.state.has(GRANT_KEY), false);
+  h.reconstruct();
+  assert.equal((await h.post('audit-a', 'audit-key-a')).status, 200);
+  assert.equal(h.counts.model, 1);
+  assert.equal(h.state.get(GRANT_KEY).state, 'CONSUMED');
+  assert.equal((await h.post('audit-b', 'audit-key-b')).status, 409);
+  assert.equal((await h.post('audit-a', 'audit-key-c')).status, 409);
   assert.equal(h.counts.model, 1);
 });
 

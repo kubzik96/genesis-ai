@@ -109,12 +109,54 @@ export class BrokerDurableObject {
 
     const existing = (await storage.get(`idem:${idempotencyKey}`)) ?? null;
     const decision = evaluateIdempotency(existing, requestHash);
-    if (decision.action === 'CONFLICT' || decision.action === 'BLOCKED' || decision.action === 'IN_FLIGHT') {
+    // Exact in-flight recovery for F2 provisional VERIFYING: evaluateIdempotency returns
+    // IN_FLIGHT for PENDING before the grant/claim branch is reached. Allow the same
+    // immutable request to resume read-only canonical verification only; never unlock
+    // mismatched keys/hashes/runs and never mint a new grant from this path.
+    let resumeVerifyingClaim = false;
+    if (decision.action === 'IN_FLIGHT') {
+      const pendingAuth = checked.value.authorization;
+      if (pendingAuth?.grantId && pendingAuth.manifestHash && pendingAuth.issuanceDigest
+        && existing?.state === IDEM_STATES.PENDING
+        && existing.request_hash === requestHash
+        && existing.grantId === pendingAuth.grantId
+        && existing.manifestHash === pendingAuth.manifestHash
+        && existing.issuanceDigest === pendingAuth.issuanceDigest
+        && existing.run_id === runId
+        && existing.operation === 'review_grok') {
+        const resumeGrantKey = `review:grant:${pendingAuth.grantId}`;
+        const resumeClaimKey = `review:claim:${pendingAuth.grantId}:${pendingAuth.manifestHash}:${pendingAuth.issuanceDigest}`;
+        const resumeGrant = await storage.get(resumeGrantKey);
+        const resumeClaim = await storage.get(resumeClaimKey);
+        if (resumeGrant === undefined
+          && resumeClaim?.state === 'VERIFYING'
+          && resumeClaim.idempotency_key === idempotencyKey
+          && resumeClaim.request_hash === requestHash
+          && resumeClaim.run_id === runId
+          && resumeClaim.grantId === pendingAuth.grantId
+          && resumeClaim.manifestHash === pendingAuth.manifestHash
+          && resumeClaim.issuanceDigest === pendingAuth.issuanceDigest
+          && resumeClaim.pr_number === pendingAuth.prNumber
+          && resumeClaim.expected_head_sha === pendingAuth.expectedHeadSha
+          && resumeClaim.repository === FIXED_FULL_NAME) {
+          resumeVerifyingClaim = true;
+        }
+      }
+      if (!resumeVerifyingClaim) {
+        return this._json({
+          status: decision.status,
+          body: { error: decision.error, message: decision.message },
+          githubCalled: false,
+          githubStatus: null,
+          modelCalled: false,
+          persistenceAttempted: false,
+          idempotencyState: IDEM_STATES.PENDING,
+        });
+      }
+    } else if (decision.action === 'CONFLICT' || decision.action === 'BLOCKED') {
       const idempotencyState = decision.action === 'CONFLICT'
         ? existing?.state ?? null
-        : decision.action === 'IN_FLIGHT'
-          ? IDEM_STATES.PENDING
-          : existing?.state ?? null;
+        : existing?.state ?? null;
       return this._json({
         status: decision.status,
         body: { error: decision.error, message: decision.message },
@@ -194,7 +236,10 @@ export class BrokerDurableObject {
       // Once grantKey exists, admission is permanently closed above.
       const sameInFlight = existingClaim.state === 'VERIFYING'
         && existingClaim.idempotency_key === idempotencyKey
-        && existingClaim.request_hash === requestHash;
+        && existingClaim.request_hash === requestHash
+        && existingClaim.run_id === runId
+        && existingClaim.pr_number === auth.prNumber
+        && existingClaim.expected_head_sha === auth.expectedHeadSha;
       const reverifyAllowed = existingClaim.state === 'CLOSED_NO_CALL'
         && (await storage.get(grantKey)) === undefined;
       if (!sameInFlight && !reverifyAllowed) {
@@ -215,15 +260,22 @@ export class BrokerDurableObject {
     };
     const bounds = checkRunBounds(runState, 'review_grok');
     if (!bounds.ok) {
-      return this._json({
-        status: bounds.status,
-        body: { error: bounds.error, message: bounds.message },
-        githubCalled: false,
-        githubStatus: null,
-        modelCalled: false,
-        persistenceAttempted: false,
-        idempotencyState: null,
-      });
+      // Same in-flight run reservation may continue when we are explicitly resuming the
+      // exact VERIFYING claim; a different key/hash remains blocked by rate-limit rules.
+      const samePending = resumeVerifyingClaim
+        && runState.review_grok_pending?.idempotency_key === idempotencyKey
+        && runState.review_grok_pending?.request_hash === requestHash;
+      if (!samePending) {
+        return this._json({
+          status: bounds.status,
+          body: { error: bounds.error, message: bounds.message },
+          githubCalled: false,
+          githubStatus: null,
+          modelCalled: false,
+          persistenceAttempted: false,
+          idempotencyState: null,
+        });
+      }
     }
     const rate = checkHourlyWriteLimit((await storage.get('rate:timestamps')) ?? []);
     if (!rate.ok) {
