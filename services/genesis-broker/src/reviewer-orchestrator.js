@@ -113,44 +113,119 @@ export function validateReviewerAuthorization(authorization, request) {
 // The fixed GitHub CEO issuance is the identity; execution IDs never mint grants.
 // Only a standalone, unedited issuance comment is supported. Prose/agent reviews
 // and edited receipts fail closed; later operational gates must issue a new EA.
+// Edit provenance uses GraphQL lastEditedAt (null = never edited). REST created_at===updated_at
+// is insufficient (second granularity) and is not used as sole immutability proof.
+function grantResult(code, message, meta = {}) {
+  const base = code ? blocked(code, message) : { ok: true };
+  return Object.freeze({
+    ...base,
+    githubCalled: meta.githubCalled === true,
+    githubStatus: Number.isFinite(meta.githubStatus) ? meta.githubStatus : null,
+    ...(meta.value ? { value: meta.value } : {}),
+  });
+}
+
 export async function verifyCanonicalReviewerGrant(authorization, github) {
   const match = typeof authorization?.grantId === 'string' && GRANT_ID.exec(authorization.grantId);
-  if (!match || !Number.isSafeInteger(Number(match[1]))) return blocked('REVIEW_GRANT_REQUIRED', 'Fresh execution requires a canonical grant');
+  if (!match || !Number.isSafeInteger(Number(match[1]))) {
+    return grantResult('REVIEW_GRANT_REQUIRED', 'Fresh execution requires a canonical grant');
+  }
+  if (typeof github?.getIssueComment !== 'function') {
+    return grantResult('REVIEW_GRANT_UNVERIFIABLE', 'Canonical issuance is unavailable or ambiguous');
+  }
+  let response;
   try {
-    const response = await github.getIssueComment(Number(match[1]));
-    const receipt = response?.data;
-    if (response?.ok !== true || response.status !== 200 || receipt?.id !== Number(match[1])
-      || receipt.user?.id !== 307621171 || receipt.user?.login !== 'kubzik96'
-      || receipt.user?.type !== 'User' || receipt.performed_via_github_app != null
-      || !/^https:\/\/api.github.com\/repos\/kubzik96\/genesis-ai\/issues\/[1-9][0-9]*$/.test(receipt.issue_url)
-      || typeof receipt.created_at !== 'string' || !Number.isFinite(Date.parse(receipt.created_at))
-      || receipt.created_at !== receipt.updated_at
-      || typeof receipt.body !== 'string' || !receipt.body.startsWith(EA_PREFIX)
-      || new TextEncoder().encode(receipt.body).byteLength > 32768) {
-      return blocked('REVIEW_GRANT_PROVENANCE_INVALID', 'Canonical CEO issuance could not be verified');
-    }
+    response = await github.getIssueComment(Number(match[1]));
+  } catch {
+    return grantResult('REVIEW_GRANT_UNVERIFIABLE', 'Canonical issuance is unavailable or ambiguous', {
+      githubCalled: true,
+      githubStatus: null,
+    });
+  }
+  const githubStatus = Number.isFinite(response?.status) ? response.status : null;
+  const receipt = response?.data;
+  if (response?.ok !== true || response.status !== 200 || receipt?.id !== Number(match[1])
+    || receipt.user?.id !== 307621171 || receipt.user?.login !== 'kubzik96'
+    || receipt.user?.type !== 'User' || receipt.performed_via_github_app != null
+    || !/^https:\/\/api.github.com\/repos\/kubzik96\/genesis-ai\/issues\/[1-9][0-9]*$/.test(receipt.issue_url)
+    || typeof receipt.body !== 'string' || !receipt.body.startsWith(EA_PREFIX)
+    || new TextEncoder().encode(receipt.body).byteLength > 32768) {
+    return grantResult('REVIEW_GRANT_PROVENANCE_INVALID', 'Canonical CEO issuance could not be verified', {
+      githubCalled: true,
+      githubStatus,
+    });
+  }
+
+  // Fail-closed immutability: GraphQL lastEditedAt must be explicitly null.
+  const nodeId = typeof receipt.node_id === 'string' ? receipt.node_id : null;
+  if (!nodeId || typeof github.getIssueCommentEditMetadata !== 'function') {
+    return grantResult('REVIEW_GRANT_PROVENANCE_INVALID', 'Canonical CEO issuance could not be verified', {
+      githubCalled: true,
+      githubStatus,
+    });
+  }
+  let editMeta;
+  try {
+    editMeta = await github.getIssueCommentEditMetadata(nodeId);
+  } catch {
+    return grantResult('REVIEW_GRANT_UNVERIFIABLE', 'Canonical issuance is unavailable or ambiguous', {
+      githubCalled: true,
+      githubStatus: null,
+    });
+  }
+  const editStatus = Number.isFinite(editMeta?.status) ? editMeta.status : null;
+  const node = editMeta?.data?.data?.node;
+  if (editMeta?.ok !== true || editMeta.status !== 200 || !node
+    || node.id !== nodeId
+    || node.databaseId !== Number(match[1])
+    || node.lastEditedAt !== null) {
+    return grantResult('REVIEW_GRANT_PROVENANCE_INVALID', 'Canonical CEO issuance could not be verified', {
+      githubCalled: true,
+      githubStatus: editStatus ?? githubStatus,
+    });
+  }
+
+  let digest;
+  let canonicalHash;
+  try {
     const digestBytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(receipt.body));
-    const digest = [...new Uint8Array(digestBytes)].map((v) => v.toString(16).padStart(2, '0')).join('');
+    digest = [...new Uint8Array(digestBytes)].map((v) => v.toString(16).padStart(2, '0')).join('');
     const manifest = JSON.parse(receipt.body.slice(EA_PREFIX.length));
     if (!plainObject(manifest) || receipt.body !== EA_PREFIX + JSON.stringify(manifest)
       || Object.keys(manifest).length !== AUTH_KEYS.size
       || !Object.keys(manifest).every((key) => AUTH_KEYS.has(key))) {
-      return blocked('REVIEW_GRANT_MANIFEST_INVALID', 'Canonical issuance must contain one closed manifest');
+      return grantResult('REVIEW_GRANT_MANIFEST_INVALID', 'Canonical issuance must contain one closed manifest', {
+        githubCalled: true,
+        githubStatus,
+      });
     }
     const manifestOf = (value) => ({ ...Object.fromEntries([...AUTH_KEYS].map((key) => [key, value[key]])),
       forbiddenActions: [...new Set(value.forbiddenActions)].sort() });
-    const canonicalHash = await requestHash(manifestOf(manifest));
+    canonicalHash = await requestHash(manifestOf(manifest));
     if (digest !== authorization.issuanceDigest || canonicalHash !== authorization.manifestHash
       || canonicalHash !== await requestHash(manifestOf(authorization))) {
-      return blocked('REVIEW_GRANT_BINDING_MISMATCH', 'Canonical issuance or immutable conditions changed');
+      return grantResult('REVIEW_GRANT_BINDING_MISMATCH', 'Canonical issuance or immutable conditions changed', {
+        githubCalled: true,
+        githubStatus,
+      });
     }
-    return Object.freeze({ ok: true, value: Object.freeze({ grantId: authorization.grantId,
-      manifestHash: canonicalHash, issuanceDigest: digest,
-      issuanceUrl: `https://api.github.com/repos/kubzik96/genesis-ai/issues/comments/${receipt.id}`,
-      issuanceIssueUrl: receipt.issue_url }) });
   } catch {
-    return blocked('REVIEW_GRANT_UNVERIFIABLE', 'Canonical issuance is unavailable or ambiguous');
+    return grantResult('REVIEW_GRANT_UNVERIFIABLE', 'Canonical issuance is unavailable or ambiguous', {
+      githubCalled: true,
+      githubStatus,
+    });
   }
+  return grantResult(null, null, {
+    githubCalled: true,
+    githubStatus: 200,
+    value: Object.freeze({
+      grantId: authorization.grantId,
+      manifestHash: canonicalHash,
+      issuanceDigest: digest,
+      issuanceUrl: `https://api.github.com/repos/kubzik96/genesis-ai/issues/comments/${receipt.id}`,
+      issuanceIssueUrl: receipt.issue_url,
+    }),
+  });
 }
 
 export async function orchestrateIndependentReview({

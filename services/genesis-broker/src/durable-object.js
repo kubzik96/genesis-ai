@@ -172,14 +172,35 @@ export class BrokerDurableObject {
       return this._json(replay);
     }
 
-    const grantBlocked = (code, githubCalled = false) => this._json({
-      status: 409, body: normalizeReviewResult({ code }), githubCalled, githubStatus: null,
-      modelCalled: false, persistenceAttempted: false, idempotencyState: null,
+    const grantBlocked = (code, { githubCalled = false, githubStatus = null, idempotencyState = null } = {}) => this._json({
+      status: 409, body: normalizeReviewResult({ code }), githubCalled, githubStatus,
+      modelCalled: false, persistenceAttempted: false, idempotencyState,
     });
-    if (!checked.value.authorization.grantId) return grantBlocked('REVIEW_GRANT_REQUIRED');
-    const grantKey = `review:grant:${checked.value.authorization.grantId}`;
-    // Every extant record, including malformed/unknown states, closes admission.
+    const auth = checked.value.authorization;
+    if (!auth.grantId || !auth.manifestHash || !auth.issuanceDigest) {
+      return grantBlocked('REVIEW_GRANT_REQUIRED');
+    }
+    // Canonical one-consumption key (only after successful GitHub verification).
+    const grantKey = `review:grant:${auth.grantId}`;
+    // Provisional claim binds the full immutable tuple so a forged/guessed grantId alone
+    // cannot permanently poison a future legitimate CEO issuance of the same comment id.
+    const claimKey = `review:claim:${auth.grantId}:${auth.manifestHash}:${auth.issuanceDigest}`;
     if (await storage.get(grantKey) !== undefined) return grantBlocked('REVIEW_GRANT_CLOSED');
+    const existingClaim = await storage.get(claimKey);
+    if (existingClaim !== undefined) {
+      // Same idempotency recovery of an in-flight VERIFYING claim may continue.
+      // CLOSED_NO_CALL without a bound canonical grant does not permanently poison a future
+      // legitimate issuance of the same comment id with the same digests (forged pre-claim).
+      // Once grantKey exists, admission is permanently closed above.
+      const sameInFlight = existingClaim.state === 'VERIFYING'
+        && existingClaim.idempotency_key === idempotencyKey
+        && existingClaim.request_hash === requestHash;
+      const reverifyAllowed = existingClaim.state === 'CLOSED_NO_CALL'
+        && (await storage.get(grantKey)) === undefined;
+      if (!sameInFlight && !reverifyAllowed) {
+        return grantBlocked('REVIEW_GRANT_CLOSED');
+      }
+    }
 
     const runState = (await storage.get(`run:${runId}`)) ?? {
       create_issue: false,
@@ -261,13 +282,7 @@ export class BrokerDurableObject {
       });
     }
 
-    const verifiedGrant = await verifyCanonicalReviewerGrant(checked.value.authorization, github);
-    if (!verifiedGrant.ok) return grantBlocked(verifiedGrant.code, true);
-    const reservedGrant = { ...verifiedGrant.value, state: 'RESERVED',
-      operation: 'review_grok', request_hash: requestHash, run_id: runId,
-      idempotency_key: idempotencyKey, repository: FIXED_FULL_NAME,
-      pr_number: checked.value.authorization.prNumber,
-      expected_head_sha: checked.value.authorization.expectedHeadSha };
+    // Crash-safe admission BEFORE any outbound GitHub grant verification.
     const pending = {
       idempotency_key: idempotencyKey,
       request_hash: requestHash,
@@ -276,11 +291,25 @@ export class BrokerDurableObject {
       gate: null,
       state: IDEM_STATES.PENDING,
       safe_result: null,
-      grantId: reservedGrant.grantId,
-      manifestHash: reservedGrant.manifestHash,
+      grantId: auth.grantId,
+      manifestHash: auth.manifestHash,
+      issuanceDigest: auth.issuanceDigest,
+    };
+    const provisionalClaim = {
+      state: 'VERIFYING',
+      grantId: auth.grantId,
+      manifestHash: auth.manifestHash,
+      issuanceDigest: auth.issuanceDigest,
+      operation: 'review_grok',
+      request_hash: requestHash,
+      run_id: runId,
+      idempotency_key: idempotencyKey,
+      repository: FIXED_FULL_NAME,
+      pr_number: auth.prNumber,
+      expected_head_sha: auth.expectedHeadSha,
     };
     await storage.put(Object.fromEntries([
-      [grantKey, reservedGrant],
+      [claimKey, provisionalClaim],
       [`idem:${idempotencyKey}`, pending],
       [`run:${runId}`, {
         ...runState,
@@ -288,14 +317,67 @@ export class BrokerDurableObject {
       }],
     ]));
 
+    const verifiedGrant = await verifyCanonicalReviewerGrant(auth, github);
+    if (!verifiedGrant.ok) {
+      const failed = markFailed(pending, {
+        status: 409,
+        body: normalizeReviewResult({ code: verifiedGrant.code }),
+      });
+      await storage.put(Object.fromEntries([
+        [claimKey, { ...provisionalClaim, state: 'CLOSED_NO_CALL', fail_code: verifiedGrant.code }],
+        [`idem:${idempotencyKey}`, failed],
+        [`run:${runId}`, { ...runState, review_grok_pending: null }],
+      ]));
+      return grantBlocked(verifiedGrant.code, {
+        githubCalled: verifiedGrant.githubCalled === true,
+        githubStatus: verifiedGrant.githubStatus ?? null,
+        idempotencyState: IDEM_STATES.FAILED,
+      });
+    }
+
+    // Successful verification: bind the real canonical one-consumption grant identity.
+    // Re-check under the DO lock so concurrent admissions of the same grantId collapse to one.
+    if (await storage.get(grantKey) !== undefined) {
+      await storage.put(Object.fromEntries([
+        [claimKey, { ...provisionalClaim, state: 'CLOSED_NO_CALL', fail_code: 'REVIEW_GRANT_CLOSED' }],
+        [`idem:${idempotencyKey}`, markFailed(pending, {
+          status: 409,
+          body: normalizeReviewResult({ code: 'REVIEW_GRANT_CLOSED' }),
+        })],
+        [`run:${runId}`, { ...runState, review_grok_pending: null }],
+      ]));
+      return grantBlocked('REVIEW_GRANT_CLOSED', {
+        githubCalled: true,
+        githubStatus: verifiedGrant.githubStatus ?? 200,
+        idempotencyState: IDEM_STATES.FAILED,
+      });
+    }
+    const reservedGrant = {
+      ...verifiedGrant.value,
+      state: 'RESERVED',
+      operation: 'review_grok',
+      request_hash: requestHash,
+      run_id: runId,
+      idempotency_key: idempotencyKey,
+      repository: FIXED_FULL_NAME,
+      pr_number: auth.prNumber,
+      expected_head_sha: auth.expectedHeadSha,
+    };
+    await storage.put(Object.fromEntries([
+      [grantKey, reservedGrant],
+      [claimKey, { ...provisionalClaim, state: 'VERIFIED', grant_bound: true }],
+      [`idem:${idempotencyKey}`, pending],
+    ]));
+
     const calls = {
       githubCalled: true,
-      githubStatus: 200,
+      githubStatus: verifiedGrant.githubStatus ?? 200,
       modelCalled: false,
       persistenceAttempted: false,
     };
     const trackedGithub = {};
-    for (const method of ['getPull', 'getPullFiles', 'getPullDiff', 'addIssueComment', 'getIssueComment']) {
+    for (const method of ['getPull', 'getPullFiles', 'getPullDiff', 'addIssueComment', 'getIssueComment', 'getIssueCommentEditMetadata']) {
+      if (typeof github[method] !== 'function') continue;
       trackedGithub[method] = async (...args) => {
         calls.githubCalled = true;
         if (method === 'addIssueComment') calls.persistenceAttempted = true;

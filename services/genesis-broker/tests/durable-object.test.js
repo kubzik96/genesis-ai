@@ -786,6 +786,7 @@ describe('BrokerDurableObject reviewer authorization durability', () => {
       async getIssueComment(id) {
         if (id === 9001) return { ok: true, status: 200, data: {
           id, user: { id: 307621171, login: 'kubzik96', type: 'User' },
+          node_id: 'IC_kwDOTest9001',
           created_at: '2026-09-10T00:00:00Z', updated_at: '2026-09-10T00:00:00Z',
           issue_url: 'https://api.github.com/repos/kubzik96/genesis-ai/issues/116', body: reviewGrantBody(),
         } };
@@ -798,6 +799,16 @@ describe('BrokerDurableObject reviewer authorization durability', () => {
             issue_url: 'https://api.github.com/repos/kubzik96/genesis-ai/issues/95',
             body: persistedBody,
           },
+        };
+      },
+      async getIssueCommentEditMetadata(nodeId) {
+        if (nodeId !== 'IC_kwDOTest9001') {
+          return { ok: false, status: 404, data: { data: { node: null } } };
+        }
+        return {
+          ok: true,
+          status: 200,
+          data: { data: { node: { id: nodeId, databaseId: 9001, lastEditedAt: null, editor: null } } },
         };
       },
     };

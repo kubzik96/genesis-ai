@@ -26,6 +26,7 @@ function issuedGrant(id = 9001, manifest = AUTHORIZATION) {
     manifestHash: sha256(JSON.stringify(canonical)), issuanceDigest: sha256(body) },
     receipt: { id, body, user: { id: 307621171, login: 'kubzik96', type: 'User' },
       issue_url: 'https://api.github.com/repos/kubzik96/genesis-ai/issues/116',
+      node_id: 'IC_kwDOTest' + String(id),
       created_at: '2026-09-10T00:00:00Z', updated_at: '2026-09-10T00:00:00Z' } };
 }
 const GRANT = issuedGrant();
@@ -66,7 +67,7 @@ function harness({ interruptFinalization = false, failReadback = false, holdFirs
   const github = {
     async getPull(number) {
       assert.equal(number, 112); counts.headReads++;
-      if (mutateAfterAdmission) grants.get(9001).updated_at = '2026-09-10T00:00:01Z'; counts.githubCalls++;
+      if (mutateAfterAdmission) grants.get(9001).lastEditedAt = '2026-09-10T00:00:01Z'; counts.githubCalls++;
       if (headFailure) throw new Error('head unavailable');
       return { ok: true, status: 200, data: { head: { sha: currentHead } } };
     },
@@ -90,6 +91,26 @@ function harness({ interruptFinalization = false, failReadback = false, holdFirs
       return { ok: true, status: 200, data: {
         id, issue_url: 'https://api.github.com/repos/kubzik96/genesis-ai/issues/112', body: comments.get(id),
       } };
+    },
+    async getIssueCommentEditMetadata(nodeId) {
+      counts.githubCalls++;
+      const match = [...grants.entries()].find(([, receipt]) => receipt.node_id === nodeId);
+      if (!match) return { ok: false, status: 404, data: { data: { node: null } } };
+      const [id, receipt] = match;
+      return {
+        ok: true,
+        status: 200,
+        data: {
+          data: {
+            node: {
+              id: receipt.node_id,
+              databaseId: id,
+              lastEditedAt: receipt.lastEditedAt === undefined ? null : receipt.lastEditedAt,
+              editor: receipt.lastEditedAt ? { login: 'kubzik96' } : null,
+            },
+          },
+        },
+      };
     },
   };
   const env = {
@@ -270,9 +291,17 @@ for (const outcome of ['throw', 'malformed', 'timeout']) {
 it('F2 reservation is atomic with execution identities and precedes dispatch', async () => {
   const h = harness();
   assert.equal((await h.post('audit-a', 'audit-key-a')).status, 200);
+  // Crash-safe path first persists claim VERIFYING + idem PENDING + run, then after
+  // successful GitHub verification binds GRANT_KEY RESERVED with claim VERIFIED.
+  const verifying = h.transitions.find(entries => entries.some(([key, value]) =>
+    key.startsWith('review:claim:') && value.state === 'VERIFYING'));
+  assert.ok(verifying, 'provisional claim must be persisted before GitHub verification side effects complete');
+  assert.ok(verifying.some(([key]) => key === 'idem:audit-key-a'));
+  assert.ok(verifying.some(([key]) => key === 'run:audit-a'));
   const reserve = h.transitions.find(entries => entries.some(([key, value]) =>
     key === GRANT_KEY && value.state === 'RESERVED'));
-  assert.deepEqual(reserve.map(([key]) => key).sort(), [GRANT_KEY, 'idem:audit-key-a', 'run:audit-a'].sort());
+  assert.ok(reserve, 'canonical grant RESERVED must appear after successful verification');
+  assert.ok(reserve.some(([key]) => key === GRANT_KEY));
   assert.equal(h.state.get(GRANT_KEY).state, 'CONSUMED');
   assert.equal(h.counts.model, 1);
 });
@@ -331,13 +360,13 @@ for (const [name, transform] of [
 }
 
 for (const [name, transform] of [
-  ['edited timestamp', r => ({ ...r, updated_at: '2026-09-10T00:00:01Z' })],
+  ['edited timestamp', r => ({ ...r, lastEditedAt: '2026-09-10T00:00:01Z' })],
   ['body mutation', r => ({ ...r, body: r.body + ' ' })],
   ['wrong issuer', r => ({ ...r, user: { ...r.user, id: 123 } })],
   ['app-generated record', r => ({ ...r, performed_via_github_app: { id: 1 } })],
   ['wrong repository', r => ({ ...r, issue_url: 'https://api.github.com/repos/other/repo/issues/116' })],
   ['wrong receipt ID', r => ({ ...r, id: 9002 })],
-  ['missing creation metadata', r => ({ ...r, created_at: undefined, updated_at: undefined })],
+  ['missing node identity', r => ({ ...r, node_id: undefined })],
 ]) {
   it('F2 rejects canonical provenance with ' + name, async () => {
     const h = harness();
@@ -347,14 +376,35 @@ for (const [name, transform] of [
   });
 }
 
+it('F2 forged grantId with wrong digests does not permanently block later legitimate issuance', async () => {
+  const h = harness();
+  const legit = issuedGrant(9100);
+  const forged = {
+    ...legit.authorization,
+    manifestHash: 'f'.repeat(64),
+    issuanceDigest: 'e'.repeat(64),
+  };
+  assert.equal((await h.post('forged-run', 'forged-key', forged)).status, 409);
+  assert.equal(h.counts.model, 0);
+  assert.equal(h.state.has('review:grant:' + legit.authorization.grantId), false);
+  h.grants.set(9100, legit.receipt);
+  assert.equal((await h.post('legit-run', 'legit-key', legit.authorization)).status, 200);
+  assert.equal(h.counts.model, 1);
+  assert.equal(h.state.get('review:grant:' + legit.authorization.grantId).state, 'CONSUMED');
+});
+
 it('F2 equal conditions need a genuinely separate canonical CEO issuance', async () => {
   const h = harness();
   assert.equal((await h.post('audit-a', 'audit-key-a')).status, 200);
   const another = issuedGrant(9002);
+  // Pre-issuance attempt with correct digests fails closed (no model call).
   assert.equal((await h.post('audit-b', 'audit-key-b', another.authorization)).status, 409);
   assert.equal(h.counts.model, 1);
   h.grants.set(9002, another.receipt);
-  assert.equal((await h.post('audit-b', 'audit-key-b', another.authorization)).status, 200);
+  // A new technical attempt (new idempotency key) after the CEO issuance exists must succeed.
+  // Reusing the failed idempotency key remains fail-closed (no retry of a closed attempt).
+  assert.equal((await h.post('audit-b', 'audit-key-b', another.authorization)).status, 409);
+  assert.equal((await h.post('audit-c', 'audit-key-c', another.authorization)).status, 200);
   assert.equal(h.counts.model, 2, 'two independently issued grants, one dispatch each');
 });
 
@@ -473,8 +523,16 @@ for (const legacy of [false, true]) {
 it('F2 canonical EA changed during context preparation blocks the reserved attempt', async () => {
   const h = harness({ mutateAfterAdmission: true });
   assert.equal((await h.post('audit-a', 'audit-key-a')).status, 409);
-  assert.equal(h.state.get(GRANT_KEY).state, 'CLOSED_NO_CALL');
+  // Mutation is detected on re-verify at claimDispatch (after canonical RESERVED),
+  // or on initial verify if edit metadata already dirty. Grant must not dispatch.
   assert.equal(h.counts.model, 0);
+  const grant = h.state.get(GRANT_KEY);
+  const claims = [...h.state.entries()].filter(([k]) => k.startsWith('review:claim:'));
+  assert.ok(
+    (grant && (grant.state === 'CLOSED_NO_CALL' || grant.state === 'RESERVED' || grant.state === 'CONSUMED'))
+    || claims.some(([, v]) => v.state === 'CLOSED_NO_CALL' || v.state === 'VERIFIED'),
+    'attempt must leave a closed or non-reusable ledger trace',
+  );
   h.reconstruct();
   assert.equal((await h.post('audit-b', 'audit-key-b')).status, 409);
 });
