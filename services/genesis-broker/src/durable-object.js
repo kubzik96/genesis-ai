@@ -23,6 +23,7 @@ import {
 import { XAI_BUDGET_RESERVATION_TICKS } from './xai-contract.js';
 import { createProductionXaiReviewClient } from './xai-review-client.js';
 import { executeReviewerRuntimeOperation, normalizeReviewResult, validateReviewerRuntimeBody } from './reviewer-runtime.js';
+import { verifyCanonicalReviewerGrant } from './reviewer-orchestrator.js';
 
 export class BrokerDurableObject {
   constructor(state, env) {
@@ -171,6 +172,15 @@ export class BrokerDurableObject {
       return this._json(replay);
     }
 
+    const grantBlocked = (code, githubCalled = false) => this._json({
+      status: 409, body: normalizeReviewResult({ code }), githubCalled, githubStatus: null,
+      modelCalled: false, persistenceAttempted: false, idempotencyState: null,
+    });
+    if (!checked.value.authorization.grantId) return grantBlocked('REVIEW_GRANT_REQUIRED');
+    const grantKey = `review:grant:${checked.value.authorization.grantId}`;
+    // Every extant record, including malformed/unknown states, closes admission.
+    if (await storage.get(grantKey) !== undefined) return grantBlocked('REVIEW_GRANT_CLOSED');
+
     const runState = (await storage.get(`run:${runId}`)) ?? {
       create_issue: false,
       assign_copilot: false,
@@ -251,6 +261,13 @@ export class BrokerDurableObject {
       });
     }
 
+    const verifiedGrant = await verifyCanonicalReviewerGrant(checked.value.authorization, github);
+    if (!verifiedGrant.ok) return grantBlocked(verifiedGrant.code, true);
+    const reservedGrant = { ...verifiedGrant.value, state: 'RESERVED',
+      operation: 'review_grok', request_hash: requestHash, run_id: runId,
+      idempotency_key: idempotencyKey, repository: FIXED_FULL_NAME,
+      pr_number: checked.value.authorization.prNumber,
+      expected_head_sha: checked.value.authorization.expectedHeadSha };
     const pending = {
       idempotency_key: idempotencyKey,
       request_hash: requestHash,
@@ -259,8 +276,11 @@ export class BrokerDurableObject {
       gate: null,
       state: IDEM_STATES.PENDING,
       safe_result: null,
+      grantId: reservedGrant.grantId,
+      manifestHash: reservedGrant.manifestHash,
     };
     await storage.put(Object.fromEntries([
+      [grantKey, reservedGrant],
       [`idem:${idempotencyKey}`, pending],
       [`run:${runId}`, {
         ...runState,
@@ -269,8 +289,8 @@ export class BrokerDurableObject {
     ]));
 
     const calls = {
-      githubCalled: false,
-      githubStatus: null,
+      githubCalled: true,
+      githubStatus: 200,
       modelCalled: false,
       persistenceAttempted: false,
     };
@@ -290,6 +310,23 @@ export class BrokerDurableObject {
         return baseReviewClient.review(input);
       },
     };
+    let dispatchClaimed = false;
+    let dispatchUncertain = false;
+    const claimDispatch = async () => {
+      if (dispatchClaimed) return false;
+      dispatchClaimed = true;
+      const stillCanonical = await verifyCanonicalReviewerGrant(checked.value.authorization, trackedGithub);
+      if (!stillCanonical.ok) return false;
+      const current = await storage.get(grantKey);
+      if (current?.state !== 'RESERVED' || current.request_hash !== requestHash
+        || current.idempotency_key !== idempotencyKey || current.manifestHash !== reservedGrant.manifestHash) return false;
+      // Persist consumption before handing control to the provider. A failed write
+      // may have committed; uncertainty can never return the grant to unused state.
+      dispatchUncertain = true;
+      await storage.put(grantKey, { ...reservedGrant, state: 'CONSUMED' });
+      dispatchUncertain = false;
+      return true;
+    };
 
     let operationResult;
     try {
@@ -298,6 +335,8 @@ export class BrokerDurableObject {
         context: checked.value.context,
         github: trackedGithub,
         reviewClient,
+        claimDispatch,
+        executionIdentity: { run_id: runId, request_hash: requestHash },
       });
     } catch {
       operationResult = {
@@ -314,8 +353,11 @@ export class BrokerDurableObject {
     }
 
     const safeResult = { status: operationResult.status, body: operationResult.body };
+    const finalGrant = { ...reservedGrant, state: calls.modelCalled ? 'CONSUMED' : 'CLOSED_NO_CALL',
+      evidence_receipt: operationResult.evidenceReceipt ?? null };
     if (operationResult.status === 200) {
       await storage.put(Object.fromEntries([
+        [grantKey, finalGrant],
         [`idem:${idempotencyKey}`, markSucceeded(pending, safeResult)],
         [`run:${runId}`, { ...runState, review_grok: true, review_grok_pending: null }],
         ['rate:timestamps', rate.nextTimestamps],
@@ -328,12 +370,14 @@ export class BrokerDurableObject {
       });
     }
 
-    if (calls.persistenceAttempted) {
+    if (calls.persistenceAttempted || dispatchUncertain) {
       const unknown = {
+        ...normalizeReviewResult({ code: 'BLOCKED_RECONCILIATION_REQUIRED' }),
         error: 'BLOCKED_RECONCILIATION_REQUIRED',
         message: 'Review evidence write may be indeterminate; auto-retry forbidden',
       };
       await storage.put(Object.fromEntries([
+        [grantKey, { ...finalGrant, state: 'UNKNOWN' }],
         [`idem:${idempotencyKey}`, markUnknown(pending, unknown)],
         [`run:${runId}`, { ...runState, review_grok_blocked: true, review_grok_pending: null }],
       ]));
@@ -348,6 +392,7 @@ export class BrokerDurableObject {
 
     const failed = markFailed(pending, safeResult);
     await storage.put(Object.fromEntries([
+      [grantKey, finalGrant],
       [`idem:${idempotencyKey}`, failed],
       [`run:${runId}`, calls.modelCalled
         ? { ...runState, review_grok: true, review_grok_pending: null }

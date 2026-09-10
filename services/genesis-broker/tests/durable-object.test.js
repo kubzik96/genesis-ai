@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 /**
  * Crash-safe Durable Object idempotency tests.
  *
@@ -724,7 +725,7 @@ describe('BrokerDurableObject reviewer authorization durability', () => {
     'CLOUDFLARE', 'SECRETS', 'QUARANTINE_REMOVAL', 'REPEAT_MODEL_CALL',
   ];
 
-  function reviewAuthorization() {
+  function legacyReviewAuthorization() {
     return {
       repository: 'kubzik96/genesis-ai',
       prNumber: 95,
@@ -737,6 +738,16 @@ describe('BrokerDurableObject reviewer authorization durability', () => {
       durablePersistenceAuthorized: true,
       forbiddenActions: [...REVIEW_FORBIDDEN],
     };
+  }
+
+  function reviewGrantBody() { return 'GENESIS_REVIEW_GRANT_V1 ' + JSON.stringify(legacyReviewAuthorization()); }
+  function reviewAuthorization() {
+    const manifest = legacyReviewAuthorization();
+    const canonical = Object.fromEntries(Object.keys(manifest).sort().map(k => [k,
+      k === 'forbiddenActions' ? [...manifest[k]].sort() : manifest[k]]));
+    const hash = text => createHash('sha256').update(text).digest('hex');
+    return { ...manifest, grantId: 'github:issue-comment:9001',
+      manifestHash: hash(JSON.stringify(canonical)), issuanceDigest: hash(reviewGrantBody()) };
   }
 
   function reviewPayload({ key = 'review-key', hash = 'review-hash', runId = 'review-run' } = {}) {
@@ -772,12 +783,18 @@ describe('BrokerDurableObject reviewer authorization durability', () => {
         if (throwPersist) throw new Error('timeout');
         return { ok: true, status: 201, data: { id: 777 } };
       },
-      async getIssueComment() {
+      async getIssueComment(id) {
+        if (id === 9001) return { ok: true, status: 200, data: {
+          id, user: { id: 307621171, login: 'kubzik96', type: 'User' },
+          created_at: '2026-09-10T00:00:00Z', updated_at: '2026-09-10T00:00:00Z',
+          issue_url: 'https://api.github.com/repos/kubzik96/genesis-ai/issues/116', body: reviewGrantBody(),
+        } };
         calls.getIssueComment += 1;
         return {
           ok: true,
           status: 200,
           data: {
+            id: 777,
             issue_url: 'https://api.github.com/repos/kubzik96/genesis-ai/issues/95',
             body: persistedBody,
           },
@@ -967,7 +984,7 @@ describe('BrokerDurableObject reviewer authorization durability', () => {
     assert.equal(conflict.body?.error, 'IDEMPOTENCY_CONFLICT');
 
     const secondKey = await invokeReview(storage, github, client, reviewPayload({ key: 'review-key-2', hash: 'review-hash-2' }));
-    assert.equal(secondKey.status, 429);
+    assert.equal(secondKey.status, 409);
     assert.equal(client.state.calls, 1);
     assert.equal(github.calls.addIssueComment, 1);
   });
@@ -986,7 +1003,7 @@ describe('BrokerDurableObject reviewer authorization durability', () => {
       invoke(reviewPayload({ key: 'review-key-2', hash: 'review-hash-2' })),
     ]);
     assert.equal(first.status, 200);
-    assert.equal(second.status, 429);
+    assert.equal(second.status, 409);
     assert.equal(client.state.calls, 1);
     assert.equal(github.calls.addIssueComment, 1);
   });
@@ -1007,7 +1024,7 @@ describe('BrokerDurableObject reviewer authorization durability', () => {
     assert.equal(github.calls.addIssueComment, 1);
   });
 
-  it('releases the run reservation after a deterministic pre-model GitHub failure', async () => {
+  it('closes the grant after a deterministic pre-model GitHub failure', async () => {
     const storage = new MockStorage();
     const badGithub = reviewGithub({ throwInitial: true });
     const client = reviewClient(storage);
@@ -1024,8 +1041,8 @@ describe('BrokerDurableObject reviewer authorization durability', () => {
       client,
       reviewPayload({ key: 'review-key-2', hash: 'review-hash-2' }),
     );
-    assert.equal(second.status, 200);
-    assert.equal(client.state.calls, 1);
+    assert.equal(second.status, 409);
+    assert.equal(client.state.calls, 0);
   });
 
   it('consumes the run after a model failure so a new key cannot repeat the call', async () => {
@@ -1045,7 +1062,7 @@ describe('BrokerDurableObject reviewer authorization durability', () => {
     assert.deepEqual(github.calls, githubCallsAfterFirst);
 
     const second = await invokeReview(storage, github, client, reviewPayload({ key: 'review-key-2', hash: 'review-hash-2' }));
-    assert.equal(second.status, 429);
+    assert.equal(second.status, 409);
     assert.equal(client.state.calls, 1);
   });
 });

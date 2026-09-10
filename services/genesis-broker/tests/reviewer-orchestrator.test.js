@@ -29,6 +29,7 @@ const request = (overrides = {}) => ({
 });
 
 const authorization = (overrides = {}) => ({
+  grantId: 'github:issue-comment:9001', manifestHash: '1'.repeat(64), issuanceDigest: '2'.repeat(64),
   repository: 'kubzik96/genesis-ai',
   prNumber: 92,
   expectedHeadSha: HEAD,
@@ -59,6 +60,7 @@ function harness({ auth = authorization(), req = request(), heads = [HEAD, HEAD,
   let verifyCalls = 0;
   let headIndex = 0;
   const boundaries = {
+    claimDispatch: async () => true,
     getCurrentHead: async () => heads[Math.min(headIndex++, heads.length - 1)],
     reviewClient: {
       review: async () => {
@@ -173,7 +175,7 @@ describe('S-0010 reviewer orchestration', () => {
 
   it('requires both trusted persistence boundaries before invoking the model', async () => {
     const base = {
-      authorization: authorization(), request: request(), getCurrentHead: async () => HEAD,
+      authorization: authorization(), request: request(), claimDispatch: async () => true, getCurrentHead: async () => HEAD,
       reviewClient: { review: async () => { throw new Error('must not call'); } },
     };
     assert.equal((await orchestrateIndependentReview({ ...base, persistEvidence: async () => true })).code, 'PERSISTENCE_BOUNDARY_UNAVAILABLE');
