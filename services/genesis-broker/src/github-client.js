@@ -120,6 +120,20 @@ export function createGithubClient({ pat, fetchImpl = fetch }) {
     },
 
     /**
+     * GraphQL exposes edit provenance that REST timestamps cannot prove: lastEditedAt is null
+     * for an unedited IssueComment. The REST node_id is resolved only inside the fixed GitHub API.
+     */
+    async getIssueCommentEditMetadata(nodeId) {
+      if (typeof nodeId !== 'string' || !nodeId) {
+        return { status: 400, ok: false, data: null, headers: new Headers() };
+      }
+      return gh('POST', '/graphql', {
+        query: 'query GenesisIssueCommentEdit($id: ID!) { node(id: $id) { ... on IssueComment { id databaseId lastEditedAt editor { login } } } }',
+        variables: { id: nodeId },
+      });
+    },
+
+    /**
      * Read-only Issue timeline for structured PR discovery (cross-referenced events).
      * per_page=100. Caller must fail-closed if incompletePages is true and it cannot continue.
      */
