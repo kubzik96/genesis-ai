@@ -16,6 +16,7 @@ const FORBIDDEN = Object.freeze([
 
 function authorization(overrides = {}) {
   return {
+    grantId: 'github:issue-comment:9001', manifestHash: '1'.repeat(64), issuanceDigest: '2'.repeat(64),
     repository: 'kubzik96/genesis-ai',
     prNumber: PR,
     expectedHeadSha: HEAD,
@@ -100,10 +101,11 @@ function makeGithub({
           ok: true,
           status: 200,
           data: {
+            id: 77,
             issue_url: `https://api.github.com/repos/kubzik96/genesis-ai/issues/${PR}`,
             body: readBackMatches
               ? (typeof readBackTransform === 'function' ? readBackTransform(persistedBody) : persistedBody)
-              : 'GENESIS_REVIEW_EVIDENCE_V1 {"wrong":true}',
+              : 'GENESIS_REVIEW_EVIDENCE_V2 {"wrong":true}',
           },
         };
       },
@@ -137,7 +139,7 @@ async function run(body, { githubOptions, reviewImpl, envOverrides } = {}) {
   };
   const store = {
     async executeReview({ authorization: auth, context }) {
-      return executeReviewerRuntimeOperation({ authorization: auth, context, github: gh.api, reviewClient });
+      return executeReviewerRuntimeOperation({ authorization: auth, context, github: gh.api, reviewClient, claimDispatch: async () => true, executionIdentity: { run_id: 'review-run', request_hash: 'offline-request-hash' } });
     },
   };
   const runtimeBody = { ...body, run_id: body?.run_id ?? 'review-run' };
@@ -346,21 +348,29 @@ describe('S-0010 reviewer runtime integration', () => {
     }
   });
 
-  it('rejects read-back evidence when any normalized field differs', async () => {
-    const mutate = (body) => {
-      const prefix = 'GENESIS_REVIEW_EVIDENCE_V1 ';
-      const parsed = JSON.parse(body.slice(prefix.length));
-      parsed.ready_gate_safe = 'NO';
-      return `${prefix}${JSON.stringify(parsed)}`;
-    };
-    const r = await run(
-      { authorization: authorization(), context: 'bounded context' },
-      { githubOptions: { readBackTransform: mutate } },
-    );
-    assert.equal(r.response.status, 409);
-    assert.equal(r.body.code, 'PERSISTENCE_NOT_CONFIRMED');
-    assert.equal(r.body.consequential_gate_evidence_available, false);
-  });
+  for (const [field, changed] of [
+    ['ready_gate_safe', 'NO'], ['grantId', 'github:issue-comment:9999'],
+    ['manifestHash', 'f'.repeat(64)], ['request_hash', 'different'],
+    ['run_id', 'different'], ['pr_number', 999], ['reviewed_head_sha', OTHER_HEAD],
+    ['envelope_version', 1], ['unexpected', 'ambiguous'],
+  ]) {
+    it('rejects read-back evidence mutation in ' + field, async () => {
+      const mutate = body => {
+        const prefix = 'GENESIS_REVIEW_EVIDENCE_V2 ';
+        const parsed = JSON.parse(body.slice(prefix.length));
+        parsed[field] = changed;
+        return prefix + JSON.stringify(parsed);
+      };
+      const r = await run(
+        { authorization: authorization(), context: 'bounded context' },
+        { githubOptions: { readBackTransform: mutate } },
+      );
+      assert.equal(r.reviewCalls, 1);
+      assert.equal(r.response.status, 409);
+      assert.equal(r.body.code, 'PERSISTENCE_NOT_CONFIRMED');
+      assert.equal(r.body.consequential_gate_evidence_available, false);
+    });
+  }
 
   it('rejects Grok/xAI self-review before model invocation', async () => {
     const r = await run({

@@ -11,7 +11,7 @@ import {
 const SHA = /^[a-f0-9]{40}$/i;
 const RUN_ID = /^[a-z0-9][a-z0-9._-]{0,80}$/;
 const BODY_KEYS = new Set(['authorization', 'context', 'run_id']);
-const EVIDENCE_PREFIX = 'GENESIS_REVIEW_EVIDENCE_V1 ';
+const EVIDENCE_PREFIX = 'GENESIS_REVIEW_EVIDENCE_V2 ';
 const bytes = (value) => new TextEncoder().encode(value).byteLength;
 
 function blocked(code, message, reviewedHeadSha = null) {
@@ -120,8 +120,10 @@ export async function readJsonBodyBounded(request, byteLimit = XAI_REVIEW_REQUES
   }
 }
 
-function evidenceRecord(record) {
+function evidenceRecord(record, binding) {
   return {
+    envelope_version: 2,
+    ...binding,
     reviewer: record.reviewer,
     repository: record.repository,
     pr_number: record.prNumber,
@@ -136,8 +138,8 @@ function evidenceRecord(record) {
   };
 }
 
-function evidenceBody(record) {
-  return `${EVIDENCE_PREFIX}${JSON.stringify(evidenceRecord(record))}`;
+function evidenceBody(record, binding) {
+  return `${EVIDENCE_PREFIX}${JSON.stringify(evidenceRecord(record, binding))}`;
 }
 
 function parseEvidenceBody(body) {
@@ -150,7 +152,12 @@ function parseEvidenceBody(body) {
 }
 
 function sameEvidence(parsed, expected) {
-  return parsed?.reviewer === expected.reviewer
+  return parsed?.envelope_version === 2
+    && parsed?.grantId === expected.grantId
+    && parsed?.manifestHash === expected.manifestHash
+    && parsed?.request_hash === expected.request_hash
+    && parsed?.run_id === expected.run_id
+    && parsed?.reviewer === expected.reviewer
     && parsed?.repository === expected.repository
     && parsed?.pr_number === expected.pr_number
     && parsed?.reviewed_head_sha === expected.reviewed_head_sha
@@ -163,9 +170,17 @@ function sameEvidence(parsed, expected) {
     && parsed?.grants_authority === false;
 }
 
-export async function executeReviewerRuntimeOperation({ authorization, context, github, reviewClient } = {}) {
+export async function executeReviewerRuntimeOperation({ authorization, context, github, reviewClient, claimDispatch, executionIdentity } = {}) {
   const preflight = validateReviewerRuntimeBody({ authorization, context, run_id: 'internal' });
   if (!preflight.ok) return { status: preflight.status, body: preflight.body };
+  if (!authorization.grantId || typeof claimDispatch !== 'function'
+    || !RUN_ID.test(executionIdentity?.run_id ?? '')
+    || typeof executionIdentity?.request_hash !== 'string' || !executionIdentity.request_hash) {
+    return { status: 409, body: normalizeReviewResult(blocked('REVIEW_GRANT_REQUIRED', 'Durable grant and execution identity are required')) };
+  }
+  const binding = Object.freeze({ grantId: authorization.grantId, manifestHash: authorization.manifestHash,
+    request_hash: executionIdentity.request_hash, run_id: executionIdentity.run_id });
+  let evidenceReceipt = null;
   if (!github || typeof github.getPull !== 'function' || typeof github.getPullFiles !== 'function'
     || typeof github.getPullDiff !== 'function' || typeof github.addIssueComment !== 'function'
     || typeof github.getIssueComment !== 'function') {
@@ -225,21 +240,26 @@ export async function executeReviewerRuntimeOperation({ authorization, context, 
     return sha.toLowerCase();
   };
   const persistEvidence = async (record) => {
-    const body = evidenceBody(record);
+    const body = evidenceBody(record, binding);
     const written = await github.addIssueComment(record.prNumber, body);
     const id = written?.data?.id;
     if (!written?.ok || !Number.isSafeInteger(id) || id < 1) throw new Error('review evidence write failed');
-    return Object.freeze({ id, expected: evidenceRecord(record) });
+    evidenceReceipt = Object.freeze({ comment_id: id, repository: record.repository, pr_number: record.prNumber,
+      reviewed_head_sha: record.reviewedHeadSha, ...binding, read_back_verified: false });
+    return Object.freeze({ id, expected: evidenceRecord(record, binding) });
   };
   const verifyPersistence = async (record, receipt) => {
     if (!Number.isSafeInteger(receipt?.id) || receipt?.expected?.repository !== record.repository
       || receipt.expected.pr_number !== record.prNumber || receipt.expected.reviewed_head_sha !== record.reviewedHeadSha
       || receipt.expected.verdict !== record.verdict) return false;
     const readBack = await github.getIssueComment(receipt.id);
-    if (!readBack?.ok) return false;
+    if (readBack?.ok !== true || readBack.status !== 200 || readBack.data?.id !== receipt.id) return false;
     const expectedIssueUrl = `https://api.github.com/repos/kubzik96/genesis-ai/issues/${record.prNumber}`;
     if (readBack.data?.issue_url !== expectedIssueUrl) return false;
-    return sameEvidence(parseEvidenceBody(readBack.data?.body), receipt.expected);
+    const matches = readBack.data?.body === EVIDENCE_PREFIX + JSON.stringify(receipt.expected)
+      && sameEvidence(parseEvidenceBody(readBack.data?.body), receipt.expected);
+    if (matches) evidenceReceipt = Object.freeze({ ...evidenceReceipt, read_back_verified: true });
+    return matches;
   };
 
   const review = await orchestrateIndependentReview({
@@ -249,6 +269,7 @@ export async function executeReviewerRuntimeOperation({ authorization, context, 
     reviewClient,
     persistEvidence,
     verifyPersistence,
+    claimDispatch,
   });
-  return { status: review.ok ? 200 : 409, body: normalizeReviewResult(review) };
+  return { status: review.ok ? 200 : 409, body: normalizeReviewResult(review), evidenceReceipt };
 }
