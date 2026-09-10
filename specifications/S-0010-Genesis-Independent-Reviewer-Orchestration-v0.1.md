@@ -259,7 +259,7 @@ The accepted **maximum implementation allowlist for the bounded F2 code fix** is
 
 ### Tests
 
-- `services/genesis-broker/tests/reviewer-authorization-reproduction.test.js`
+- **creation or update explicitly permitted:** `services/genesis-broker/tests/reviewer-authorization-reproduction.test.js`. This path is currently published in tests-only Draft PR #117, not in `main`; a future F2 implementation may create it from the verified #117 characterization evidence and then replace/augment defect expectations with normative at-most-one invariants.
 - `services/genesis-broker/tests/reviewer-orchestrator.test.js`
 - `services/genesis-broker/tests/reviewer-runtime.test.js`
 - `services/genesis-broker/tests/durable-object.test.js`
@@ -300,7 +300,7 @@ Before a Revision 2 implementation may be considered review-ready, local/mock or
 5. Concurrent requests for the same grant across different run/key identities: exactly one admission/model dispatch maximum.
 6. Durable Object reconstruction after reserve preserves the consumed/blocked grant and does not permit another model dispatch.
 7. Crash after model dispatch but before final state cannot make the grant reusable.
-8. Crash after evidence write/read-back ambiguity cannot make the grant reusable; state becomes/remaining `UNKNOWN` until reconciliation.
+8. Crash after evidence write/read-back ambiguity cannot make the grant reusable; state becomes/remains `UNKNOWN` until reconciliation.
 9. A caller-supplied arbitrary new `grantId` without canonical issuer mapping is rejected before model dispatch.
 10. Same authorization payload with a different legitimate canonical CEO issuance can use a different grant only when the issuer evidence proves that separate issuance.
 11. `manifestHash` mismatch or mutated canonical EA receipt blocks before model dispatch.
