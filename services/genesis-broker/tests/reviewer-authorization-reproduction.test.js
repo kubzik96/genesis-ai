@@ -21,7 +21,7 @@ const AUTHORIZATION = Object.freeze({
 function harness({ interruptFinalization = false, failReadback = false, holdFirstModel = false } = {}) {
   const state = new Map();
   const comments = new Map();
-  const counts = { model: 0, persistence: 0, headReads: 0 };
+  const counts = { model: 0, persistence: 0, headReads: 0, githubCalls: 0 };
   const modelRequests = [];
   let interrupted = false;
   let signalModelStarted;
@@ -45,21 +45,24 @@ function harness({ interruptFinalization = false, failReadback = false, holdFirs
   };
   const github = {
     async getPull(number) {
-      assert.equal(number, 112); counts.headReads++;
+      assert.equal(number, 112); counts.headReads++; counts.githubCalls++;
       return { ok: true, status: 200, data: { head: { sha: HEAD } } };
     },
     async getPullFiles() {
+      counts.githubCalls++;
       return { ok: true, status: 200, headers: new Headers(), data: [{ filename: 'docs/audit.md', status: 'added' }] };
     },
     async getPullDiff() {
+      counts.githubCalls++;
       return { ok: true, status: 200, data: 'diff --git a/docs/audit.md b/docs/audit.md\n+offline fixture' };
     },
     async addIssueComment(number, body) {
-      assert.equal(number, 112); counts.persistence++;
+      assert.equal(number, 112); counts.persistence++; counts.githubCalls++;
       comments.set(counts.persistence, body);
       return { ok: true, status: 201, data: { id: counts.persistence } };
     },
     async getIssueComment(id) {
+      counts.githubCalls++;
       if (failReadback) return { ok: false, status: 503 };
       return { ok: true, status: 200, data: {
         issue_url: 'https://api.github.com/repos/kubzik96/genesis-ai/issues/112', body: comments.get(id),
@@ -131,12 +134,14 @@ it('F2 control: a new run_id with the same idempotency key conflicts without ano
 it('F2 control: a new idempotency key with the same run_id cannot dispatch twice', async () => {
   const h = harness();
   assert.equal((await h.post('audit-a', 'audit-key-a')).status, 200);
+  const before = { ...h.counts };
   h.reconstruct();
   const blocked = await h.post('audit-a', 'audit-key-b');
+  // This run completed successfully: its terminal bound is RATE_LIMITED.
+  // An active PENDING reservation has a different contract, exercised below.
   assert.equal(blocked.status, 429);
   assert.equal(blocked.body.error, 'RATE_LIMITED');
-  assert.equal(h.counts.model, 1);
-  assert.equal(h.counts.persistence, 1);
+  assert.deepEqual(h.counts, before, 'a completed run rejects a new key without external calls');
 });
 
 it('F2 KNOWN DEFECT: unchanged authorization with new run_id and key dispatches twice after reconstruction', async () => {
@@ -183,6 +188,7 @@ it('recovery gap: evidence exists after failed finalization but same identifiers
   assert.equal((await h.post('audit-a', 'audit-key-a')).status, 503);
   assert.equal(h.comments.size, 1);
   assert.equal(h.state.get('idem:audit-key-a').state, 'PENDING');
+  const before = { ...h.counts };
   h.reconstruct();
   const recovery = await h.post('audit-a', 'audit-key-a');
   assert.equal(recovery.status, 409);
@@ -190,6 +196,10 @@ it('recovery gap: evidence exists after failed finalization but same identifiers
   assert.equal(h.state.get('idem:audit-key-a').state, 'PENDING');
   assert.equal(h.counts.model, 1);
   assert.equal(h.counts.persistence, 1);
+  const newKey = await h.post('audit-a', 'audit-key-b');
+  assert.equal(newKey.status, 409);
+  assert.equal(newKey.body.error, 'BLOCKED_RECONCILIATION_REQUIRED');
+  assert.deepEqual(h.counts, before, 'PENDING blocks both original and new keys without any GitHub/model call');
 });
 
 it('F2 KNOWN DEFECT: new identifiers bypass a previous PENDING run after evidence was written', async () => {
