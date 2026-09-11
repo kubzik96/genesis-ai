@@ -6,22 +6,22 @@
 |---|---|
 | ID | S-0011 |
 | Title | Genesis Universal Adaptive Agent Orchestration v0.1 |
-| Status | **Draft** |
+| Status | **Approved** |
 | Revision | 1 |
 | Author | ChatGPT — COO, по поручению CEO Genesis AI |
 | Creation date (GitHub UTC) | 2026-09-10 |
-| Approval date | — |
-| Approved by | — |
+| Approval date | 2026-09-11 |
+| Approved by | CEO Genesis AI |
 | Related Issue | #121 |
 | Related Specifications | S-0007 Revision 1; S-0009 Revision 1; S-0010 Revision 2 |
 | Related Decisions | DR-0005; DR-0008; DR-0010; DR-0011 |
-| Execution Authorization | **NOT_GRANTED — implementation requires separate CEO Approval + EA** |
+| Execution Authorization | **NOT_GRANTED — implementation requires separate CEO EA** |
 
 ## Revision history
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
-| 1 | 2026-09-10 | ChatGPT — COO | Initial implementation-grade Draft for Issue #121; hardened after exact-HEAD independent Qodo review to bind authorization, producer identity, registry provenance, budget units, review evidence, event namespace and crash-recovery receipts. |
+| 1 | 2026-09-10 | ChatGPT — COO | Initial implementation-grade Draft for Issue #121; hardened after exact-HEAD independent Qodo review to bind authorization, producer identity, registry provenance, budget units, review evidence, event namespace and crash-recovery receipts. CEO approved Revision 1 on 2026-09-11 after clean exact-HEAD Qodo review. |
 
 ## 1. Цель
 
@@ -732,4 +732,4 @@ Independent reviewer должен проверить минимум:
 - GitHub SoT preservation;
 - реалистичность Slice A→D без giant rewrite.
 
-После independent review CEO отдельно принимает или отклоняет S-0011 Revision 1. Approval не является Execution Authorization.
+Проверка выполнена: clean independent Qodo review относился к exact pre-approval HEAD `ea6cd59a4fb0db769ffa53100aabfd4937ee1719`; CEO утвердил S-0011 Revision 1 2026-09-11. Approval не является Execution Authorization.
