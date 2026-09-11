@@ -222,6 +222,8 @@ Local lock, client marker, timeout, duplicate HTTP error или local transactio
 
 Episode admission и ownership являются atomic/fenced. `SUCCEEDED` закрывает logical effect навсегда. New episode допускается только после authoritative `NO_EFFECT` предыдущего episode и только если отдельная authority/retry policy всё ещё разрешает dispatch.
 
+`NO_EFFECT` для допуска нового episode обязан также доказывать effective exclusion всех прежних senders/queued/in-flight requests. Если прежний owner уже прошёл последний локальный fence check и всё ещё может выполнить внешний send, новый episode не допускается: effect остаётся `UNKNOWN`/`INDETERMINATE_EFFECT` до authoritative evidence, исключающего старый sender. Lease expiry, смена controller или локальный CAS сами по себе не являются таким доказательством.
+
 Crash после durable `DISPATCHING` для A/C считается possible-effect evidence. Recovery сначала выполняет destination-specific authoritative read-only reconciliation.
 
 Отсутствие локального receipt, временный 404, timeout или пустой search не являются доказательством NO_EFFECT.
