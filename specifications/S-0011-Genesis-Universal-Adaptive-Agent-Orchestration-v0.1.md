@@ -6,12 +6,12 @@
 |---|---|
 | ID | S-0011 |
 | Title | Genesis Universal Adaptive Agent Orchestration v0.1 |
-| Status | **Approved** |
-| Revision | 1 |
+| Status | **In Review** |
+| Revision | 2 |
 | Author | ChatGPT — COO, по поручению CEO Genesis AI |
 | Creation date (GitHub UTC) | 2026-09-10 |
-| Approval date | 2026-09-11 |
-| Approved by | CEO Genesis AI |
+| Revision 1 approval date | 2026-09-11 |
+| Revision 1 approved by | CEO Genesis AI |
 | Related Issue | #121 |
 | Related Specifications | S-0007 Revision 1; S-0009 Revision 1; S-0010 Revision 2 |
 | Related Decisions | DR-0005; DR-0008; DR-0010; DR-0011 |
@@ -19,79 +19,49 @@
 
 ## Revision history
 
-| Revision | Date | Author | Change |
+| Revision | Date | Status | Change |
 |---|---|---|---|
-| 1 | 2026-09-10 | ChatGPT — COO | Initial implementation-grade Draft for Issue #121; hardened after exact-HEAD independent Qodo review to bind authorization, producer identity, registry provenance, budget units, review evidence, event namespace and crash-recovery receipts. CEO approved Revision 1 on 2026-09-11 after clean exact-HEAD Qodo review. |
+| 1 | 2026-09-10/11 | Approved | Initial implementation-grade contract; CEO-approved after independent review. |
+| 2 | 2026-09-11 | **In Review** | Non-scope-expanding correctness hardening after post-approval exact-HEAD Qodo review: exact attempt correlation, canonical descriptor/event hashing, full S-0010 grant provenance, canonical S-0009 result enums, deterministic routing tie-breaks, and monotonic terminal-event semantics. Requires fresh independent review and CEO approval before implementation EA. |
 
-## 1. Цель
+Revision 2 does not broaden product scope or grant implementation/runtime authority. Where Revision 2 clarifies a Revision 1 ambiguity, the stricter fail-closed rule in Revision 2 governs.
 
-Сделать следующий One-Window слой Genesis provider-neutral: CEO задаёт цель один раз, а Genesis сам определяет требуемую роль, видит доступные adapters/providers, выбирает лучший допустимый путь, запускает исполнителя, узнаёт о завершении/лимите, проверяет результат и продолжает до следующего consequential CEO gate.
+## 1. Purpose and product result
 
-Целевой поток:
+Genesis becomes a provider-neutral orchestration layer: CEO states a goal once; Genesis derives bounded requirements, observes admissible providers, chooses deterministically, dispatches only under applicable authority, learns completion through normalized events, validates exact task/run/attempt/PR/HEAD evidence, and continues only already-authorized non-consequential work until the next CEO gate.
+
+Target flow:
 
 ```text
 CEO goal
 → trusted task/authority envelope
-→ provider registry
-→ resource snapshot
+→ trusted provider registry + resource snapshots
 → hard governance filter
-→ adaptive selection
-→ durable attempt reservation
-→ invoke adapter
-→ normalized event
-→ exact task/run/PR/HEAD validation
+→ deterministic ranking
+→ durable attempt + authority reservation
+→ provider adapter dispatch
+→ normalized/correlated event
 → result/review validation
-→ trusted evidence
-→ next already-authorized step or CEO gate
+→ trusted GitHub evidence
+→ next already-authorized step OR CEO gate
 ```
 
-S-0011 не делает конкретный бренд архитектурной зависимостью. `Astra`, `Codex`, `Copilot`, `Qodo`, `Grok/xAI`, `Jules` и будущие providers — сменные adapters. `Julius` считается устаревшим/ошибочным алиасом `Jules`, а не отдельным provider.
+`Astra`, `Codex`, `Copilot`, `Qodo`, `Grok/xAI`, `Jules` and future providers are adapters, not core architecture dependencies. `Julius` is only a legacy alias of `Jules`, never a distinct security identity.
 
-## 2. Продуктовый результат
+## 2. Canonical boundaries
 
-После реализации v0.1 CEO не должен вручную:
+1. GitHub `kubzik96/genesis-ai` remains the durable project Source of Truth.
+2. Runtime cache/Durable Object/queue may store delivery, dedupe, attempt, dispatch, resource and reconciliation state only; it is not a competing project/governance SoT.
+3. Provider registration, selection, completion or success never creates authority.
+4. Ready, merge, remediation, deploy, LIVE, secret/PAT mutation, Dify and DR-0008 lift remain separate gates unless a later approved autonomy policy explicitly says otherwise.
+5. Paid or more-privileged fallback requires applicable authority and budget policy; no automatic escalation.
+6. Unknown quota/reset/cost/health/identity/authority data is represented as `UNKNOWN`, never guessed.
+7. DR-0008 remains authoritative; S-0011 alone authorizes no production Broker/xAI/Dify/Cloudflare action.
+8. S-0009/S-0010 remain authoritative for independent reviewer identity, canonical CEO grant, one-consumption lifecycle, exact-HEAD validation, closed review schema and trusted GitHub review evidence.
 
-- проверять, закончил ли агент задачу/review;
-- писать «проверь» после каждого внешнего шага;
-- помнить, какой provider сейчас исчерпал лимит;
-- вручную выбирать fallback, когда допустимый альтернативный provider очевиден;
-- переносить одинаковый task/run/PR/HEAD context между adapters;
-- разбираться, почему Genesis выбрал конкретного исполнителя.
+## 3. Trusted Provider Registry
 
-Genesis должен возвращать короткий результат вида:
-
-```text
-ROLE: independent_reviewer
-SELECTED: provider-x / adapter-y
-WHY: capability match + invokable + within budget + independent
-AUTHORITY: verified / reserved / not-required-for-read-only
-RESULT: completed / blocked
-NEXT: autonomous_step | CEO_GATE_REQUIRED
-EVIDENCE: GitHub exact task/run/PR/HEAD + routing/authority reference
-```
-
-## 3. Канонические границы
-
-1. GitHub остаётся единственным durable Source of Record для project state, решений, task/evidence и consequential gate evidence.
-2. Runtime cache/DO/queue может хранить только оперативное состояние доставки, дедупликации, attempt/dispatch и resource snapshot. Это не второй project SoT.
-3. Подключение provider не создаёт ему authority.
-4. Событие `COMPLETED` не создаёт Ready/Merge/Deploy/LIVE authority.
-5. Платный fallback не допускается без применимой budget/authorization policy.
-6. Provider с более широкими permissions не выбирается автоматически, если task authority их не покрывает.
-7. Нельзя выдумывать quota, reset, cost, health или availability. Недоказуемое значение = `UNKNOWN`.
-8. Security-sensitive registry claims не могут исходить только от самого provider/adapter; они должны быть привязаны к trusted versioned registry authority в GitHub.
-9. Reviewer routing не заменяет S-0009/S-0010: canonical CEO grant, one-consumption lifecycle, exact HEAD и trusted review evidence остаются обязательными.
-10. DR-0008 сохраняет силу. S-0011 не снимает quarantine и не разрешает production Broker/xAI/Dify/Cloudflare действия.
-
-## 4. Минимальная архитектура v0.1
-
-S-0011 требует четыре небольших слоя. Они должны быть независимыми от конкретных брендов.
-
-### 4.1 Provider Registry
-
-Реестр descriptors/adapters. Каждая запись имеет стабильную security identity и может иметь человекочитаемые aliases.
-
-Минимальный canonical descriptor:
+### 3.1 ProviderDescriptor
 
 ```json
 {
@@ -107,28 +77,39 @@ S-0011 требует четыре небольших слоя. Они долж�
   "cost_class": "free|metered|unknown",
   "registry_revision": "string",
   "registry_authority_ref": "github:commit-or-blob-ref",
-  "descriptor_hash": "sha256"
+  "descriptor_hash": "64-char lowercase sha256"
 }
 ```
 
-Требования:
+Rules:
 
-- `provider_id + adapter_id` образуют стабильную identity;
-- aliases не меняют security identity;
-- `Julius` может быть alias для `Jules`, но не отдельной identity;
-- новый provider добавляется descriptor + adapter, без изменения core routing logic;
-- duplicate identity, неизвестные capability/role enums и malformed descriptors fail closed;
-- security-sensitive поля `roles`, `independence_class`, `permissions_class`, `cost_class` и допустимые invocation modes берутся из canonical registry material, а не доверяются runtime self-description;
-- canonical registry material должен быть versioned в GitHub и проходить обычный project governance для изменения security-sensitive claims;
-- `descriptor_hash` детерминированно связывает нормализованный descriptor с canonical registry revision;
-- runtime adapter `describe()` может сообщать operational details, но обязан совпасть с canonical `provider_id`, `adapter_id`, model/invocation identity и не может повысить себе role/independence/permissions;
-- отсутствующая, непроверяемая, stale или конфликтующая registry provenance = provider не допускается для security-sensitive/consequential routing.
+- `provider_id + adapter_id` is the stable security identity; aliases never change it.
+- Security-sensitive `roles`, `independence_class`, `permissions_class`, `cost_class` and invocation modes come from versioned GitHub registry material, not provider self-description.
+- Runtime `describe()` may report operational facts but cannot elevate role, independence or permissions.
+- Missing, stale, malformed or conflicting registry provenance blocks security-sensitive/consequential selection.
+- New provider = canonical descriptor + adapter; core routing algorithm must not require provider-name branching.
 
-### 4.2 Resource Snapshot
+### 3.2 Canonical descriptor hash
 
-Resource Snapshot — проверяемое состояние конкретного provider/adapter в конкретный момент.
+`descriptor_hash` is **excluded** from its own hash preimage.
 
-Обязательные поля:
+Canonical preimage is the descriptor with exactly these keys in lexicographic key order:
+
+`adapter_id, aliases, capabilities, cost_class, independence_class, invocation_modes, model_id, permissions_class, provider_id, registry_authority_ref, registry_revision, roles`.
+
+Canonicalization:
+
+- JSON strings use normal JSON UTF-8 escaping; `null` is JSON `null`.
+- Arrays `aliases`, `capabilities`, `invocation_modes`, `roles` are treated as sets: reject duplicates, sort unique UTF-8 strings lexicographically before serialization.
+- No whitespace is emitted outside JSON strings.
+- Encode canonical JSON as UTF-8; hash SHA-256; encode as 64 lowercase hexadecimal characters.
+- Unknown/additional keys in canonical registry descriptors fail closed until a later revision defines them.
+
+Implementation tests MUST contain at least one fixed canonical JSON → expected SHA-256 vector and prove object-key/allowed-set input permutations hash identically.
+
+## 4. Resource awareness
+
+### 4.1 ResourceSnapshot
 
 ```json
 {
@@ -148,30 +129,26 @@ Resource Snapshot — проверяемое состояние конкретн
   "cost_basis": "per_invocation_estimate|provider_quote|null",
   "latency_ms": "number|null",
   "credential_ready": "YES|NO|UNKNOWN",
-  "evidence": ["provider/GitHub/runtime reference"]
+  "evidence": ["non-secret provider/GitHub/runtime reference"]
 }
 ```
 
-Правила:
+Rules:
 
-- numeric остатки записываются только при доказуемом источнике;
-- `null` + соответствующий `UNKNOWN` лучше предположения;
-- snapshot имеет freshness TTL, задаваемый policy, а не provider adapter;
-- stale snapshot не превращается в AVAILABLE автоматически;
-- secrets/credential values запрещены; допустимо только `credential_ready`;
-- runtime error при чтении ресурса = `UNKNOWN` или `UNAVAILABLE` только если это доказуемо по контракту adapter;
-- metered provider без доказуемой совместимой пары `estimated_cost_minor_units + currency` не допускается к paid invocation;
-- currency conversion v0.1 запрещён: бюджет и estimate должны иметь одну и ту же currency; будущая конвертация требует отдельного versioned policy/source-of-rate contract.
+- Numeric values are recorded only from evidence defined by the adapter contract.
+- Snapshot freshness TTL is routing policy, not provider-controlled.
+- Stale snapshot never becomes AVAILABLE implicitly.
+- Secret values are forbidden; only readiness state may appear.
+- Metered provider is inadmissible unless compatible `estimated_cost_minor_units + currency` are proven and within cap.
+- v0.1 performs no currency conversion; task budget and estimate currency must match exactly.
 
-### 4.3 Normalized Agent Event
+## 5. Normalized Agent Events
 
-Core должен получать события в едином формате независимо от GitHub webhook, provider webhook, callback, job status API или bounded polling.
-
-Минимальный event contract:
+### 5.1 Event schema
 
 ```json
 {
-  "source_namespace": "stable-trusted-source-namespace",
+  "source_namespace": "trusted-source-namespace",
   "event_id": "stable-source-local-event-id",
   "event_type": "AGENT_SELECTED|AGENT_STARTED|AGENT_WAITING|AGENT_COMPLETED|AGENT_FAILED|REVIEW_STARTED|REVIEW_COMPLETED|LIMIT_EXHAUSTED|RATE_LIMITED|RESET_AT|PROVIDER_UNAVAILABLE",
   "provider_id": "string",
@@ -179,6 +156,9 @@ Core должен получать события в едином формате
   "task_id": "string",
   "run_id": "string",
   "attempt_id": "string|null",
+  "external_job_id": "string|null",
+  "reconciliation_key": "string|null",
+  "provider_sequence": "non-negative-integer|null",
   "repository": "owner/repo|null",
   "pr_number": "number|null",
   "head_sha": "40-char sha|null",
@@ -188,29 +168,52 @@ Core должен получать события в едином формате
 }
 ```
 
+`source_namespace` comes from trusted adapter configuration, never caller payload.
+
+Terminal/dispatch-derived events `AGENT_COMPLETED`, `AGENT_FAILED` and `REVIEW_COMPLETED` MUST have non-null `attempt_id`. If the provider supplies `external_job_id` or `reconciliation_key`, the terminal event must carry the corresponding value and it MUST equal the durable InvocationReceipt before state mutation or continuation. A terminal event without required correlation is BLOCKED. Null `attempt_id` is allowed only for observations that are provably not tied to a dispatched attempt, such as provider-wide quota/rate-limit state.
+
+### 5.2 Canonical event identity and payload hash
+
 Canonical dedupe key:
 
 ```text
-source_namespace + provider_id + adapter_id + event_id
+source_namespace + "\n" + provider_id + "\n" + adapter_id + "\n" + event_id
 ```
 
-Обязательные свойства:
+The canonical payload hash excludes no semantic event field except no separately stored hash field exists in the schema. Preimage contains exactly all event schema fields above, in lexicographic key order. Rules:
 
-- `source_namespace` определяется trusted adapter configuration, а не произвольным payload field;
-- event delivery idempotent по canonical dedupe key + canonical payload hash;
-- duplicate same dedupe key + same payload hash = replay/no-op;
-- same dedupe key + different payload hash = conflict/fail closed;
-- одинаковые source-local `event_id` разных providers/adapters не конфликтуют;
-- событие, привязанное к PR, обязано иметь exact 40-char `head_sha` для действий, зависящих от HEAD;
-- stale HEAD event нельзя использовать для продолжения consequential workflow;
-- event относится только к точному `task_id + run_id` и, если есть, `attempt_id`;
-- событие не создаёт authority само по себе;
-- polling разрешён только bounded fallback с фиксированным max attempts/window;
-- `REVIEW_COMPLETED` означает только transport/job completion. Само событие не является gate-safe review evidence.
+- JSON object keys lexicographically ordered.
+- Strings and `null` encoded as canonical compact JSON values.
+- Numeric `provider_sequence` is an integer JSON number only; no floating/exponential equivalent accepted.
+- No whitespace outside strings.
+- UTF-8 bytes → SHA-256 → lowercase hex.
+- Schema rejects additional keys before hashing.
 
-#### 4.3.1 Normalized Review Result
+Same canonical dedupe key + same payload hash = replay/no-op. Same key + different hash = conflict/fail closed. Different providers/adapters with equal local `event_id` do not collide. Implementation tests MUST use shared fixed vectors proving key-order-independent normalization of semantically identical events.
 
-Для использования reviewer output в любом consequential decision после `REVIEW_COMPLETED` требуется отдельный validated result contract, совместимый с S-0009/S-0010:
+### 5.3 Per-attempt monotonic state
+
+Event dedupe alone is insufficient. Core maintains a durable operational state machine per `attempt_id`:
+
+```text
+PREPARED
+  → DISPATCH_CONFIRMED
+  → WAITING
+  → COMPLETED | FAILED | UNKNOWN
+```
+
+`DISPATCH_CONFIRMED → COMPLETED|FAILED|UNKNOWN` is allowed directly. `WAITING` may repeat as observation without regressing state. `COMPLETED`, `FAILED`, and `UNKNOWN` are terminal/non-regressible for autonomous continuation. A later distinct event cannot reopen or switch a terminal attempt.
+
+Ordering rules:
+
+- If adapter provides a trusted monotonic `provider_sequence`, a lower sequence than the last accepted attempt event is stale/no-op; equal sequence with different canonical payload is conflict/fail closed.
+- If no trusted sequence exists, a distinct terminal event MUST be reconciled against current provider/external-job status or other provider-supported authoritative read-back before autonomous continuation.
+- `occurred_at` alone is never treated as a trusted total ordering signal.
+- Any older, conflicting or post-terminal distinct event is no-op or BLOCKED according to whether conflict can affect correctness; it never mutates terminal state or creates a second continuation.
+
+## 6. Independent review result compatibility
+
+`REVIEW_COMPLETED` is transport completion only. Consequential use requires a validated result compatible with the canonical S-0009/S-0010 contract.
 
 ```json
 {
@@ -222,34 +225,34 @@ source_namespace + provider_id + adapter_id + event_id
     "independence_class": "string",
     "trusted_producer_ref": "github/evidence reference"
   },
-  "verdict": "APPROVE|APPROVE_WITH_FINDINGS|CHANGES_REQUIRED|BLOCKED",
+  "verdict": "APPROVE|APPROVE_WITH_FINDINGS|REQUEST_CHANGES|BLOCKED",
   "expected_head_sha": "40-char sha",
   "reviewed_head_sha": "40-char sha",
   "acceptance_head_sha": "40-char sha",
   "head_confirmed": "YES|NO",
-  "scope": "CLEAN|DIRTY|UNKNOWN",
+  "repository_state": "CLEAN|NOT_CLEAN",
   "findings": [],
   "ready_gate_safe": "YES|NO",
   "grant_id": "string|null",
-  "manifest_hash": "sha256|null",
+  "manifest_hash": "64-char lowercase sha256|null",
+  "issuance_digest": "64-char lowercase sha256|null",
   "durable_evidence_ref": "github:comment-or-review-id"
 }
 ```
 
-Правила:
+Rules:
 
-- для S-0010 reviewer path `grant_id` + `manifest_hash` обязательны и должны быть canonical/consumed exactly по S-0010;
-- expected, reviewed и acceptance HEAD должны совпасть для positive gate evidence;
-- closed verdict/finding cross-field invariants остаются из S-0009/S-0010;
-- `durable_evidence_ref` должен быть read-back verified в GitHub до использования результата как gate evidence;
-- reviewer producer-independence должна быть проверена против trusted `artifact_producer`, а не caller text;
-- generic `REVIEW_COMPLETED` без этого validated result может только перевести transport observation в «готово к validation», но не продвинуть consequential workflow.
+- Canonical verdict and repository-state vocabularies are exactly S-0009 values; S-0011 introduces no lossy synonyms such as `CHANGES_REQUIRED`, `DIRTY` or `UNKNOWN` at this boundary.
+- Existing S-0009 closed-schema/cross-field invariants remain authoritative.
+- Expected, reviewed and acceptance HEAD must match for positive gate evidence.
+- S-0010 path requires canonical `grant_id + manifest_hash + issuance_digest` and one-consumption lifecycle.
+- `durable_evidence_ref` must be trusted-write + GitHub read-back verified before gate use.
+- Producer independence is checked against trusted artifact-producer identity, never caller prose.
+- Valid result is evidence only; it grants no next consequential action.
 
-### 4.4 Adaptive Router
+## 7. TaskRequirements and deterministic Adaptive Router
 
-Router получает `TaskRequirements`, trusted Provider Registry и Resource Snapshots и возвращает deterministic selection decision.
-
-Минимальный `TaskRequirements`:
+### 7.1 TaskRequirements
 
 ```json
 {
@@ -280,103 +283,63 @@ Router получает `TaskRequirements`, trusted Provider Registry и Resourc
     "authorized_actions": ["string"],
     "verified_state": "VERIFIED|UNVERIFIED|NOT_REQUIRED"
   },
-  "latency_preference": "low|normal|irrelevant",
   "criticality": "low|normal|high|consequential",
   "allowed_providers": ["string"]
 }
 ```
 
-`TaskRequirements` не является authority само по себе. Security-sensitive поля должны быть построены trusted Genesis boundary из GitHub/canonical governance evidence. Caller/provider не может сам объявить себе `VERIFIED`, independence или permissions.
+TaskRequirements is not authority itself. Trusted Genesis derives security-sensitive fields from canonical GitHub/governance evidence. For independent review, trusted producer identity is mandatory. For S-0010 review, complete canonical grant tuple and exact authorization conditions are mandatory; provider selection never substitutes grant admission/reservation.
 
-Для independent review `artifact_producer.trusted_producer_ref` обязателен. Если producer identity/independence cannot be verified, independent reviewer routing = BLOCKED.
+### 7.2 Hard filters
 
-Для S-0010 reviewer operation `authority_type=review_grant`, canonical `grant_id`, `manifest_hash`, `issuance_digest` и exact authorization conditions обязательны. Router только выбирает admissible provider; **до dispatch** trusted reviewer boundary обязан выполнить S-0010 canonical verification и durable one-consumption reservation. Selection never substitutes grant admission.
+Reject a candidate when any applies:
 
-Selection pipeline обязан быть разделён на hard filters и soft ranking.
+1. required capability/role absent;
+2. trusted descriptor provenance invalid/stale for security-sensitive use;
+3. independence requirement violated or producer identity cannot be proven;
+4. provider not allowed by policy;
+5. availability `UNAVAILABLE`, invokable `NO`, quota exhausted, active rate limit, credential readiness `NO`;
+6. permissions exceed task authority;
+7. required authority missing/unverified or requested action not authorized;
+8. metered provider while paid forbidden;
+9. metered cost/currency unknown, malformed, incompatible or above cap;
+10. fallback would change a governance-required identity/independence class;
+11. any unknown security-sensitive state that could alter authority, money, independence or consequential correctness.
 
-#### Hard filters
+### 7.3 Deterministic ranking
 
-Кандидат исключается, если:
+Ranking policy is versioned canonical GitHub material identified by `policy_ref + policy_hash`. The policy MUST explicitly name every ranking dimension, trusted input source, direction, unknown handling and stable weight/priority. A dimension not present in the canonical descriptor/snapshot/policy evidence is not silently inferred.
 
-1. нет required capability/role;
-2. trusted descriptor provenance отсутствует/невалидна для security-sensitive role;
-3. нарушена independence requirement;
-4. independent reviewer совпадает с trusted artifact producer или не доказано требуемое separation;
-5. provider/adapter не разрешён policy;
-6. `availability=UNAVAILABLE`;
-7. `invokable=NO`;
-8. `quota_state=EXHAUSTED`;
-9. `rate_limit_state=RATE_LIMITED` и reset/cooldown ещё не прошёл;
-10. required credential readiness = `NO`;
-11. permissions шире task authority;
-12. required authority отсутствует/unverified или не разрешает requested action;
-13. provider metered, но `budget.paid_allowed=false`;
-14. provider metered, но cost estimate/currency unknown, malformed или несопоставим с task budget;
-15. provider metered и proven cost выше `max_cost_minor_units`;
-16. applicable governance требует конкретную identity/class и fallback меняет смысл gate.
+v0.1 permitted normalized ranking inputs are only those with defined evidence sources, e.g.:
 
-`UNKNOWN` не равен автоматически `NO`, но unknown authority, independence, descriptor provenance или credential readiness всегда блокирует security-sensitive/consequential invocation. Unknown cost/currency всегда блокирует metered invocation независимо от criticality.
+- `resource_headroom`: from proven quota state/remaining where comparable; otherwise policy-defined UNKNOWN rank;
+- `cost`: from proven compatible minor-unit estimate; free has policy-defined value;
+- `latency`: from current non-stale `latency_ms` evidence or policy-defined UNKNOWN rank;
+- `availability/stability`: from ResourceSnapshot states, not invented historical quality;
+- any `quality` or `confidence` dimension is forbidden unless a later canonical policy defines its numeric source/provenance and normalization.
 
-#### Soft ranking
+After policy score/priority comparison, total-order tie-break is always ascending canonical tuple `(provider_id, adapter_id, model_id-or-empty)` using UTF-8 lexicographic comparison. Registry iteration/input order MUST NOT affect selection.
 
-После hard filters допустимые кандидаты сортируются data-driven policy, как минимум по:
+Router returns `SELECTED` or explicit `BLOCKED`, recording policy ref/hash, provider/adapter, reasons, rejected candidates and complete applicable authority identity including `grant_id`, `manifest_hash`, `issuance_digest` when S-0010 applies.
 
-`quality/confidence → resource headroom → cost → latency → health/stability`.
+## 8. Adapter, InvocationEnvelope and InvocationReceipt
 
-Конкретные веса не должны быть зашиты в provider-specific `if/else`. Policy version, canonical policy reference/hash и причины выбора сохраняются в decision evidence.
-
-Router обязан вернуть либо:
-
-```json
-{
-  "decision": "SELECTED",
-  "provider_id": "...",
-  "adapter_id": "...",
-  "policy_version": "...",
-  "policy_ref": "github:...",
-  "authority_ref": "github:...|null",
-  "grant_id": "string|null",
-  "manifest_hash": "sha256|null",
-  "artifact_producer_ref": "string|null",
-  "reasons": ["..."],
-  "rejected": [{"provider_id":"...","adapter_id":"...","reason":"..."}]
-}
-```
-
-либо:
-
-```json
-{
-  "decision": "BLOCKED",
-  "reason": "NO_ADMISSIBLE_PROVIDER|RESOURCE_STATE_UNKNOWN|BUDGET_AUTH_REQUIRED|GOVERNANCE_AUTH_REQUIRED|PRODUCER_IDENTITY_UNVERIFIED|REGISTRY_PROVENANCE_INVALID",
-  "rejected": []
-}
-```
-
-Routing decision is evidence of selection only. It is never evidence that model/executor dispatch authority has been consumed or that a later consequential gate is granted.
-
-## 5. Adapter Contract
-
-Каждый adapter должен реализовывать логически одинаковые capabilities; конкретный transport может различаться.
-
-Обязательные операции интерфейса:
+Required logical interface:
 
 ```text
 describe()           -> RuntimeDescriptorObservation
 observe()            -> ResourceSnapshot
 canInvoke(envelope)  -> admissibility detail
 invoke(envelope)     -> InvocationReceipt | UNKNOWN
-poll?(receipt)       -> normalized status/event
+poll?(receipt)       -> NormalizedAgentEvent
 reconcile?(attempt)  -> read-only reconciliation result
 cancel?(receipt)     -> normalized result
 normalizeEvent(raw)  -> NormalizedAgentEvent
 ```
 
-`invoke` не должен сам выбирать budget/governance policy. Он получает уже допустимый bounded `InvocationEnvelope`, сформированный trusted Genesis boundary после routing и authority admission.
+Adapter never chooses governance/budget policy and never expands authority.
 
-### 5.1 InvocationEnvelope
-
-Минимально:
+### 8.1 InvocationEnvelope
 
 ```json
 {
@@ -390,6 +353,7 @@ normalizeEvent(raw)  -> NormalizedAgentEvent
   "authority_ref": "string|null",
   "grant_id": "string|null",
   "manifest_hash": "sha256|null",
+  "issuance_digest": "sha256|null",
   "artifact_producer_ref": "string|null",
   "repository": "owner/repo|null",
   "pr_number": "number|null",
@@ -398,11 +362,7 @@ normalizeEvent(raw)  -> NormalizedAgentEvent
 }
 ```
 
-Для S-0010 reviewer invocation envelope должен содержать exact canonical grant binding; trusted reviewer boundary резервирует grant до model dispatch в соответствии с S-0010. Generic adapter не может пропустить этот этап.
-
-### 5.2 InvocationReceipt
-
-Receipt — non-secret operational recovery identity, не project SoT и не новая authority.
+### 8.2 InvocationReceipt
 
 ```json
 {
@@ -415,6 +375,7 @@ Receipt — non-secret operational recovery identity, не project SoT и не �
   "authority_ref": "string|null",
   "grant_id": "string|null",
   "manifest_hash": "sha256|null",
+  "issuance_digest": "sha256|null",
   "dispatch_state": "PREPARED|DISPATCH_CONFIRMED|UNKNOWN|COMPLETED|FAILED_NO_DISPATCH",
   "external_job_id": "string|null",
   "reconciliation_key": "non-secret-string|null",
@@ -424,312 +385,183 @@ Receipt — non-secret operational recovery identity, не project SoT и не �
 }
 ```
 
-Write ordering / crash semantics:
+For S-0010-bound work, `grant_id + manifest_hash + issuance_digest` MUST match the verified TaskRequirements tuple through routing decision, envelope, durable receipt, dispatch admission, reconciliation and review evidence. Any mismatch blocks dispatch/recovery and cannot mint/release authority.
 
-1. Before any external invoke, operational durable store atomically writes `PREPARED` with exact task/run/attempt/provider/adapter/request/authority identities.
-2. If applicable authority/grant requires consumption reservation, that reservation must be durably admitted before external dispatch according to its canonical contract.
-3. Adapter dispatch may occur only for the exact persisted `PREPARED` attempt.
-4. On provider acknowledgement with stable external id/correlation, durable state becomes `DISPATCH_CONFIRMED` with `external_job_id`/`reconciliation_key` before returning success upstream.
-5. If a deterministic failure is proven before dispatch, state becomes `FAILED_NO_DISPATCH`; bounded retry/fallback may be evaluated by policy.
-6. If a crash/timeout/response loss leaves uncertainty whether dispatch occurred, state becomes or remains `UNKNOWN`; automatic second invoke for a paid/consequential/non-idempotent action is forbidden.
-7. `reconcile(attempt)` is read-only. It must use provider-supported stable job/correlation/idempotency identity. If provider cannot prove dispatch/non-dispatch, attempt remains `UNKNOWN`.
-8. Only proven `FAILED_NO_DISPATCH` can be treated as no-call/no-side-effect for retry policy. `UNKNOWN` is never silently cleared by TTL.
+Write ordering:
 
-Adapter обязан:
+1. Persist exact `PREPARED` attempt with task/run/provider/adapter/request/authority tuple before external dispatch.
+2. Reserve/consume applicable canonical grant according to its authoritative lifecycle before model dispatch.
+3. Dispatch only exact persisted PREPARED attempt.
+4. Persist provider acknowledgement as `DISPATCH_CONFIRMED` with stable external/reconciliation identity before reporting success upstream.
+5. Proven deterministic pre-dispatch failure → `FAILED_NO_DISPATCH`.
+6. Uncertain dispatch due crash/timeout/response loss → `UNKNOWN`; no automatic second paid/consequential/non-idempotent invoke.
+7. Reconciliation is read-only; only provider-supported evidence may resolve state.
+8. UNKNOWN is never TTL-cleared into reusable authority.
 
-- не расширять scope/authority;
-- не раскрывать secrets в snapshots/events/results/receipts;
-- возвращать stable external job/request id, если provider его выдаёт;
-- нормализовать provider rate-limit/quota signals без выдумывания отсутствующих данных;
-- документировать cancellation/recovery semantics;
-- сообщать, поддерживает ли event-first completion; если нет — polling fallback capability;
-- поддерживать read-only reconciliation, если provider предоставляет соответствующий API/identity;
-- не доверять provider self-claims о governance role/independence/permissions вместо canonical registry.
+## 9. Event-first continuation and fallback
 
-## 6. Event-first continuation
-
-Для GitHub-native агентов предпочтительный v0.1 transport:
+Preferred path:
 
 ```text
-GitHub event
-→ trusted source verification
+trusted source verification
 → normalizeEvent
-→ composite-key deduplicate
-→ exact task/run/attempt/PR/HEAD check
-→ persist/reconcile durable fact
-→ load current GitHub task state
-→ validate result/review evidence
-→ route next already-authorized step
+→ canonical hash + dedupe
+→ exact receipt correlation
+→ monotonic attempt-state validation
+→ current GitHub task/PR/HEAD verification
+→ result-specific validation
+→ trusted evidence read-back
+→ next already-authorized step
 ```
 
-Минимально поддерживаемые GitHub classes для adapters, если применимо:
+Before autonomous continuation require all applicable:
 
-- `pull_request` / PR HEAD movement;
-- `pull_request_review`;
-- `issue_comment`;
-- checks/status completion;
-- provider-specific GitHub comment/check convention.
-
-S-0011 не требует один универсальный webhook endpoint для всех систем. Требуется единый normalized contract после provider-specific source verification.
-
-### 6.1 Event continuation gate
-
-Перед любым autonomous continuation core должен проверить:
-
-- canonical event dedupe key + payload hash;
 - trusted source namespace;
-- exact task/run/attempt association;
-- current GitHub task state;
-- current PR HEAD для HEAD-bound результата;
-- applicable authority всё ещё покрывает следующий шаг;
-- result-specific validator completed;
-- для review — Normalized Review Result + trusted GitHub evidence read-back по Section 4.3.1.
+- exact task/run/attempt;
+- terminal event external identity equals durable receipt where provider supplies it;
+- monotonic/non-regressing attempt state;
+- current GitHub task state and exact HEAD for HEAD-bound result;
+- next step still covered by authority;
+- review result satisfies Section 6 and S-0009/S-0010.
 
-Если любой security/consequential binding unknown/stale/conflicting — STOP/BLOCKED, не fallback around governance.
+Fallback is allowed only to candidates passing the **same** TaskRequirements/governance envelope. It may not auto-charge, increase permissions, change required independence semantics, reuse consumed/closed/unknown grants, or route around unknown governance state. Every fallback creates a new routing decision preserving prior failure/resource evidence.
 
-## 7. Adaptive fallback
+## 10. Recovery invariants
 
-Fallback разрешён только между кандидатами, которые проходят тот же TaskRequirements/governance envelope.
+1. No successful invocation without durable `DISPATCH_CONFIRMED` or equivalent provider-proven external identity.
+2. PREPARED after crash requires reconciliation unless non-dispatch is provable.
+3. UNKNOWN forbids automatic repeat where duplicate side effects/model spend are possible.
+4. Duplicate events replay safely; distinct reordered/post-terminal events cannot regress terminal state.
+5. Recovery restores project truth from GitHub and operational attempt/dedupe state only from allowed runtime store.
+6. Stale task/run/attempt/PR/HEAD evidence never advances workflow.
+7. Retry/fallback is bounded/versioned, never infinite.
+8. S-0010 lifecycle remains stricter where applicable and is never weakened by generic orchestration.
 
-Примеры:
+## 11. Implementation slices
 
-- бесплатный coding executor quota exhausted → другой разрешённый бесплатный coding executor;
-- Qodo unavailable → другой разрешённый independent reviewer, если independence contract остаётся эквивалентным;
-- Grok требуется как non-OpenAI independent reviewer → OpenAI provider не является эквивалентным fallback;
-- metered provider при `paid_allowed=false` → BLOCKED, не auto-charge;
-- metered provider с unknown/incomparable cost → BLOCKED даже если task urgent;
-- provider с privileged write при read-only task → не выбирается без отдельной authority;
-- новый provider с unapproved registry role/independence claims → не может стать fallback.
+After Revision 2 approval and separate EA:
 
-Каждый fallback создаёт новый routing decision с причиной; предыдущая failure/resource evidence сохраняется. Fallback не переиспользует consumed/closed/unknown authorization grant, если canonical contract требует новую issuance.
+### Slice A — trusted pure contracts/router
 
-## 8. Recovery и crash semantics
-
-1. Core не должен считать `invoke()` успешным без durable `DISPATCH_CONFIRMED` receipt или эквивалентной доказуемой external identity.
-2. `PREPARED` после crash требует reconciliation до dispatch, если нельзя доказать, что external call ещё не произошёл.
-3. Если неизвестно, был ли provider вызван, состояние = `UNKNOWN`; повторный invoke запрещён до read-only reconciliation, если повтор может создать consequential/paid side effect.
-4. Duplicate completion events безопасно replay/no-op по composite event key + payload hash.
-5. После crash Genesis восстанавливает project state из GitHub и runtime attempt/dedupe state из допустимого operational store.
-6. Runtime store не может переписать GitHub project truth.
-7. Stale task/run/attempt/PR/HEAD event после recovery отбрасывается.
-8. Не вводить бесконечные retries; retry/fallback policy bounded и versioned.
-9. Provider без надёжной read-only reconciliation способности для non-idempotent consequential call может быть policy-rejected до dispatch, если риск unrecoverable UNKNOWN неприемлем.
-10. S-0010 reviewer grant lifecycle остаётся более строгим там, где он применим: RESERVED/CONSUMED/CLOSED_NO_CALL/UNKNOWN semantics не ослабляются generic orchestration.
-
-## 9. Security / governance invariants
-
-- no secrets in registry/resource/event/routing/receipt evidence;
-- no automatic privilege escalation;
-- no automatic paid escalation without policy;
-- no provider gains authority by registration;
-- aliases never change security/independence identity;
-- security-sensitive registry claims require canonical trusted provenance;
-- exact PR HEAD required where result validity is HEAD-bound;
-- trusted artifact producer identity required for independent review;
-- same artifact producer cannot satisfy an independence rule that requires a distinct independence class;
-- reviewer invocation stays bound to S-0009/S-0010 authorization/evidence rules when those specs apply;
-- external provider claims are untrusted until adapter verification against canonical registry/policy;
-- unknown governance/identity/cost state fails closed where it can alter authority, money, independence or consequential correctness;
-- Ready/Merge/Deploy/LIVE remain separate gates unless a later explicit bounded autonomy policy changes them;
-- DR-0008 restrictions remain unchanged.
-
-## 10. v0.1 implementation slices
-
-После Approval и отдельного Execution Authorization реализацию следует делать небольшими PR/slices, а не одним giant orchestrator rewrite.
-
-### Slice A — trusted contracts + pure router
-
-- canonical provider descriptor validation + descriptor hash/provenance;
-- resource snapshot normalization;
-- TaskRequirements/authority/producer binding validation;
-- budget minor-unit/currency validation;
-- hard-filter + deterministic ranking;
+- canonical registry descriptor/hash validation;
+- resource snapshot + budget normalization;
+- TaskRequirements/authority/producer validation;
+- hard filters + deterministic ranking + total tie-break;
 - routing decision evidence;
-- no network, no runtime routing mutation.
+- no network/runtime mutation.
 
-### Slice B — event normalization + dedupe + attempt receipts
+### Slice B — event/recovery contracts
 
-- normalized event schema + trusted source namespace;
-- composite event key + canonical payload hash;
-- exact task/run/attempt/PR/HEAD freshness checks;
-- duplicate/no-op and conflict behavior;
-- InvocationEnvelope/Receipt state machine;
-- bounded polling representation;
-- read-only reconciliation interface.
+- normalized event + trusted namespace;
+- canonical event hash/dedupe;
+- exact receipt correlation;
+- monotonic attempt state;
+- InvocationEnvelope/Receipt + full S-0010 grant tuple;
+- bounded polling/read-only reconciliation.
 
 ### Slice C — first real adapters
 
-Минимум два разнотипных adapters, чтобы доказать provider neutrality. Предпочтительно один GitHub-native executor/reviewer + один API/plugin/provider adapter. Конкретные бренды выбираются в отдельном EA по фактической доступности на момент реализации.
+At least two distinct adapters must pass the same contract tests. Independent-review adapter must reuse S-0009/S-0010, not replace them.
 
-Для independent reviewer adapter нельзя обходить S-0009/S-0010: canonical authorization/grant, producer independence, exact HEAD, result validation и trusted evidence обязательны.
+### Slice D — controlled One-Window trial
 
-### Slice D — One-Window continuation trial
+One bounded flow: CEO goal → trusted task/authority → auto selection → durable one-attempt dispatch → completion → validation → one autonomous already-authorized non-consequential next step → CEO summary/gate. No auto-merge/deploy/LIVE.
 
-Один controlled trial:
+## 12. Required test matrix
 
-```text
-CEO goal
-→ trusted authority/task envelope
-→ auto selection
-→ durable attempt reservation
-→ one adapter invocation
-→ completion event
-→ result validation
-→ one autonomous next non-consequential already-authorized step
-→ CEO receives summary/gate
-```
+### Registry/hash
 
-Никаких auto-merge/deploy/LIVE.
+- descriptor hash excludes `descriptor_hash` itself;
+- fixed canonical descriptor hash vector;
+- key/set permutation gives same descriptor hash;
+- duplicate/unknown/additional security fields rejected;
+- alias cannot replace identity or self-elevate role/permissions.
 
-## 11. Минимальный test matrix
+### Resource/budget/router
 
-### Registry / descriptor
+- UNKNOWN values are never guessed;
+- metered unknown/incompatible/over-cap cost blocked;
+- missing/unverified authority or producer identity blocked;
+- self-review and independence mismatch blocked;
+- ranking uses only canonical evidenced dimensions;
+- equal-score candidates produce same selection under every input permutation via stable `(provider_id,adapter_id,model_id)` tie-break.
 
-- valid canonical descriptor accepted;
-- duplicate identity rejected;
-- alias collision cannot replace security identity;
-- `Julius` alias maps to `Jules`, not second provider;
-- malformed permissions/capabilities rejected;
-- runtime self-description cannot elevate role/independence/permissions;
-- missing/invalid registry authority/hash blocks security-sensitive selection.
+### Events/correlation/ordering
 
-### Resource awareness / budget
+- fixed canonical event hash vector;
+- semantically equal event key-order variants dedupe identically;
+- same local event id across different providers does not collide;
+- same dedupe key/different payload conflicts;
+- terminal event missing attempt/correlation required by receipt blocks;
+- terminal event for wrong attempt/external job blocks;
+- stale HEAD blocks continuation;
+- distinct STARTED/WAITING/FAILED/COMPLETED events delivered in relevant reorderings cannot regress/switch terminal state;
+- post-terminal events cannot trigger second continuation;
+- provider sequence regression/no-sequence reconciliation paths tested.
 
-- exact provider quota mapped when proven;
-- absent quota => UNKNOWN, not guessed;
-- exhausted/rate-limited candidates filtered;
-- stale snapshot handled by policy;
-- secret-like fields rejected/redacted;
-- metered candidate with unknown cost blocked;
-- currency mismatch blocked;
-- compatible proven estimate <= cap accepted;
-- proven estimate > cap blocked.
+### Review compatibility
 
-### Router / authority / independence
+- canonical `REQUEST_CHANGES` accepted; undefined synonym rejected;
+- canonical `CLEAN|NOT_CLEAN` accepted according to S-0009 invariants;
+- REVIEW_COMPLETED alone is never gate evidence;
+- expected/reviewed/acceptance HEAD mismatch is not gate safe;
+- producer independence + trusted GitHub evidence read-back enforced.
 
-- capability mismatch rejected;
-- trusted artifact producer self-review rejected;
-- unknown producer identity blocks independent-review selection;
-- independence mismatch rejected;
-- free available provider preferred when paid forbidden;
-- paid candidate blocked without budget policy;
-- more privileged adapter rejected;
-- required authority missing/unverified blocked;
-- S-0010 reviewer selection without canonical grant fields cannot reach dispatch;
-- deterministic output for same inputs;
-- all candidates rejected => explicit BLOCKED reason;
-- UNKNOWN critical authority/budget state fails closed.
+### Grant/recovery
 
-### Review result
+- full `grant_id + manifest_hash + issuance_digest` preserved from TaskRequirements through receipt/evidence;
+- any tuple-member mismatch after reconstruction fails closed;
+- PREPARED before dispatch and DISPATCH_CONFIRMED before upstream success;
+- crash/response loss can become UNKNOWN but never silent second consequential dispatch;
+- S-0010 one-consumption semantics preserved.
 
-- generic REVIEW_COMPLETED alone cannot become gate evidence;
-- expected/reviewed/acceptance HEAD mismatch => not gate safe;
-- malformed/contradictory verdict/finding state rejected;
-- missing trusted GitHub persistence/read-back rejected;
-- valid S-0010 grant/result/evidence binding accepted for evaluation only; does not create next gate authority.
+## 13. Acceptance criteria
 
-### Events
+Implementation is proven only if:
 
-- duplicate same composite key + same payload => replay/no-op;
-- same composite key + changed payload => conflict;
-- same local event_id from two different providers does not collide;
-- stale PR HEAD => blocked continuation;
-- wrong task/run/attempt => ignored/blocked;
-- completion does not imply consequential authority;
-- bounded polling stops at max attempts/window.
+1. Core selection has no provider-name routing branches.
+2. New provider can be added by canonical descriptor + adapter without core algorithm change.
+3. Descriptor security fields and hashes have trusted versioned GitHub provenance.
+4. Unknown resource/authority/cost facts are not guessed.
+5. Metered invocation requires proven compatible cost within approved budget.
+6. Router is deterministic and explainable under candidate permutations.
+7. At least two distinct adapters pass the same contracts.
+8. One completion can advance one already-authorized workflow step without manual CEO `проверь`.
+9. Event dedupe, exact receipt correlation and monotonic terminal state prevent duplicate/wrong continuation.
+10. Crash/reconstruction tests prove no silent second consequential/paid dispatch.
+11. Independent-review routing prevents self-review from trusted producer identity.
+12. S-0009/S-0010 canonical enum/grant/exact-HEAD/durable-evidence rules remain intact.
+13. GitHub remains project SoT.
+14. Full affected test suite is green and independent review binds exact PR HEAD.
+15. Ready/merge/deploy/LIVE remain separate CEO gates.
 
-### Recovery / receipt
+## 14. Non-goals
 
-- PREPARED persists before provider dispatch;
-- provider acknowledgement persists DISPATCH_CONFIRMED before success returns upstream;
-- crash/response loss around dispatch becomes UNKNOWN when dispatch cannot be proven;
-- UNKNOWN does not auto-repeat paid/consequential invocation;
-- deterministic pre-dispatch failure can become FAILED_NO_DISPATCH;
-- read-only reconciliation can resolve only with provider-supported evidence;
-- duplicate completion after reconstruction remains idempotent;
-- reviewer grant lifecycle remains S-0010-compliant during crash cases.
+- no new large control plane or second project SoT;
+- no vector DB merely for routing;
+- no automatic credit purchase/top-up or currency conversion;
+- no standing authority for any provider;
+- no S-0009/S-0010 replacement or DR-0008 lift;
+- no Dify dependency requirement;
+- no auto-merge/deploy/LIVE.
 
-## 12. Acceptance criteria v0.1
+## 15. Implementation allowlist after approval
 
-S-0011 implementation считается доказанной только если одновременно выполнено:
-
-1. Core routing code не содержит provider-name branching для выбора (`if provider === Qodo/Grok/...`).
-2. Новый provider можно добавить adapter + canonical descriptor без изменения core selection algorithm.
-3. Security-sensitive descriptor fields имеют trusted versioned GitHub provenance и не могут self-elevate из adapter output.
-4. Resource unknowns не подменяются догадками.
-5. Metered invocation невозможен без proven compatible cost/currency within budget.
-6. Router выдаёт deterministic explainable decision/rejections и сохраняет policy/authority/producer refs.
-7. At least two distinct adapters pass same contract tests.
-8. Completion event может продолжить один разрешённый workflow без ручного CEO `проверь`.
-9. Duplicate/cross-provider-collision/stale events не создают потерю события или второй invoke/side effect.
-10. InvocationReceipt/attempt recovery доказан crash tests; UNKNOWN не auto-retries consequential/paid work.
-11. Independent reviewer routing доказуемо исключает self-review через trusted producer identity.
-12. S-0009/S-0010 reviewer grant + exact-HEAD + durable evidence rules не ослаблены generic orchestration.
-13. Paid/privileged/independence-changing fallback fail closed без authority.
-14. Exact task/run/attempt/PR/HEAD freshness доказана тестами там, где применимо.
-15. GitHub остаётся SoT, operational state не становится конкурирующим project DB.
-16. Full affected test suite green.
-17. Independent review относится к exact PR HEAD.
-18. Ready/merge/deploy/LIVE не выполняются без отдельного CEO gate.
-
-## 13. Non-goals v0.1
-
-- не строить новый большой control plane;
-- не создавать vector DB только ради routing;
-- не переносить project SoT из GitHub;
-- не поддерживать каждый существующий AI provider в первом PR;
-- не auto-buy/auto-top-up credits;
-- не делать currency conversion без отдельного policy contract;
-- не auto-merge/deploy/LIVE;
-- не давать Grok/Qodo/Codex/Copilot/Jules/Astra standing authority;
-- не заменять S-0009/S-0010 reviewer security contract;
-- не снимать DR-0008;
-- не делать Dify обязательной зависимостью.
-
-## 14. Implementation allowlist after Approval
-
-Точный allowlist должен быть закреплён отдельным EA. Рекомендуемая верхняя граница первого Slice A/B:
+A separate EA must set the exact allowlist. Recommended maximum Slice A/B boundary:
 
 - `services/genesis-broker/src/agent-*`
 - `services/genesis-broker/src/adaptive-router.js`
 - `services/genesis-broker/tests/agent-*.test.js`
 - `services/genesis-broker/tests/adaptive-router.test.js`
 - `docs/genesis-broker/agent-orchestration.md`
-- `specifications/S-0011-Genesis-Universal-Adaptive-Agent-Orchestration-v0.1.md`
-- `specifications/INDEX.md`
-- `bridge/QUEUE.md` / `bridge/HANDOFF.md` только если отдельный EA требует task-state synchronization.
+- `bridge/QUEUE.md` / `bridge/HANDOFF.md` only if EA explicitly requires task-state sync.
 
-Production route wiring, Durable Object schema migration, webhook endpoint, secret/config changes, Cloudflare deployment и provider LIVE calls должны быть отдельными stages/gates.
+Production route wiring, Durable Object migration, webhook deployment, secrets/config, Cloudflare deployment and provider LIVE calls remain separate stages/gates.
 
-## 15. Decision Record requirement
+## 16. Decision Record boundary
 
-Новый DR не обязателен для Slice A/B, если реализация остаётся тонким provider-neutral слоем внутри существующих границ GitHub SoT и Broker runtime.
+No new DR is required for Slice A/B only while implementation remains a thin provider-neutral layer inside existing GitHub SoT/Broker boundaries. Stop for new/revised DR before any new project/control-plane SoT, credential trust boundary, standing/chained consequential authority, automatic paid-spend policy, privileged provider authority, or materially new production event infrastructure that changes governance guarantees.
 
-Новый/обновлённый DR обязателен до реализации, если появляется хотя бы одно:
+## 17. Revision 2 review requirement
 
-- новый persistent project/control-plane SoT;
-- новая credential trust boundary;
-- standing autonomy / chained consequential authority;
-- automatic paid spending policy;
-- privileged provider acting without existing gate model;
-- materially new production event infrastructure whose failure semantics меняют governance guarantees.
-
-## 16. Проверка спецификации перед Approval
-
-Independent reviewer должен проверить минимум:
-
-- provider neutrality без скрытой привязки к текущему набору агентов;
-- trusted registry provenance / no self-elevation;
-- separation hard governance filters vs soft ranking;
-- canonical authority propagation и S-0010 grant admission before reviewer dispatch;
-- trusted artifact producer binding / self-review prevention;
-- correctness UNKNOWN semantics;
-- budget currency/minor-unit correctness;
-- event namespace + idempotency + stale exact HEAD rejection;
-- InvocationReceipt write ordering + crash/duplicate invocation risk;
-- review completion vs gate-safe review evidence separation;
-- paid/privileged fallback boundaries;
-- GitHub SoT preservation;
-- реалистичность Slice A→D без giant rewrite.
-
-Проверка выполнена: clean independent Qodo review относился к exact pre-approval HEAD `ea6cd59a4fb0db769ffa53100aabfd4937ee1719`; CEO утвердил S-0011 Revision 1 2026-09-11. Approval не является Execution Authorization.
+Independent review must bind the exact current PR HEAD and verify at minimum the seven post-approval findings now addressed: exact receipt correlation, descriptor canonical hash, complete S-0010 grant tuple, S-0009 enum compatibility, canonical event hash, deterministic total routing order, and out-of-order/post-terminal event handling. Revision 2 remains **In Review** until that review is clean and CEO separately approves Revision 2. That approval still does not grant implementation EA.
