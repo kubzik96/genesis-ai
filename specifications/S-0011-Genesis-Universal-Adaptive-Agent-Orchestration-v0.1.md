@@ -22,7 +22,7 @@
 | Revision | Date | Status | Change |
 |---|---|---|---|
 | 1 | 2026-09-10/11 | Approved | Initial implementation-grade contract; CEO-approved after independent review. |
-| 2 | 2026-09-11 | **In Review** | Non-scope-expanding correctness hardening after post-approval exact-HEAD Qodo review: exact attempt correlation, canonical descriptor/event hashing, full S-0010 grant provenance and terminal lifecycle, canonical S-0009 result enums, deterministic routing tie-breaks, monotonic event semantics including cancellation and authoritative UNKNOWN reconciliation, explicit FAILED_NO_DISPATCH terminality, race-safe event acceptance, and mandatory approved Decision Record before implementation. Requires fresh independent review and CEO approval before implementation EA. |
+| 2 | 2026-09-11 | **In Review** | Non-scope-expanding correctness hardening after post-approval exact-HEAD Qodo review: exact attempt correlation, canonical descriptor/event hashing, full S-0010 grant provenance and terminal lifecycle, canonical S-0009 result enums, deterministic routing tie-breaks, monotonic event semantics including cancellation and authoritative UNKNOWN reconciliation, explicit FAILED_NO_DISPATCH terminality, race-safe event acceptance, crash-resumable continuation checkpoints, and mandatory approved Decision Record before implementation. Requires fresh independent review and CEO approval before implementation EA. |
 
 Revision 2 does not broaden product scope or grant implementation/runtime authority. Where Revision 2 clarifies a Revision 1 ambiguity, the stricter fail-closed rule in Revision 2 governs.
 
@@ -51,7 +51,7 @@ CEO goal
 ## 2. Canonical boundaries
 
 1. GitHub `kubzik96/genesis-ai` remains the durable project Source of Truth.
-2. Runtime cache/Durable Object/queue may store delivery, dedupe, attempt, dispatch, resource and reconciliation state only; it is not a competing project/governance SoT.
+2. Runtime cache/Durable Object/queue may store delivery, dedupe, attempt, dispatch, resource, continuation-checkpoint and reconciliation state only; it is not a competing project/governance SoT.
 3. Provider registration, selection, completion or success never creates authority.
 4. Ready, merge, remediation, deploy, LIVE, secret/PAT mutation, Dify and DR-0008 lift remain separate gates unless a later approved autonomy policy explicitly says otherwise.
 5. Paid or more-privileged fallback requires applicable authority and budget policy; no automatic escalation.
@@ -191,9 +191,18 @@ The canonical payload hash excludes no semantic event field except no separately
 - UTF-8 bytes → SHA-256 → lowercase hex.
 - Schema rejects additional keys before hashing.
 
-Same canonical dedupe key + same **accepted** payload hash = replay/no-op. Same accepted key + different hash = conflict/fail closed. Different providers/adapters with equal local `event_id` do not collide. Implementation tests MUST use shared fixed vectors proving key-order-independent normalization of semantically identical events.
+Same canonical dedupe key + same **accepted** payload hash is an idempotent replay. If the accepted event's durable continuation checkpoint is `PENDING` or `IN_PROGRESS`, replay MUST resume that same checkpoint rather than dispatching a second continuation; if checkpoint is `COMPLETED`, replay is a no-op. Same accepted key + different hash = conflict/fail closed. Different providers/adapters with equal local `event_id` do not collide. Implementation tests MUST use shared fixed vectors proving key-order-independent normalization of semantically identical events.
 
-For dispatch-derived/terminal events, canonical key/hash calculation may occur before receipt correlation, but **accepted dedupe state MUST NOT be durably committed before exact receipt correlation and attempt-state admission succeed**. Event acceptance is atomic with the corresponding attempt-state transition (or with an explicit accepted no-op for a verified replay). If a callback arrives before the durable receipt contains the provider external/reconciliation identity needed to prove correlation, the event is quarantined/pending or rejected-for-retry without marking its dedupe key as accepted. A later redelivery after receipt identity persistence must therefore remain processable. A pending/quarantined record is operational delivery state only, expires only under bounded policy, and can never authorize continuation.
+For dispatch-derived/terminal events, canonical key/hash calculation may occur before receipt correlation, but **accepted dedupe state MUST NOT be durably committed before exact receipt correlation and attempt-state admission succeed**. Event acceptance is atomic with the corresponding attempt-state transition **and creation/update of a durable idempotent continuation checkpoint for that exact accepted event**. The checkpoint is bound to `dedupe key + payload hash + task_id + run_id + attempt_id`, starts as `PENDING`, and records whether post-acceptance validation/evidence/continuation is incomplete, in progress, completed or blocked. If a callback arrives before the durable receipt contains the provider external/reconciliation identity needed to prove correlation, the event is quarantined/pending or rejected-for-retry without marking its dedupe key as accepted. A later redelivery after receipt identity persistence must therefore remain processable. A pending/quarantined pre-acceptance record is operational delivery state only, expires only under bounded policy, and can never authorize continuation.
+
+Accepted-event checkpoint rules:
+
+- `PENDING → IN_PROGRESS → COMPLETED|BLOCKED` is monotonic; recovery may idempotently resume `PENDING` or `IN_PROGRESS` for the exact accepted event.
+- Claiming/resuming a checkpoint MUST be single-owner/idempotent so concurrent replay cannot run two continuations.
+- Crash after accepted-state commit but before GitHub/HEAD validation, result validation, evidence persistence or next-step completion leaves a resumable checkpoint; redelivery/reconstruction resumes from durable facts instead of treating the event as finished.
+- `COMPLETED` is written only after the authorized continuation outcome or explicit no-next-step result is durably recorded. `BLOCKED` is written only with a durable fail-closed reason and does not itself grant retry/authority.
+- Resumption MUST re-read current GitHub task/PR/HEAD and applicable authority; stale/revoked conditions block continuation rather than replaying an obsolete decision.
+- The checkpoint is operational recovery state, not project SoT and not authority. It cannot create a second invocation, grant, Ready/merge/deploy/LIVE permission or any action outside the already-authorized next step.
 
 If the provider offers a caller-supplied idempotency/correlation key before dispatch, Genesis SHOULD persist that non-secret stable key in `PREPARED` and require callbacks to echo it. If the provider only assigns external identity after dispatch, the race-safe pending/correlation rule above is mandatory.
 
@@ -431,12 +440,16 @@ trusted source verification
 → existing accepted-dedupe conflict/replay check
 → exact receipt correlation (or bounded pending quarantine if receipt identity is not yet durable)
 → monotonic attempt-state admission
-→ atomic accepted-dedupe + attempt-state transition
+→ atomic accepted-dedupe + attempt-state transition + durable continuation checkpoint(PENDING)
+→ idempotent checkpoint claim/resume
 → current GitHub task/PR/HEAD verification
 → result-specific validation
 → trusted evidence read-back
-→ next already-authorized step
+→ next already-authorized step OR explicit no-next-step/block
+→ durable continuation checkpoint COMPLETED|BLOCKED
 ```
+
+A replay of an accepted event MUST inspect its checkpoint. `PENDING`/`IN_PROGRESS` resumes the same exact continuation; `COMPLETED` is a no-op; `BLOCKED` remains fail-closed unless a separately authorized policy explicitly permits reevaluation. Reconstruction after crash scans/resumes incomplete accepted-event checkpoints and therefore does not depend on another provider redelivery.
 
 Before autonomous continuation require all applicable:
 
@@ -444,6 +457,7 @@ Before autonomous continuation require all applicable:
 - exact task/run/attempt;
 - terminal event external identity equals durable receipt where provider supplies it;
 - event's dedupe key/hash is durably accepted only after correlation/admission, so an early callback cannot be lost as a false replay;
+- accepted event has exactly one durable continuation checkpoint, and replay/recovery can resume but never duplicate that continuation;
 - monotonic/non-regressing attempt state, with `UNKNOWN` resolvable only by authoritative read-only reconciliation;
 - current GitHub task state and exact HEAD for HEAD-bound result;
 - next step still covered by authority;
@@ -457,13 +471,14 @@ Fallback is allowed only to candidates passing the **same** TaskRequirements/gov
 2. PREPARED after crash requires reconciliation unless non-dispatch is provable; proven non-dispatch closes the exact attempt as `FAILED_NO_DISPATCH` together with applicable `CLOSED_NO_CALL` grant state.
 3. UNKNOWN forbids autonomous continuation/repeat where duplicate side effects/model spend are possible; only exact-attempt authoritative read-only reconciliation may resolve the operational outcome.
 4. Resolving operational UNKNOWN never restores/mints reusable S-0010 grant authority and never creates a second continuation.
-5. Duplicate accepted events replay safely; an early uncorrelated terminal callback is not marked accepted and remains processable after receipt correlation becomes available.
-6. Distinct reordered/post-terminal events cannot regress a proven terminal state.
-7. Confirmed `CANCELLED` is terminal operational state; ambiguous cancellation is `UNKNOWN`; neither state restores consumed authority.
-8. Recovery restores project truth from GitHub and operational attempt/dedupe/pending-delivery state only from allowed runtime store.
-9. Stale task/run/attempt/PR/HEAD evidence never advances workflow.
-10. Retry/fallback is bounded/versioned, never infinite.
-11. S-0010 lifecycle remains stricter where applicable and is never weakened by generic orchestration.
+5. Duplicate accepted events are idempotent: completed checkpoint = no-op; incomplete checkpoint = resume the same continuation. An early uncorrelated terminal callback is not marked accepted and remains processable after receipt correlation becomes available.
+6. Accepted dedupe + attempt transition + continuation checkpoint creation are atomic. Crash anywhere after acceptance and before continuation completion leaves a durable resumable checkpoint; recovery may resume it without a provider redelivery and without creating a second continuation.
+7. Distinct reordered/post-terminal events cannot regress a proven terminal state.
+8. Confirmed `CANCELLED` is terminal operational state; ambiguous cancellation is `UNKNOWN`; neither state restores consumed authority.
+9. Recovery restores project truth from GitHub and operational attempt/dedupe/pending-delivery/continuation-checkpoint state only from allowed runtime store.
+10. Stale task/run/attempt/PR/HEAD evidence never advances workflow; resumed checkpoints re-read these bindings before acting.
+11. Retry/fallback is bounded/versioned, never infinite.
+12. S-0010 lifecycle remains stricter where applicable and is never weakened by generic orchestration.
 
 ## 11. Implementation slices
 
@@ -484,6 +499,7 @@ After Revision 2 approval, an approved Decision Record covering this new orchest
 - canonical event hash/dedupe with race-safe acceptance;
 - exact receipt correlation;
 - monotonic attempt state including `FAILED_NO_DISPATCH`, confirmed cancellation and authoritative UNKNOWN reconciliation;
+- durable idempotent accepted-event continuation checkpoints + crash resumption;
 - InvocationEnvelope/Receipt + full S-0010 grant tuple;
 - bounded polling/read-only reconciliation.
 
@@ -531,6 +547,17 @@ One bounded flow: CEO goal → trusted task/authority → auto selection → dur
 - post-terminal events cannot trigger second continuation;
 - provider sequence regression/no-sequence reconciliation paths tested.
 
+### Continuation crash/replay
+
+- atomic event acceptance creates exactly one continuation checkpoint bound to exact dedupe key/hash + task/run/attempt;
+- crash immediately after accepted-state/checkpoint commit resumes the same checkpoint after reconstruction;
+- crash after GitHub/HEAD validation, result validation, evidence persistence, and immediately before/after next-step durable completion is covered by fixed tests;
+- replay while checkpoint `PENDING` or `IN_PROGRESS` resumes/idempotently joins the same work and cannot run a second continuation;
+- replay after checkpoint `COMPLETED` is no-op;
+- recovery scans incomplete checkpoints even with no provider redelivery;
+- resumed checkpoint re-reads current GitHub/HEAD/authority and blocks stale/revoked continuation;
+- concurrent replays cannot obtain two continuation claims.
+
 ### Review compatibility
 
 - canonical `REQUEST_CHANGES` accepted; undefined synonym rejected;
@@ -566,8 +593,8 @@ Implementation is proven only if:
 6. Router is deterministic and explainable under candidate permutations.
 7. At least two distinct adapters pass the same contracts.
 8. One completion can advance one already-authorized workflow step without manual CEO `проверь`.
-9. Event dedupe, race-safe acceptance, exact receipt correlation and monotonic attempt state prevent duplicate/wrong/lost continuation.
-10. Crash/reconstruction tests prove no silent second consequential/paid dispatch and authoritative UNKNOWN reconciliation cannot restore reusable grant authority.
+9. Event dedupe, race-safe acceptance, exact receipt correlation, monotonic attempt state and durable resumable continuation checkpoints prevent duplicate/wrong/lost continuation.
+10. Crash/reconstruction tests prove both no silent second consequential/paid dispatch and no lost accepted continuation; authoritative UNKNOWN reconciliation cannot restore reusable grant authority.
 11. Independent-review routing prevents self-review from trusted producer identity.
 12. S-0009/S-0010 canonical enum/grant/exact-HEAD/durable-evidence rules remain intact.
 13. GitHub remains project SoT.
@@ -576,6 +603,7 @@ Implementation is proven only if:
 16. An approved Decision Record exists before any Slice A/B implementation begins and covers the adaptive router, normalized event processing, durable attempt/recovery state, trust boundaries, and relationship to the existing Broker architecture.
 17. Cancellation is provider-neutral and deterministic: confirmed exact-receipt cancellation maps to `AGENT_CANCELLED`/`CANCELLED`, ambiguity maps to `UNKNOWN`, and cancellation never restores consumed authority.
 18. Proven no-dispatch failure has an explicit terminal `FAILED_NO_DISPATCH` attempt/receipt state paired with canonical no-call grant handling.
+19. Accepted-event continuation is crash-resumable and at-most-once: incomplete checkpoints resume after redelivery/reconstruction, completed checkpoints no-op, and concurrent replays cannot produce duplicate continuation.
 
 ## 14. Non-goals
 
@@ -602,10 +630,10 @@ Production route wiring, Durable Object migration, webhook deployment, secrets/c
 
 ## 16. Decision Record boundary
 
-An **approved Decision Record is mandatory before any Slice A/B implementation begins**. This is a governance prerequisite independent of whether the code lives inside the existing Broker service. The DR must cover at minimum: the adaptive router as a new orchestration component, normalized event processing, durable attempt/dedupe/recovery state, trust boundaries and canonical GitHub provenance, S-0009/S-0010 grant integration, failure/reconciliation/cancellation semantics, and the relationship to the existing Broker architecture. S-0011 approval alone and any later implementation EA do not waive this prerequisite.
+An **approved Decision Record is mandatory before any Slice A/B implementation begins**. This is a governance prerequisite independent of whether the code lives inside the existing Broker service. The DR must cover at minimum: the adaptive router as a new orchestration component, normalized event processing, durable attempt/dedupe/recovery/continuation-checkpoint state, trust boundaries and canonical GitHub provenance, S-0009/S-0010 grant integration, failure/reconciliation/cancellation semantics, and the relationship to the existing Broker architecture. S-0011 approval alone and any later implementation EA do not waive this prerequisite.
 
 If implementation later introduces a new project/control-plane SoT, credential trust boundary, standing/chained consequential authority, automatic paid-spend policy, privileged provider authority, or materially new production event infrastructure that changes governance guarantees, the Decision Record must be revised/extended and approved before that expanded implementation.
 
 ## 17. Revision 2 review requirement
 
-Independent review must bind the exact current PR HEAD and verify all post-approval findings now addressed, including: exact receipt correlation, descriptor canonical hash, complete S-0010 grant tuple, canonical S-0009 enum compatibility, canonical event hash, deterministic total routing order, out-of-order/post-terminal handling, S-0010 grant terminalization, mandatory Decision Record before implementation, provider-neutral cancellation semantics, authoritative UNKNOWN reconciliation, explicit FAILED_NO_DISPATCH terminality, and race-safe terminal-event dedupe acceptance. Revision 2 remains **In Review** until that review is clean and CEO separately approves Revision 2. That approval still does not grant implementation EA.
+Independent review must bind the exact current PR HEAD and verify all post-approval findings now addressed, including: exact receipt correlation, descriptor canonical hash, complete S-0010 grant tuple, canonical S-0009 enum compatibility, canonical event hash, deterministic total routing order, out-of-order/post-terminal handling, S-0010 grant terminalization, mandatory Decision Record before implementation, provider-neutral cancellation semantics, authoritative UNKNOWN reconciliation, explicit FAILED_NO_DISPATCH terminality, race-safe terminal-event dedupe acceptance, and crash-resumable accepted-event continuation. Revision 2 remains **In Review** until that review is clean and CEO separately approves Revision 2. That approval still does not grant implementation EA.
