@@ -6,14 +6,15 @@
 |---|---|
 | ID | S-0011 |
 | Title | Genesis Universal Adaptive Agent Orchestration v0.1 |
-| Status | **Approved** |
-| Revision | 2 |
+| Status | **In Review** |
+| Revision | 3 |
 | Author | ChatGPT — COO, по поручению CEO Genesis AI |
 | Creation date (GitHub UTC) | 2026-09-10 |
 | Revision 1 approval date | 2026-09-11 |
 | Revision 1 approved by | CEO Genesis AI |
 | Revision 2 approval date | 2026-09-11 |
 | Revision 2 approved by | CEO Genesis AI |
+| Revision 3 approval | NOT_GRANTED — fresh exact-HEAD CEO Approval required |
 | Related Issue | #121 |
 | Related Specifications | S-0007 Revision 1; S-0009 Revision 1; S-0010 Revision 2 |
 | Related Decisions | DR-0005; DR-0008; DR-0010; DR-0011 |
@@ -24,9 +25,10 @@
 | Revision | Date | Status | Change |
 |---|---|---|---|
 | 1 | 2026-09-10/11 | Approved | Initial implementation-grade contract; CEO-approved after independent review. |
-| 2 | 2026-09-11 | **Approved** | Non-scope-expanding correctness hardening after post-approval exact-HEAD Qodo review: exact attempt correlation, canonical descriptor/event hashing, full S-0010 grant provenance and terminal lifecycle, canonical S-0009 result enums, deterministic routing tie-breaks, monotonic event semantics including cancellation and authoritative UNKNOWN reconciliation, explicit FAILED_NO_DISPATCH terminality, race-safe event acceptance, crash-resumable continuation checkpoints, and mandatory approved Decision Record before implementation. Fresh independent Qodo review on exact HEAD `81c8859d29adc666e5ac0c1d957dd83f8e3daadb` was clean (0 bugs / 0 rule violations); CEO approved Revision 2 on 2026-09-11. |
+| 2 | 2026-09-11 | **Approved** | Non-scope-expanding correctness hardening after post-approval exact-HEAD Qodo review: exact attempt correlation, canonical descriptor/event hashing, full S-0010 grant provenance and terminal lifecycle, canonical S-0009 result enums, deterministic routing tie-breaks, monotonic event semantics including cancellation and authoritative UNKNOWN reconciliation, explicit FAILED_NO_DISPATCH terminality, race-safe event acceptance, crash-resumable continuation checkpoints, and mandatory approved Decision Record before implementation. CEO approval was recorded for Revision 2 on exact HEAD `81c8859d29adc666e5ac0c1d957dd83f8e3daadb` on 2026-09-11; the later Qodo result exposed the external-effect replay gap addressed in Revision 3. |
+| 3 | 2026-09-11 | **In Review** | Bounded correction of the external-effect crash/replay gap: stable per-effect operation identity, trusted destination classification A/B/C, pre-dispatch durable admission, transactional completion or destination idempotency, and fail-closed indeterminate-effect reconciliation. Existing Revision 2 requirements and mandatory approved Decision Record remain. No approval carries forward. |
 
-Revision 2 does not broaden product scope or grant implementation/runtime authority. Where Revision 2 clarifies a Revision 1 ambiguity, the stricter fail-closed rule in Revision 2 governs.
+Revision 3 preserves the existing product scope and adds no runtime/implementation authority. It clarifies the safety boundary of the existing at-most-once requirement rather than promising automatic completion after every external-effect crash. Historical Revision 1/2 approvals do not approve Revision 3.
 
 ## 1. Purpose and product result
 
@@ -193,15 +195,15 @@ The canonical payload hash excludes no semantic event field except no separately
 - UTF-8 bytes → SHA-256 → lowercase hex.
 - Schema rejects additional keys before hashing.
 
-Same canonical dedupe key + same **accepted** payload hash is an idempotent replay. If the accepted event's durable continuation checkpoint is `PENDING` or `IN_PROGRESS`, replay MUST resume that same checkpoint rather than dispatching a second continuation; if checkpoint is `COMPLETED`, replay is a no-op. Same accepted key + different hash = conflict/fail closed. Different providers/adapters with equal local `event_id` do not collide. Implementation tests MUST use shared fixed vectors proving key-order-independent normalization of semantically identical events.
+Same canonical dedupe key + same **accepted** payload hash is an idempotent replay. If the accepted event's durable continuation checkpoint is `PENDING` or `IN_PROGRESS`, replay MUST recover that same checkpoint subject to Section 5.4 effect safety, rather than dispatching a second continuation; if checkpoint is `COMPLETED`, replay is a no-op. Same accepted key + different hash = conflict/fail closed. Different providers/adapters with equal local `event_id` do not collide. Implementation tests MUST use shared fixed vectors proving key-order-independent normalization of semantically identical events.
 
 For dispatch-derived/terminal events, canonical key/hash calculation may occur before receipt correlation, but **accepted dedupe state MUST NOT be durably committed before exact receipt correlation and attempt-state admission succeed**. Event acceptance is atomic with the corresponding attempt-state transition **and creation/update of a durable idempotent continuation checkpoint for that exact accepted event**. The checkpoint is bound to `dedupe key + payload hash + task_id + run_id + attempt_id`, starts as `PENDING`, and records whether post-acceptance validation/evidence/continuation is incomplete, in progress, completed or blocked. If a callback arrives before the durable receipt contains the provider external/reconciliation identity needed to prove correlation, the event is quarantined/pending or rejected-for-retry without marking its dedupe key as accepted. A later redelivery after receipt identity persistence must therefore remain processable. A pending/quarantined pre-acceptance record is operational delivery state only, expires only under bounded policy, and can never authorize continuation.
 
 Accepted-event checkpoint rules:
 
-- `PENDING → IN_PROGRESS → COMPLETED|BLOCKED` is monotonic; recovery may idempotently resume `PENDING` or `IN_PROGRESS` for the exact accepted event.
-- Claiming/resuming a checkpoint MUST be single-owner/idempotent so concurrent replay cannot run two continuations.
-- Crash after accepted-state commit but before GitHub/HEAD validation, result validation, evidence persistence or next-step completion leaves a resumable checkpoint; redelivery/reconstruction resumes from durable facts instead of treating the event as finished.
+- `PENDING → IN_PROGRESS → COMPLETED|BLOCKED|UNKNOWN` is the checkpoint lifecycle. `UNKNOWN` quarantines an indeterminate effect and permits only authoritative read-only reconciliation under Section 5.4; it cannot trigger replay. A reconciled checkpoint may resume only its same authorized remaining work after durable exact-effect resolution. `COMPLETED` is terminal; `BLOCKED` needs applicable explicit reevaluation policy, never implicit retry.
+- Claiming/resuming a checkpoint MUST use atomic single-owner admission and fencing under Section 5.4. Local ownership alone does not deduplicate a remote effect.
+- Crash after accepted-state commit retains the checkpoint and every admitted effect record. Redelivery/reconstruction recovers durable facts: safe remaining work may resume, but possible external effects are reconciled or quarantined under Section 5.4. It neither silently loses the checkpoint nor assumes its unfinished effect is repeatable.
 - `COMPLETED` is written only after the authorized continuation outcome or explicit no-next-step result is durably recorded. `BLOCKED` is written only with a durable fail-closed reason and does not itself grant retry/authority.
 - Resumption MUST re-read current GitHub task/PR/HEAD and applicable authority; stale/revoked conditions block continuation rather than replaying an obsolete decision.
 - The checkpoint is operational recovery state, not project SoT and not authority. It cannot create a second invocation, grant, Ready/merge/deploy/LIVE permission or any action outside the already-authorized next step.
@@ -241,6 +243,38 @@ Ordering rules:
 - `occurred_at` alone is never treated as a trusted total ordering signal.
 - Any older, conflicting or post-terminal distinct event is no-op or BLOCKED according to whether conflict can affect correctness; it never mutates a proven terminal state or creates a second continuation.
 - An `UNKNOWN` attempt may change state only through the authoritative reconciliation exception defined above, never by ordinary event ordering.
+
+### 5.4 Destination contract for every side effect
+
+A single continuation checkpoint or owner lock does **not** make an external side effect at-most-once. Every effect, including evidence persistence and an initial adapter dispatch under Section 8, MUST follow this section. Resuming a checkpoint means inspecting its durable effect records, not blindly repeating the next step.
+
+Before the first effect, trusted Genesis MUST persist an effect record with immutable identity/request bindings and a monotonic outcome log: stable `operation_id`; owning checkpoint identity (or initial `attempt_id` for initial dispatch); logical step/slot; exact task/run/attempt; provider/adapter and destination identity; repository/PR/expected HEAD where applicable; canonical request/payload hash; applicable authority and S-0010 grant tuple; destination-contract GitHub ref/hash; effect class; state; and eventual receipt/read-back evidence. The same logical step/slot has exactly one effect record, created atomically with checkpoint admission/claim. Changed payload, destination or bindings for an existing slot is a conflict, not permission to generate another operation. Multi-effect continuations require a separate durable record per ordered effect; completion requires all required effect outcomes, and recovery never repeats already completed effects.
+
+The operation identity is assigned once by trusted Genesis before dispatch and reused across crash, callback redelivery, controller reconstruction and transport retry. It MUST NOT be regenerated from a new session/replay/run/key. Its immutable mapping binds the exact owning checkpoint/attempt and logical slot to the full request and authority tuple; a caller cannot choose a new identity to bypass that mapping.
+
+Each adapter MUST have a versioned, trusted GitHub destination-capability declaration for **each effect path**. It is separate from the closed ProviderDescriptor hash schema, is pinned by ref/hash in the effect record and dispatch evidence, and is verified before dispatch/recovery. It names the exact endpoint/destination, effect semantics, identity binding, retention/finality limits, allowed read-back, and one of the following classes. Runtime self-description cannot upgrade a class; absent or unverified guarantees mean class C, never A/B.
+
+| Class | Required destination guarantee | Recovery after possible effect and before completion |
+|---|---|---|
+| A — IDEMPOTENT_DESTINATION | Destination atomically binds the stable operation identity to the exact payload and accepts its logical effect at most once, including concurrent requests. Same identity/same payload is a no-op or returns the same verifiable result; changed payload is rejected. Declaration proves key scope and retention covers all permitted recovery. | Read-back first. Same-key transport resubmission is allowed only when destination protection remains proven and the applicable authorization/retry budget independently permits it. Never substitute a new key, endpoint or provider. |
+| B — TRANSACTIONAL_EFFECT | The actual effect and its durable completion receipt/checkpoint transition commit in one atomic transaction within the same transaction domain. | Read the authoritative transaction result: committed is no-op; proven aborted permits the original transaction only within still-valid authority. Separate external HTTP calls plus local Durable Object writes are **not** one transaction. |
+| C — NON_IDEMPOTENT_NON_TRANSACTIONAL | Neither A nor B is proven. | Any possible dispatch without authoritative final outcome becomes `INDETERMINATE_EFFECT` / operational `UNKNOWN`. Automatic replay is forbidden; only read-only reconciliation is allowed. |
+
+Effect states are `PLANNED → DISPATCHING → COMPLETED|NO_EFFECT|INDETERMINATE_EFFECT`. For A/C, durable `DISPATCHING` is committed **before** entering the external call; only its single admitted owner may make the first dispatch. A crash with `DISPATCHING` is possible-effect evidence even if the crash might have preceded the actual call. For B the effect and completion state commit atomically, so no externally visible partial effect is admitted. Missing/partial/contradictory records fail closed.
+
+Checkpoint recovery claims require atomic compare-and-set ownership and fencing against the former owner. A lease expiry, timeout or new controller alone cannot prove the old dispatch stopped. In particular, class C never starts another call while an earlier sender/request may still act. A/B rely on their proven destination/transaction boundary as well as ownership; without that boundary they are treated as C.
+
+Read-only reconciliation for the exact operation may record:
+
+- `EFFECT_CONFIRMED`: authoritative destination receipt proves the exact immutable bindings/result; record effect `COMPLETED` without invoking it again.
+- `NO_EFFECT`: authoritative final evidence proves neither an accepted effect nor any in-flight/queued/old-owner request can still produce it. An empty search, temporary 404, missing local receipt, duplicate rejection, timeout or expired lease is insufficient.
+- unknown/conflicting outcome: retain `INDETERMINATE_EFFECT` and a blocked `UNKNOWN` checkpoint; no success, replay, automatic expiry or new identity.
+
+For class C, proven `NO_EFFECT` is necessary but not sufficient for a later dispatch: applicable explicit retry/authority policy, remaining budgets, fresh GitHub task/HEAD checks and effective exclusion of the former sender are also mandatory. A later admitted retry appends a uniquely numbered dispatch episode to the same logical effect, atomically checks the prior NO_EFFECT proof and owner exclusion, and records DISPATCHING before any send; concurrent retries cannot create two admitted episodes; reconciliation itself performs no external mutation. For S-0010, stricter one-consumption and retries=0 always win: no second model request under the grant, even if a destination supports idempotency or proves no effect. Closed/consumed/unknown grants are never reset; any genuinely new model request needs a new canonical CEO issuance and separately admitted attempt.
+
+For every supported path, the adapter declaration MUST classify GitHub Draft PR creation, comment creation, review-request/comment creation, model/API invocation, paid invocation, provider-job submission, evidence persistence and any other consequential/future continuation write. GitHub create/comment/review endpoints and model/job APIs default to C unless their exact destination contract proves A or B. A marker in a comment, client-side dedupe, a duplicate HTTP error, or a local transaction around an HTTP call is not destination idempotency. An intermediary counts as A only if its guarantee covers the final external effect across its own crashes.
+
+Failure/ambiguity during read-back or duplicate rejection never becomes success by inference. Recovered successful effects may be retained as historical evidence, but every resumed continuation and every positive review-gate use MUST reverify current GitHub task/PR/HEAD and authority. Stale/revoked state blocks continuation/gate use without undoing the historical effect or rerunning it. These requirements preserve safety by stopping in class C; they do not promise eventual completion for every crashed external operation.
 
 ## 6. Independent review result compatibility
 
@@ -422,7 +456,7 @@ Write ordering and S-0010 grant terminalization:
 
 1. Persist exact `PREPARED` attempt with task/run/provider/adapter/request/authority tuple before external dispatch. If provider supports a caller-generated stable non-secret idempotency/correlation identity, persist it in this PREPARED record before dispatch.
 2. For S-0010-bound reviewer work, atomically reserve the exact canonical grant as `RESERVED` for this exact durable `attempt_id` and receipt identity before model dispatch. Generic orchestration may not skip or collapse this reservation.
-3. Dispatch only the exact persisted `PREPARED` attempt bound to that `RESERVED` grant.
+3. Dispatch only the exact persisted `PREPARED` attempt bound to that `RESERVED` grant, after Section 5.4 effect admission for its initial-dispatch slot. A second controller cannot dispatch the reserved attempt merely because completion is missing.
 4. Once dispatch occurrence is proven, atomically transition the authoritative grant ledger for that exact attempt from `RESERVED` to `CONSUMED`, then persist/confirm `DISPATCH_CONFIRMED` with stable external/reconciliation identity before reporting success upstream. A successful reviewer invocation may never remain merely `RESERVED`. If a provider callback races this persistence, Section 5.2 requires quarantine/pending handling and forbids committing accepted dedupe state until exact receipt correlation succeeds.
 5. If deterministic evidence proves failure occurred before any external dispatch, atomically close the bound grant as `CLOSED_NO_CALL` **and** transition the same durable attempt/receipt from `PREPARED` to terminal `FAILED_NO_DISPATCH` in the same identity-bound operation; only this state is eligible for any later retry/fallback evaluation under the canonical policy. A later retry/fallback requires a new attempt and any authority required by the canonical policy; `CLOSED_NO_CALL` itself is never silently reused.
 6. If crash/timeout/response loss makes dispatch occurrence indeterminate, atomically record the bound grant lifecycle as `UNKNOWN` (or preserve the canonical S-0010 unknown-equivalent state) and the receipt/attempt as quarantined `UNKNOWN`; no automatic second paid/consequential/non-idempotent invoke is allowed.
@@ -443,15 +477,16 @@ trusted source verification
 → exact receipt correlation (or bounded pending quarantine if receipt identity is not yet durable)
 → monotonic attempt-state admission
 → atomic accepted-dedupe + attempt-state transition + durable continuation checkpoint(PENDING)
-→ idempotent checkpoint claim/resume
+→ atomic checkpoint claim + per-effect recovery under Section 5.4
 → current GitHub task/PR/HEAD verification
 → result-specific validation
 → trusted evidence read-back
-→ next already-authorized step OR explicit no-next-step/block
-→ durable continuation checkpoint COMPLETED|BLOCKED
+→ admitted effect under verified A/B/C contract OR explicit no-next-step/block
+→ verified effect receipt/read-back OR indeterminate-effect quarantine
+→ durable continuation checkpoint COMPLETED|BLOCKED|UNKNOWN
 ```
 
-A replay of an accepted event MUST inspect its checkpoint. `PENDING`/`IN_PROGRESS` resumes the same exact continuation; `COMPLETED` is a no-op; `BLOCKED` remains fail-closed unless a separately authorized policy explicitly permits reevaluation. Reconstruction after crash scans/resumes incomplete accepted-event checkpoints and therefore does not depend on another provider redelivery.
+A replay of an accepted event MUST inspect its checkpoint and effect records. `PENDING`/`IN_PROGRESS` recovers the same exact continuation under Section 5.4; `COMPLETED` is a no-op; `UNKNOWN` permits only read-only reconciliation; `BLOCKED` remains fail-closed unless an applicable policy explicitly permits reevaluation. Reconstruction scans incomplete checkpoints without requiring provider redelivery, but scanning never authorizes repeating an external effect.
 
 Before autonomous continuation require all applicable:
 
@@ -459,7 +494,7 @@ Before autonomous continuation require all applicable:
 - exact task/run/attempt;
 - terminal event external identity equals durable receipt where provider supplies it;
 - event's dedupe key/hash is durably accepted only after correlation/admission, so an early callback cannot be lost as a false replay;
-- accepted event has exactly one durable continuation checkpoint, and replay/recovery can resume but never duplicate that continuation;
+- accepted event has exactly one durable continuation checkpoint, and each side effect has a stable operation record plus verified A/B boundary or C fail-closed handling;
 - monotonic/non-regressing attempt state, with `UNKNOWN` resolvable only by authoritative read-only reconciliation;
 - current GitHub task state and exact HEAD for HEAD-bound result;
 - next step still covered by authority;
@@ -473,8 +508,8 @@ Fallback is allowed only to candidates passing the **same** TaskRequirements/gov
 2. PREPARED after crash requires reconciliation unless non-dispatch is provable; proven non-dispatch closes the exact attempt as `FAILED_NO_DISPATCH` together with applicable `CLOSED_NO_CALL` grant state.
 3. UNKNOWN forbids autonomous continuation/repeat where duplicate side effects/model spend are possible; only exact-attempt authoritative read-only reconciliation may resolve the operational outcome.
 4. Resolving operational UNKNOWN never restores/mints reusable S-0010 grant authority and never creates a second continuation.
-5. Duplicate accepted events are idempotent: completed checkpoint = no-op; incomplete checkpoint = resume the same continuation. An early uncorrelated terminal callback is not marked accepted and remains processable after receipt correlation becomes available.
-6. Accepted dedupe + attempt transition + continuation checkpoint creation are atomic. Crash anywhere after acceptance and before continuation completion leaves a durable resumable checkpoint; recovery may resume it without a provider redelivery and without creating a second continuation.
+5. Duplicate accepted events reuse one checkpoint: completed checkpoint = no-op; incomplete checkpoint = inspect effect records and recover only under Section 5.4. An early uncorrelated terminal callback is not marked accepted and remains processable after receipt correlation becomes available.
+6. Accepted dedupe + attempt transition + continuation checkpoint creation are atomic. Effect admission precedes dispatch; transactional effects commit with their completion. Crash retains recoverable state without requiring redelivery, but possible class C effects remain UNKNOWN until authoritative read-only reconciliation; automatic progress is not guaranteed.
 7. Distinct reordered/post-terminal events cannot regress a proven terminal state.
 8. Confirmed `CANCELLED` is terminal operational state; ambiguous cancellation is `UNKNOWN`; neither state restores consumed authority.
 9. Recovery restores project truth from GitHub and operational attempt/dedupe/pending-delivery/continuation-checkpoint state only from allowed runtime store.
@@ -484,7 +519,7 @@ Fallback is allowed only to candidates passing the **same** TaskRequirements/gov
 
 ## 11. Implementation slices
 
-After Revision 2 approval, an approved Decision Record covering this new orchestration component, and a separate bounded EA:
+After current Revision 3 approval, an approved Decision Record covering this new orchestration component, and a separate bounded EA:
 
 ### Slice A — trusted pure contracts/router
 
@@ -501,7 +536,7 @@ After Revision 2 approval, an approved Decision Record covering this new orchest
 - canonical event hash/dedupe with race-safe acceptance;
 - exact receipt correlation;
 - monotonic attempt state including `FAILED_NO_DISPATCH`, confirmed cancellation and authoritative UNKNOWN reconciliation;
-- durable idempotent accepted-event continuation checkpoints + crash resumption;
+- accepted-event continuation checkpoints, per-effect identity/ownership and A/B/C destination contracts with fail-closed crash recovery;
 - InvocationEnvelope/Receipt + full S-0010 grant tuple;
 - bounded polling/read-only reconciliation.
 
@@ -554,11 +589,19 @@ One bounded flow: CEO goal → trusted task/authority → auto selection → dur
 - atomic event acceptance creates exactly one continuation checkpoint bound to exact dedupe key/hash + task/run/attempt;
 - crash immediately after accepted-state/checkpoint commit resumes the same checkpoint after reconstruction;
 - crash after GitHub/HEAD validation, result validation, evidence persistence, and immediately before/after next-step durable completion is covered by fixed tests;
-- replay while checkpoint `PENDING` or `IN_PROGRESS` resumes/idempotently joins the same work and cannot run a second continuation;
+- replay while checkpoint `PENDING` or `IN_PROGRESS` inspects the same effect records; safe recovery joins the same work while possible class C effects become UNKNOWN;
 - replay after checkpoint `COMPLETED` is no-op;
 - recovery scans incomplete checkpoints even with no provider redelivery;
 - resumed checkpoint re-reads current GitHub/HEAD/authority and blocks stale/revoked continuation;
-- concurrent replays cannot obtain two continuation claims.
+- concurrent replays cannot obtain two continuation claims; former-owner fencing is tested, including a delayed old sender after lease expiry;
+- class A: concurrent same-key/same-payload requests have one logical effect; changed payload, expired key retention, different destination and duplicate rejection without read-back cannot silently succeed or create a replacement key;
+- class B: crash before commit proves no effect; crash after commit leaves effect and completion together; an external HTTP call cannot qualify as the same transaction;
+- class C: crash before external call but after DISPATCHING, crash after effect/before completion, accepted request with lost reply, and cancellation race all forbid automatic resend until authoritative final reconciliation;
+- class C NO_EFFECT proof excludes queued/in-flight/former-owner effects; empty search, temporary 404, duplicate error and timeout remain UNKNOWN;
+- GitHub Draft PR/comment/review request, model/API/paid invocation, provider job and evidence writes each have a tested trusted destination declaration; unsupported guarantees default to C;
+- one completed effect followed by another ambiguous effect never repeats the first; changing logical slot payload/identity fails closed;
+- S-0010 retries=0 forbids a second model request even with class A support or NO_EFFECT evidence; grant state is never reset;
+- stale/revoked bindings block recovered continuation and positive review-gate use while preserving historical effect evidence.
 
 ### Review compatibility
 
@@ -595,8 +638,8 @@ Implementation is proven only if:
 6. Router is deterministic and explainable under candidate permutations.
 7. At least two distinct adapters pass the same contracts.
 8. One completion can advance one already-authorized workflow step without manual CEO `проверь`.
-9. Event dedupe, race-safe acceptance, exact receipt correlation, monotonic attempt state and durable resumable continuation checkpoints prevent duplicate/wrong/lost continuation.
-10. Crash/reconstruction tests prove both no silent second consequential/paid dispatch and no lost accepted continuation; authoritative UNKNOWN reconciliation cannot restore reusable grant authority.
+9. Event dedupe, race-safe acceptance, exact receipt correlation, monotonic attempt state and checkpoints preserve accepted work; Section 5.4 destination contracts prevent duplicate effects and explicitly quarantine cases where safe automatic continuation cannot be proven.
+10. Crash/reconstruction tests prove no silent second consequential/paid dispatch and no silent loss of accepted checkpoint state; class C may remain blocked instead of automatically completing. Authoritative UNKNOWN reconciliation cannot restore reusable grant authority.
 11. Independent-review routing prevents self-review from trusted producer identity.
 12. S-0009/S-0010 canonical enum/grant/exact-HEAD/durable-evidence rules remain intact.
 13. GitHub remains project SoT.
@@ -605,7 +648,7 @@ Implementation is proven only if:
 16. An approved Decision Record exists before any Slice A/B implementation begins and covers the adaptive router, normalized event processing, durable attempt/recovery state, trust boundaries, and relationship to the existing Broker architecture.
 17. Cancellation is provider-neutral and deterministic: confirmed exact-receipt cancellation maps to `AGENT_CANCELLED`/`CANCELLED`, ambiguity maps to `UNKNOWN`, and cancellation never restores consumed authority.
 18. Proven no-dispatch failure has an explicit terminal `FAILED_NO_DISPATCH` attempt/receipt state paired with canonical no-call grant handling.
-19. Accepted-event continuation is crash-resumable and at-most-once: incomplete checkpoints resume after redelivery/reconstruction, completed checkpoints no-op, and concurrent replays cannot produce duplicate continuation.
+19. At-most-once effects are established only through a verified destination idempotency contract (A), an atomic effect/completion transaction (B), or fail-closed class C handling with no automatic replay after indeterminate dispatch. Each supported effect path declares its class and passes the Section 12 crash/concurrency tests; a checkpoint alone proves neither destination idempotency nor runtime correctness.
 
 ## 14. Non-goals
 
@@ -632,10 +675,10 @@ Production route wiring, Durable Object migration, webhook deployment, secrets/c
 
 ## 16. Decision Record boundary
 
-An **approved Decision Record is mandatory before any Slice A/B implementation begins**. This is a governance prerequisite independent of whether the code lives inside the existing Broker service. The DR must cover at minimum: the adaptive router as a new orchestration component, normalized event processing, durable attempt/dedupe/recovery/continuation-checkpoint state, trust boundaries and canonical GitHub provenance, S-0009/S-0010 grant integration, failure/reconciliation/cancellation semantics, and the relationship to the existing Broker architecture. S-0011 approval alone and any later implementation EA do not waive this prerequisite.
+An **approved Decision Record is mandatory before any Slice A/B implementation begins**. This is a governance prerequisite independent of whether the code lives inside the existing Broker service. The DR must cover at minimum: the adaptive router as a new orchestration component, normalized event processing, durable attempt/dedupe/recovery/continuation-checkpoint state, trust boundaries and canonical GitHub provenance, S-0009/S-0010 grant integration, per-effect identity, destination idempotency/transaction boundaries, non-idempotent UNKNOWN semantics, failure/reconciliation/cancellation semantics, and the relationship to the existing Broker architecture. S-0011 approval alone and any later implementation EA do not waive this prerequisite.
 
 If implementation later introduces a new project/control-plane SoT, credential trust boundary, standing/chained consequential authority, automatic paid-spend policy, privileged provider authority, or materially new production event infrastructure that changes governance guarantees, the Decision Record must be revised/extended and approved before that expanded implementation.
 
 ## 17. Revision 2 review and approval
 
-Independent review is bound to exact PR HEAD `81c8859d29adc666e5ac0c1d957dd83f8e3daadb` and verified the Revision 2 post-approval hardening set. Qodo reported `0 bugs / 0 rule violations`; CEO approved Revision 2 on 2026-09-11. This approval still does not grant implementation EA, Ready, merge, Decision Record creation, deploy/promotion, LIVE, secrets/PAT mutation, Dify, authenticated production Broker calls, production Grok/xAI calls, DR-0008 lift or scope expansion.
+Historical Revision 2 CEO approval was recorded on 2026-09-11 for exact HEAD `81c8859d29adc666e5ac0c1d957dd83f8e3daadb`. It is not current clean-review evidence: fresh Qodo review of the approval-sync HEAD `99bdcfb08420a626499a621e03b351d7a05832ec` confirmed the external-effect replay finding (1 bug / 0 rule violations; PR #122 comment #5632980920). Revision 3 requires its own completed exact-HEAD review and separate CEO Approval; neither is inherited. This approval still does not grant implementation EA, Ready, merge, Decision Record creation, deploy/promotion, LIVE, secrets/PAT mutation, Dify, authenticated production Broker calls, production Grok/xAI calls, DR-0008 lift or scope expansion.
