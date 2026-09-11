@@ -26,7 +26,7 @@
 |---|---|---|---|
 | 1 | 2026-09-10/11 | Approved | Initial implementation-grade contract; CEO-approved after independent review. |
 | 2 | 2026-09-11 | **Approved** | Non-scope-expanding correctness hardening after post-approval exact-HEAD Qodo review: exact attempt correlation, canonical descriptor/event hashing, full S-0010 grant provenance and terminal lifecycle, canonical S-0009 result enums, deterministic routing tie-breaks, monotonic event semantics including cancellation and authoritative UNKNOWN reconciliation, explicit FAILED_NO_DISPATCH terminality, race-safe event acceptance, crash-resumable continuation checkpoints, and mandatory approved Decision Record before implementation. CEO approval was recorded for Revision 2 on exact HEAD `81c8859d29adc666e5ac0c1d957dd83f8e3daadb` on 2026-09-11; the later Qodo result exposed the external-effect replay gap addressed in Revision 3. |
-| 3 | 2026-09-11 | **In Review** | Bounded correction of the external-effect crash/replay gap: stable per-effect operation identity, trusted destination classification A/B/C, pre-dispatch durable admission, transactional completion or destination idempotency, and fail-closed indeterminate-effect reconciliation. Follow-up hardening specifies initial-dispatch admission, per-episode lifecycle/aggregate state and delimiter-safe event identity. Existing Revision 2 requirements and mandatory approved Decision Record remain. No approval carries forward. |
+| 3 | 2026-09-11 | **In Review** | Bounded correction of the external-effect crash/replay gap: stable per-effect operation identity, trusted destination classification A/B/C, pre-dispatch durable admission, transactional completion or destination idempotency, and fail-closed indeterminate-effect reconciliation. Follow-up hardening specifies initial-dispatch admission, per-episode lifecycle/aggregate state, delimiter-safe event identity, and a versioned deterministic effect-request hashing contract with fixed verification vectors. Existing Revision 2 requirements and mandatory approved Decision Record remain. No approval carries forward. |
 
 Revision 3 preserves the existing product scope and adds no runtime/implementation authority. It clarifies the safety boundary of the existing at-most-once requirement rather than promising automatic completion after every external-effect crash. Historical Revision 1/2 approvals do not approve Revision 3.
 
@@ -250,11 +250,30 @@ Ordering rules:
 
 A single continuation checkpoint or owner lock does **not** make an external side effect at-most-once. Every effect, including evidence persistence and an initial adapter dispatch under Section 8, MUST follow this section. Resuming a checkpoint means inspecting its durable effect records, not blindly repeating the next step.
 
-Before the first effect, trusted Genesis MUST persist an effect record with immutable identity/request bindings and a monotonic outcome log: stable `operation_id`; owning checkpoint identity (or initial `attempt_id` for initial dispatch); logical step/slot; exact task/run/attempt; provider/adapter and destination identity; repository/PR/expected HEAD where applicable; canonical request/payload hash; applicable authority and S-0010 grant tuple; destination-contract GitHub ref/hash; effect class; state; and eventual receipt/read-back evidence. The same logical step/slot has exactly one effect record. For continuation effects it is created atomically with ownership admission/claim of the accepted-event checkpoint; for initial dispatch it is created atomically with the PREPARED attempt and its initial-dispatch admission record, before any accepted-event checkpoint exists. Changed payload, destination or bindings for an existing slot is a conflict, not permission to generate another operation. Multi-effect continuations require a separate durable record per ordered effect; completion requires all required effect outcomes, and recovery never repeats already completed effects.
+Before the first effect, trusted Genesis MUST persist an effect record with immutable identity/request bindings and a monotonic outcome log: stable `operation_id`; owning checkpoint identity (or initial `attempt_id` for initial dispatch); logical step/slot; exact task/run/attempt; provider/adapter and destination identity; repository/PR/expected HEAD where applicable; `effect_hash_mode`; `effect_hash_version`; canonical hashing-contract GitHub ref/hash; lowercase `request_hash`; applicable authority and S-0010 grant tuple; destination-contract GitHub ref/hash; effect class; state; and eventual receipt/read-back evidence. The same logical step/slot has exactly one effect record. For continuation effects it is created atomically with ownership admission/claim of the accepted-event checkpoint; for initial dispatch it is created atomically with the PREPARED attempt and its initial-dispatch admission record, before any accepted-event checkpoint exists. Changed payload, destination, hashing contract or bindings for an existing slot is a conflict, not permission to generate another operation. Multi-effect continuations require a separate durable record per ordered effect; completion requires all required effect outcomes, and recovery never repeats already completed effects.
 
 The operation identity is assigned once by trusted Genesis before dispatch and reused across crash, callback redelivery, controller reconstruction and transport retry. It MUST NOT be regenerated from a new session/replay/run/key. Its immutable mapping binds the exact owning checkpoint/attempt and logical slot to the full request and authority tuple; a caller cannot choose a new identity to bypass that mapping.
 
-Each adapter MUST have a versioned, trusted GitHub destination-capability declaration for **each effect path**. It is separate from the closed ProviderDescriptor hash schema, is pinned by ref/hash in the effect record and dispatch evidence, and is verified before dispatch/recovery. It names the exact endpoint/destination, effect semantics, identity binding, retention/finality limits, allowed read-back, and one of the following classes. Runtime self-description cannot upgrade a class; absent or unverified guarantees mean class C, never A/B.
+#### 5.4.1 Effect request hashing contract
+
+Every effect path MUST declare exactly one trusted, versioned hashing contract before admission. v1 supports exactly two modes: `STRUCTURED_CANONICAL_JSON` and `EXACT_BYTES`. The effect record, destination-capability declaration, InvocationEnvelope, InvocationReceipt and reconciliation evidence MUST all carry the same `effect_hash_mode`, `effect_hash_version`, canonical contract ref/hash and resulting `request_hash`. Unknown/mismatched mode or version, missing contract provenance, changed destination/payload, or inability to reproduce/verify the original preimage fails closed; if dispatch may already have happened the effect/checkpoint becomes `UNKNOWN`/`INDETERMINATE_EFFECT` and automatic replay is forbidden.
+
+For v1 the SHA-256 preimage is domain separated:
+
+```text
+STRUCTURED_CANONICAL_JSON: UTF8("GENESIS_EFFECT_REQUEST\u0000v1\u0000STRUCTURED_CANONICAL_JSON\u0000") || UTF8(canonical_json)
+EXACT_BYTES:              UTF8("GENESIS_EFFECT_REQUEST\u0000v1\u0000EXACT_BYTES\u0000") || transmitted_bytes
+```
+
+The digest is SHA-256 over exactly those bytes and is encoded as 64 lowercase hexadecimal characters. No BOM, newline or transport framing is implicitly added.
+
+For `STRUCTURED_CANONICAL_JSON`, each destination hashing contract pins a closed payload schema and the exact semantic fields included in the hash. Object keys are ordered by UTF-8 bytewise lexicographic order; JSON is compact with no whitespace outside strings; strings use JSON escaping and exact Unicode scalar values with no trimming, case-folding or Unicode normalization; `null`, booleans and integer JSON numbers are encoded directly; floating/exponential numbers are rejected unless a later hashing-contract version defines them; arrays preserve order unless the pinned schema explicitly marks a field as a set, in which case duplicates are rejected and unique canonical elements are sorted bytewise before serialization. Unknown/additional fields, duplicate object keys, coercion between strings/numbers/booleans, or schema ambiguity fail closed before dispatch/recovery. Controller/runtime version is not part of the digest; the pinned hashing-contract version is.
+
+For `EXACT_BYTES`, `transmitted_bytes` is the exact byte sequence submitted to the destination after all application-layer serialization and before transport framing not defined by the destination contract. Those exact bytes (or a durable content-addressed copy/reference whose bytes can be verified) MUST be persisted before dispatch. Recovery MUST hash those original bytes; parsing and re-serializing them, normalizing text, changing compression/content encoding, or reconstructing semantically equivalent bytes is forbidden. If the original bytes cannot be verified, recovery is fail-closed/UNKNOWN and may not resend.
+
+Fixed v1 structured verification vector: canonical JSON `{"action":"comment","body":"ok"}` with the v1 `STRUCTURED_CANONICAL_JSON` domain above MUST hash to `0d9d73f8d53d215cbf25bb17c93e0053a858c7def120f2547b67d53dfa4cb86c`. The semantically identical input object with keys supplied as `body,action` MUST canonicalize to the same bytes and digest. Changing `"ok"` to `"OK"` MUST produce a different digest and conflict with an already admitted effect. Implementations MUST also include an `EXACT_BYTES` fixed vector and cross-controller recovery test proving that a newer controller using the same pinned v1 contract reproduces the same digest, while unknown versions/modes and unverifiable original bytes fail closed.
+
+Each adapter MUST have a versioned, trusted GitHub destination-capability declaration for **each effect path**. It is separate from the closed ProviderDescriptor hash schema, is pinned by ref/hash in the effect record and dispatch evidence, and is verified before dispatch/recovery. It names the exact endpoint/destination, effect semantics, identity binding, retention/finality limits, allowed read-back, the exact effect hashing mode/version + hashing-contract ref/hash, and one of the following classes. Runtime self-description cannot upgrade a class or hashing contract; absent or unverified guarantees mean class C, never A/B.
 
 | Class | Required destination guarantee | Recovery after possible effect and before completion |
 |---|---|---|
@@ -274,7 +293,7 @@ Both initial-dispatch admission claims and checkpoint recovery claims require at
 
 Read-only reconciliation for the exact operation may record:
 
-- `EFFECT_CONFIRMED`: authoritative destination receipt proves the exact immutable bindings/result; record the exact episode SUCCEEDED and derive aggregate COMPLETED without invoking it again.
+- `EFFECT_CONFIRMED`: authoritative destination receipt proves the exact immutable bindings/result, including the pinned hashing-contract identity and `request_hash`; record the exact episode SUCCEEDED and derive aggregate COMPLETED without invoking it again.
 - `NO_EFFECT`: record that episode's final NO_EFFECT only when authoritative final evidence proves neither an accepted effect nor any in-flight/queued/old-owner request can still produce it. An empty search, temporary 404, missing local receipt, duplicate rejection, timeout or expired lease is insufficient.
 - unknown/conflicting outcome: retain episode UNKNOWN / aggregate INDETERMINATE_EFFECT and the owning admission/checkpoint's UNKNOWN quarantine; no success, replay, automatic expiry or new identity.
 
@@ -421,6 +440,10 @@ Adapter never chooses governance/budget policy and never expands authority.
   "attempt_id": "globally-unique-string",
   "provider_id": "string",
   "adapter_id": "string",
+  "effect_hash_mode": "STRUCTURED_CANONICAL_JSON|EXACT_BYTES",
+  "effect_hash_version": "v1",
+  "effect_hash_contract_ref": "github:ref",
+  "effect_hash_contract_hash": "sha256",
   "request_hash": "sha256",
   "routing_policy_ref": "string",
   "authority_ref": "string|null",
@@ -444,6 +467,10 @@ Adapter never chooses governance/budget policy and never expands authority.
   "attempt_id": "string",
   "provider_id": "string",
   "adapter_id": "string",
+  "effect_hash_mode": "STRUCTURED_CANONICAL_JSON|EXACT_BYTES",
+  "effect_hash_version": "v1",
+  "effect_hash_contract_ref": "github:ref",
+  "effect_hash_contract_hash": "sha256",
   "request_hash": "sha256",
   "authority_ref": "string|null",
   "grant_id": "string|null",
@@ -458,11 +485,11 @@ Adapter never chooses governance/budget policy and never expands authority.
 }
 ```
 
-For S-0010-bound work, `grant_id + manifest_hash + issuance_digest` MUST match the verified TaskRequirements tuple through routing decision, envelope, durable receipt, dispatch admission, reconciliation and review evidence. Any mismatch blocks dispatch/recovery and cannot mint/release authority.
+For every effect, `effect_hash_mode + effect_hash_version + effect_hash_contract_ref + effect_hash_contract_hash + request_hash` MUST match the admitted effect record through routing/dispatch, durable receipt and reconciliation. Any mismatch blocks dispatch/recovery and, when prior dispatch cannot be excluded, quarantines the effect as UNKNOWN. For S-0010-bound work, `grant_id + manifest_hash + issuance_digest` MUST also match the verified TaskRequirements tuple through routing decision, envelope, durable receipt, dispatch admission, reconciliation and review evidence. Any mismatch blocks dispatch/recovery and cannot mint/release authority.
 
 Write ordering and S-0010 grant terminalization:
 
-1. Atomically persist the exact `PREPARED` attempt with task/run/provider/adapter/request/authority tuple, initial-dispatch admission record, initial-effect record and episode 1 as required by Section 5.4 before external dispatch. If provider supports a caller-generated stable non-secret idempotency/correlation identity, persist it in this PREPARED record before dispatch.
+1. Atomically persist the exact `PREPARED` attempt with task/run/provider/adapter/request/authority tuple, initial-dispatch admission record, initial-effect record and episode 1 as required by Section 5.4 before external dispatch. The persisted request tuple includes the exact hashing-contract identity and digest; `EXACT_BYTES` additionally persists/verifiably references the exact outgoing bytes before dispatch. If provider supports a caller-generated stable non-secret idempotency/correlation identity, persist it in this PREPARED record before dispatch.
 2. For S-0010-bound reviewer work, atomically reserve the exact canonical grant as `RESERVED` for this exact durable `attempt_id` and receipt identity before model dispatch. Generic orchestration may not skip or collapse this reservation.
 3. Dispatch only the exact persisted `PREPARED` attempt bound to that `RESERVED` grant, after Section 5.4 effect admission for its initial-dispatch slot. A second controller cannot dispatch the reserved attempt merely because completion is missing.
 4. Once dispatch occurrence is proven, atomically transition the authoritative grant ledger for that exact attempt from `RESERVED` to `CONSUMED`, then persist/confirm `DISPATCH_CONFIRMED` with stable external/reconciliation identity before reporting success upstream. A successful reviewer invocation may never remain merely `RESERVED`. If a provider callback races this persistence, Section 5.2 requires quarantine/pending handling and forbids committing accepted dedupe state until exact receipt correlation succeeds.
@@ -592,6 +619,15 @@ One bounded flow: CEO goal → trusted task/authority → auto selection → dur
 - post-terminal events cannot trigger second continuation;
 - provider sequence regression/no-sequence reconciliation paths tested.
 
+### Effect hashing
+
+- fixed v1 `STRUCTURED_CANONICAL_JSON` vector `{"action":"comment","body":"ok"}` produces `0d9d73f8d53d215cbf25bb17c93e0053a858c7def120f2547b67d53dfa4cb86c` under the exact domain/preimage rules in Section 5.4.1;
+- input key-order permutations of the same structured request canonicalize to the same bytes/digest;
+- changed semantic payload produces a different digest and conflicts with an existing admitted logical slot;
+- duplicate/unknown fields, unsupported numeric forms, contract ref/hash mismatch, unknown hashing mode/version and schema ambiguity fail closed before replay;
+- `EXACT_BYTES` hashes the exact durable outgoing bytes; parsed/re-serialized or normalized variants are not equivalent and unverifiable original bytes become UNKNOWN/no replay;
+- controller replacement/recovery using the same pinned hashing contract reproduces the exact digest; changing controller implementation alone cannot change request identity.
+
 ### Continuation crash/replay
 
 - atomic event acceptance creates exactly one continuation checkpoint bound to exact dedupe key/hash + task/run/attempt;
@@ -660,6 +696,7 @@ Implementation is proven only if:
 17. Cancellation is provider-neutral and deterministic: confirmed exact-receipt cancellation maps to `AGENT_CANCELLED`/`CANCELLED`, ambiguity maps to `UNKNOWN`, and cancellation never restores consumed authority.
 18. Proven no-dispatch failure has an explicit terminal `FAILED_NO_DISPATCH` attempt/receipt state paired with canonical no-call grant handling.
 19. At-most-once effects are established only through a verified destination idempotency contract (A), an atomic effect/completion transaction (B), or fail-closed class C handling with no automatic replay after indeterminate dispatch. Each supported effect path declares its class and passes the Section 12 crash/concurrency tests; a checkpoint alone proves neither destination idempotency nor runtime correctness.
+20. Every effect path pins exactly one supported hashing mode/version and canonical contract ref/hash; fixed vectors prove deterministic digest reproduction across key ordering and controller recovery, while contract mismatch, changed payload or unverifiable exact bytes fail closed and never authorize replay.
 
 ## 14. Non-goals
 
