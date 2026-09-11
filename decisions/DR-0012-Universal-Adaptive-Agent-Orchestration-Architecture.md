@@ -14,7 +14,7 @@ Universal Adaptive Agent Orchestration Architecture
 
 ## Дата
 
-2026-09-12
+2026-09-11
 
 ## Автор предложения
 
@@ -25,6 +25,8 @@ ChatGPT — COO, по поручению CEO Genesis AI
 # Контекст
 
 S-0011 Revision 3 определяет provider-neutral Universal Adaptive Agent Orchestration и уже одобрена CEO после независимого exact-HEAD review. Спецификация требует отдельный принятый Decision Record до начала Slice A/B implementation.
+
+На момент создания этого Proposed DR одобренный S-0011 Revision 3 находится в Draft PR #122 на approval-sync HEAD `c2e3c91377764a5a689e620a9a962a03cac5a585`, а current `main` ещё не содержит S-0011. Поэтому этот DR может проходить предварительный review, но **не может быть CEO Accepted, merged или использован как prerequisite для implementation**, пока PR #122 не будет отдельно Ready/merged и DR-0012 не будет повторно сверён с S-0011 из нового current `main`. DR-0012 не копирует S-0011 в свой scope и не расширяет двухфайловый docs-only PR.
 
 Genesis уже имеет существующий Broker, GitHub-backed Source of Truth, independent-review contracts S-0009/S-0010, F1/F2 reviewer-runtime work и ограниченные adapter paths для Codex, Grok/xAI и других исполнителей. Новая capability не должна создавать второй control plane или второй Source of Truth. Она должна собирать существующие границы в одну детерминированную orchestration architecture.
 
@@ -376,6 +378,8 @@ Production wiring/adapters/live proof remain separate later stages/gates.
 - DR-0008 сохранён без ослабления;
 - реалистичность Slice A/B как bounded implementation.
 
+Кроме того, перед CEO Acceptance DR-0012 current `main` MUST содержать Approved S-0011 Revision 3, а review DR-0012 MUST быть повторён/подтверждён на exact DR HEAD против этого canonical main artifact. Preliminary review, выполненный пока S-0011 находится только в Draft PR #122, не является достаточным acceptance evidence.
+
 ---
 
 # Не разрешено этим DR
@@ -410,4 +414,4 @@ Production wiring/adapters/live proof remain separate later stages/gates.
 
 # История изменений
 
-- 2026-09-12 — создан Proposed DR-0012 на основании CEO-approved S-0011 Revision 3. Acceptance и implementation authority не выданы.
+- 2026-09-11 — создан Proposed DR-0012 на основании CEO-approved S-0011 Revision 3. S-0011 остаётся в Draft PR #122; DR-0012 не может быть принят или использован как implementation prerequisite до отдельного merge S-0011 в `main` и повторной exact-HEAD проверки. Acceptance и implementation authority не выданы.
