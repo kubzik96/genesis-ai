@@ -22,7 +22,7 @@
 | Revision | Date | Status | Change |
 |---|---|---|---|
 | 1 | 2026-09-10/11 | Approved | Initial implementation-grade contract; CEO-approved after independent review. |
-| 2 | 2026-09-11 | **In Review** | Non-scope-expanding correctness hardening after post-approval exact-HEAD Qodo review: exact attempt correlation, canonical descriptor/event hashing, full S-0010 grant provenance, canonical S-0009 result enums, deterministic routing tie-breaks, and monotonic terminal-event semantics. Requires fresh independent review and CEO approval before implementation EA. |
+| 2 | 2026-09-11 | **In Review** | Non-scope-expanding correctness hardening after post-approval exact-HEAD Qodo review: exact attempt correlation, canonical descriptor/event hashing, full S-0010 grant provenance and terminal lifecycle, canonical S-0009 result enums, deterministic routing tie-breaks, monotonic terminal-event semantics, and mandatory approved Decision Record before implementation. Requires fresh independent review and CEO approval before implementation EA. |
 
 Revision 2 does not broaden product scope or grant implementation/runtime authority. Where Revision 2 clarifies a Revision 1 ambiguity, the stricter fail-closed rule in Revision 2 governs.
 
@@ -387,16 +387,17 @@ Adapter never chooses governance/budget policy and never expands authority.
 
 For S-0010-bound work, `grant_id + manifest_hash + issuance_digest` MUST match the verified TaskRequirements tuple through routing decision, envelope, durable receipt, dispatch admission, reconciliation and review evidence. Any mismatch blocks dispatch/recovery and cannot mint/release authority.
 
-Write ordering:
+Write ordering and S-0010 grant terminalization:
 
 1. Persist exact `PREPARED` attempt with task/run/provider/adapter/request/authority tuple before external dispatch.
-2. Reserve/consume applicable canonical grant according to its authoritative lifecycle before model dispatch.
-3. Dispatch only exact persisted PREPARED attempt.
-4. Persist provider acknowledgement as `DISPATCH_CONFIRMED` with stable external/reconciliation identity before reporting success upstream.
-5. Proven deterministic pre-dispatch failure → `FAILED_NO_DISPATCH`.
-6. Uncertain dispatch due crash/timeout/response loss → `UNKNOWN`; no automatic second paid/consequential/non-idempotent invoke.
-7. Reconciliation is read-only; only provider-supported evidence may resolve state.
-8. UNKNOWN is never TTL-cleared into reusable authority.
+2. For S-0010-bound reviewer work, atomically reserve the exact canonical grant as `RESERVED` for this exact durable `attempt_id` and receipt identity before model dispatch. Generic orchestration may not skip or collapse this reservation.
+3. Dispatch only the exact persisted `PREPARED` attempt bound to that `RESERVED` grant.
+4. Once dispatch occurrence is proven, atomically transition the authoritative grant ledger for that exact attempt from `RESERVED` to `CONSUMED`, then persist/confirm `DISPATCH_CONFIRMED` with stable external/reconciliation identity before reporting success upstream. A successful reviewer invocation may never remain merely `RESERVED`.
+5. If deterministic evidence proves failure occurred before any external dispatch, atomically close the bound grant as `CLOSED_NO_CALL` and mark the receipt `FAILED_NO_DISPATCH`; only this state is eligible for any later retry/fallback evaluation under the canonical policy.
+6. If crash/timeout/response loss makes dispatch occurrence indeterminate, atomically record the bound grant lifecycle as `UNKNOWN` (or preserve the canonical S-0010 unknown-equivalent state) and the receipt as `UNKNOWN`; no automatic second paid/consequential/non-idempotent invoke is allowed.
+7. Grant transition and receipt transition MUST be bound to the same `task_id + run_id + attempt_id + grant_id + manifest_hash + issuance_digest + request_hash`. Any mismatch or partial write is fail-closed and requires read-only reconciliation.
+8. Reconciliation is read-only and may resolve `UNKNOWN` only from provider-supported evidence plus canonical grant evidence; it cannot mint a new grant or silently reset a consumed/closed/unknown grant.
+9. UNKNOWN is never TTL-cleared into reusable authority.
 
 ## 9. Event-first continuation and fallback
 
@@ -439,7 +440,7 @@ Fallback is allowed only to candidates passing the **same** TaskRequirements/gov
 
 ## 11. Implementation slices
 
-After Revision 2 approval and separate EA:
+After Revision 2 approval, an approved Decision Record covering this new orchestration component, and a separate bounded EA:
 
 ### Slice A — trusted pure contracts/router
 
@@ -511,6 +512,9 @@ One bounded flow: CEO goal → trusted task/authority → auto selection → dur
 
 - full `grant_id + manifest_hash + issuance_digest` preserved from TaskRequirements through receipt/evidence;
 - any tuple-member mismatch after reconstruction fails closed;
+- S-0010 grant is `RESERVED` before reviewer dispatch and is terminalized for the same attempt as `CONSUMED`, `CLOSED_NO_CALL`, or `UNKNOWN` according to proven dispatch outcome;
+- a successful dispatch cannot remain in `RESERVED`;
+- grant/receipt partial-write or identity mismatch fails closed into reconciliation, never a second dispatch;
 - PREPARED before dispatch and DISPATCH_CONFIRMED before upstream success;
 - crash/response loss can become UNKNOWN but never silent second consequential dispatch;
 - S-0010 one-consumption semantics preserved.
@@ -534,6 +538,7 @@ Implementation is proven only if:
 13. GitHub remains project SoT.
 14. Full affected test suite is green and independent review binds exact PR HEAD.
 15. Ready/merge/deploy/LIVE remain separate CEO gates.
+16. An approved Decision Record exists before any Slice A/B implementation begins and covers the adaptive router, normalized event processing, durable attempt/recovery state, trust boundaries, and relationship to the existing Broker architecture.
 
 ## 14. Non-goals
 
@@ -560,8 +565,10 @@ Production route wiring, Durable Object migration, webhook deployment, secrets/c
 
 ## 16. Decision Record boundary
 
-No new DR is required for Slice A/B only while implementation remains a thin provider-neutral layer inside existing GitHub SoT/Broker boundaries. Stop for new/revised DR before any new project/control-plane SoT, credential trust boundary, standing/chained consequential authority, automatic paid-spend policy, privileged provider authority, or materially new production event infrastructure that changes governance guarantees.
+An **approved Decision Record is mandatory before any Slice A/B implementation begins**. This is a governance prerequisite independent of whether the code lives inside the existing Broker service. The DR must cover at minimum: the adaptive router as a new orchestration component, normalized event processing, durable attempt/dedupe/recovery state, trust boundaries and canonical GitHub provenance, S-0009/S-0010 grant integration, failure/reconciliation semantics, and the relationship to the existing Broker architecture. S-0011 approval alone and any later implementation EA do not waive this prerequisite.
+
+If implementation later introduces a new project/control-plane SoT, credential trust boundary, standing/chained consequential authority, automatic paid-spend policy, privileged provider authority, or materially new production event infrastructure that changes governance guarantees, the Decision Record must be revised/extended and approved before that expanded implementation.
 
 ## 17. Revision 2 review requirement
 
-Independent review must bind the exact current PR HEAD and verify at minimum the seven post-approval findings now addressed: exact receipt correlation, descriptor canonical hash, complete S-0010 grant tuple, S-0009 enum compatibility, canonical event hash, deterministic total routing order, and out-of-order/post-terminal event handling. Revision 2 remains **In Review** until that review is clean and CEO separately approves Revision 2. That approval still does not grant implementation EA.
+Independent review must bind the exact current PR HEAD and verify at minimum the seven post-approval findings now addressed plus the two subsequent governance/lifecycle findings: exact receipt correlation, descriptor canonical hash, complete S-0010 grant tuple, canonical S-0009 enum compatibility, canonical event hash, deterministic total routing order, out-of-order/post-terminal event handling, S-0010 grant terminalization, and mandatory Decision Record before implementation. Revision 2 remains **In Review** until that review is clean and CEO separately approves Revision 2. That approval still does not grant implementation EA.
