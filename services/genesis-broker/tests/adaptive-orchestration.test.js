@@ -1,95 +1,40 @@
-import { describe, it } from 'node:test';
+import { describe,it } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  EFFECT_HASH_MODE, DESTINATION_CLASS, MemoryOrchestrationStore, canonicalEventHash,
-  canonicalProviderDescriptor, hashEffectRequest, providerDescriptorHash, routeProvider, transitionAttempt,
-} from '../src/adaptive-orchestration.js';
+import { EFFECT_HASH_MODE,DESTINATION_CLASS,MemoryOrchestrationStore,canonicalEventHash,canonicalProviderDescriptor,hashEffectRequest,providerDescriptorHash,routeProvider,transitionAttempt } from '../src/adaptive-orchestration.js';
 
-const descriptor = (overrides = {}) => ({ providerId: 'grok', adapterId: 'xai', modelId: 'm1', capabilities: ['review', 'code'], roles: ['reviewer'], independenceClass: ['independent'], permissionsClass: ['read'], invocationModes: ['async'], costClass: 'metered', ...overrides });
-const resource = (overrides = {}) => ({ available: true, invokable: true, credentialReady: true, cost: { amount: 1, currency: 'USD' }, ...overrides });
-const requirements = (overrides = {}) => ({ capabilities: ['review'], roles: ['reviewer'], permissions: ['read'], independence: 'independent', authority: 'CEO_EA', criticality: 'normal', budget: { amount: 2, currency: 'USD' }, ...overrides });
-const grant = (overrides = {}) => ({ grantId: 'github:issue-comment:1', manifestHash: '1'.repeat(64), issuanceDigest: '2'.repeat(64), retries: 1, ...overrides });
-const event = (overrides = {}) => ({ sourceNamespace: 'github', providerId: 'grok', adapterId: 'xai', eventId: 'evt-1', runId: 'run-1', attemptId: 'attempt-1', payload: { verdict: 'APPROVE' }, ...overrides });
-const receipt = (overrides = {}) => ({ providerId: 'grok', adapterId: 'xai', runId: 'run-1', attemptId: 'attempt-1', ...overrides });
+const HASH_REF='github:blob:s0011-effect-v1',HASH='a'.repeat(64);
+const descriptor=(o={})=>({provider_id:'grok',adapter_id:'xai',model_id:'m1',aliases:['grok'],capabilities:['review','coding'],roles:['independent_reviewer'],independence_class:'independent',invocation_modes:['api'],permissions_class:'read_only',cost_class:'free',registry_revision:'1',registry_authority_ref:'github:blob:abc',...o});
+const resource=(o={})=>({provider_id:'grok',adapter_id:'xai',observed_at:'2026-09-12T00:00:00Z',availability:'AVAILABLE',invokable:'YES',quota_remaining:10,quota_unit:'requests',quota_state:'AVAILABLE',rate_limit_state:'CLEAR',reset_at:null,cooldown_until:null,estimated_cost_minor_units:0,currency:'USD',cost_basis:'provider_quote',latency_ms:10,credential_ready:'YES',evidence:['test'],...o});
+const req=(o={})=>({task_id:'t1',run_id:'r1',required_capabilities:['review'],required_role:'independent_reviewer',required_independence_class:'independent',artifact_producer:{provider_id:'codex',adapter_id:'github',independence_class:'executor',trusted_producer_ref:'github:pr:126'},allowed_permissions:['read_only'],budget:{paid_allowed:false,currency:'USD',max_cost_minor_units:10},authority:{required:true,authority_type:'execution_authorization',canonical_ref:'github:comment:ea',grant_id:null,manifest_hash:null,issuance_digest:null,authorized_actions:['review'],verified_state:'VERIFIED'},criticality:'normal',allowed_providers:['grok','alpha'],...o});
+const grant=(o={})=>({grant_id:'github:issue-comment:1',manifest_hash:'1'.repeat(64),issuance_digest:'2'.repeat(64),retries:1,...o});
+const event=(o={})=>({source_namespace:'github',event_id:'evt-1',event_type:'REVIEW_COMPLETED',provider_id:'grok',adapter_id:'xai',task_id:'t1',run_id:'r1',attempt_id:'a1',external_job_id:'job1',reconciliation_key:'rk1',provider_sequence:1,repository:'kubzik96/genesis-ai',pr_number:126,head_sha:'3'.repeat(40),occurred_at:'2026-09-12T00:00:00Z',source:'status_api',evidence_ref:'github:comment:1',...o});
+const receipt=(o={})=>({provider_id:'grok',adapter_id:'xai',run_id:'r1',attempt_id:'a1',external_job_id:'job1',reconciliation_key:'rk1',...o});
+const effect=(o={})=>({operation_id:'op1',owning_identity:'checkpoint:1',logical_slot:'persist-evidence',destination:'github:comment',destination_class:DESTINATION_CLASS.C,request:{mode:EFFECT_HASH_MODE.STRUCTURED,payload:{action:'comment',body:'ok'},contract_ref:HASH_REF,contract_hash:HASH},grant:grant(),...o});
 
-describe('Slice A provider contracts and deterministic router', () => {
-  it('canonicalizes descriptor set fields and preserves a fixed hash vector', () => {
-    const a = descriptor({ capabilities: ['review', 'code'], invocationModes: ['async', 'sync'] });
-    const b = { ...a, capabilities: ['code', 'review'], invocationModes: ['sync', 'async'] };
-    assert.deepEqual(canonicalProviderDescriptor(a), canonicalProviderDescriptor(b));
-    assert.equal(providerDescriptorHash(a), providerDescriptorHash(b));
-    assert.match(providerDescriptorHash(a), /^[a-f0-9]{64}$/);
-  });
-  it('candidate input permutations produce the same total-order winner', () => {
-    const a = { descriptor: descriptor({ providerId: 'zeta' }), resource: resource(), score: 5 };
-    const b = { descriptor: descriptor({ providerId: 'alpha' }), resource: resource(), score: 5 };
-    assert.equal(routeProvider({ requirements: requirements(), candidates: [a, b] }).selected.providerId, 'alpha');
-    assert.equal(routeProvider({ requirements: requirements(), candidates: [b, a] }).selected.providerId, 'alpha');
-  });
-  it('unknown security/resource state fails closed', () => {
-    const result = routeProvider({ requirements: requirements(), candidates: [{ descriptor: descriptor({ permissionsClass: undefined }), resource: resource() }] });
-    assert.equal(result.status, 'BLOCKED');
-  });
-  it('unknown or incompatible cost is rejected', () => {
-    assert.equal(routeProvider({ requirements: requirements(), candidates: [{ descriptor: descriptor(), resource: resource({ cost: undefined }) }] }).status, 'BLOCKED');
-    assert.equal(routeProvider({ requirements: requirements(), candidates: [{ descriptor: descriptor(), resource: resource({ cost: { amount: 1, currency: 'EUR' } }) }] }).status, 'BLOCKED');
-  });
+describe('Slice A',()=>{
+ it('descriptor canonicalization permutations match fixed vector',()=>{const a=descriptor({capabilities:['review','coding']}),b=descriptor({capabilities:['coding','review']});assert.deepEqual(canonicalProviderDescriptor(a),canonicalProviderDescriptor(b));assert.equal(providerDescriptorHash(a),'71cee742d855d22e776c5f973956d433fa2890b695a2dd83fb51e01bd0ad1e80');});
+ it('unknown/additional descriptor fields fail closed',()=>assert.throws(()=>canonicalProviderDescriptor({...descriptor(),surprise:true}),/INVALID_PROVIDER_DESCRIPTOR_SCHEMA/));
+ it('deterministic candidate order uses stable identity tie-break',()=>{const a={descriptor:descriptor({provider_id:'zeta'}),resource:resource({provider_id:'zeta'}),rank:[5]},b={descriptor:descriptor({provider_id:'alpha'}),resource:resource({provider_id:'alpha'}),rank:[5]};assert.equal(routeProvider({requirements:req(),candidates:[a,b]}).selected.provider_id,'alpha');assert.equal(routeProvider({requirements:req(),candidates:[b,a]}).selected.provider_id,'alpha');});
+ it('unknown security/resource state fails closed',()=>assert.equal(routeProvider({requirements:req(),candidates:[{descriptor:descriptor(),resource:resource({credential_ready:'UNKNOWN'})}]}).status,'BLOCKED'));
+ it('paid/unknown/incompatible cost fails closed',()=>{const metered=descriptor({cost_class:'metered'});assert.equal(routeProvider({requirements:req(),candidates:[{descriptor:metered,resource:resource({estimated_cost_minor_units:null,currency:null})}]}).status,'BLOCKED');assert.equal(routeProvider({requirements:req({budget:{paid_allowed:true,currency:'USD',max_cost_minor_units:10}}),candidates:[{descriptor:metered,resource:resource({estimated_cost_minor_units:1,currency:'EUR'})}]}).status,'BLOCKED');});
 });
 
-describe('Slice B event, attempt and checkpoint contracts', () => {
-  it('duplicate event creates no second continuation', () => {
-    const store = new MemoryOrchestrationStore(); const first = store.acceptEvent(event(), receipt()); const second = store.acceptEvent(event(), receipt());
-    assert.equal(first.duplicate, false); assert.equal(second.duplicate, true); assert.equal(store.checkpoints.size, 1);
-  });
-  it('same event identity with changed payload is a collision', () => {
-    const store = new MemoryOrchestrationStore(); store.acceptEvent(event(), receipt());
-    assert.throws(() => store.acceptEvent(event({ payload: { verdict: 'REQUEST_CHANGES' } }), receipt()), /EVENT_IDENTITY_COLLISION/);
-  });
-  it('delimiter/control-character identity attacks fail closed', () => assert.throws(() => canonicalEventHash(event({ eventId: 'x\nattack' })), /INVALID_EVENTID/));
-  it('wrong attempt receipt is blocked', () => assert.throws(() => new MemoryOrchestrationStore().acceptEvent(event(), receipt({ attemptId: 'stale' })), /RECEIPT_CORRELATION_MISMATCH/));
-  it('terminal attempt state cannot regress', () => { assert.equal(transitionAttempt('WAITING', 'COMPLETED'), 'COMPLETED'); assert.throws(() => transitionAttempt('COMPLETED', 'WAITING'), /ATTEMPT_TERMINAL_REGRESSION/); });
-  it('concurrent checkpoint claims have one owner', () => {
-    const store = new MemoryOrchestrationStore(); const cp = store.acceptEvent(event(), receipt()).checkpoint;
-    const first = store.claimCheckpoint(cp.id, 'controller-a'); const second = store.claimCheckpoint(cp.id, 'controller-b');
-    assert.ok(first); assert.equal(second, null); assert.throws(() => store.finishCheckpoint(cp.id, 'controller-b', first.fence, 'COMPLETED'), /STALE_CHECKPOINT_OWNER/);
-  });
+describe('Slice B events/attempts/checkpoints',()=>{
+ it('duplicate event creates exactly one continuation',()=>{const s=new MemoryOrchestrationStore(),a=s.acceptEvent(event(),receipt()),b=s.acceptEvent(event(),receipt());assert.equal(a.duplicate,false);assert.equal(b.duplicate,true);assert.equal(s.checkpoints.size,1);});
+ it('same identity changed payload conflicts',()=>{const s=new MemoryOrchestrationStore();s.acceptEvent(event(),receipt());assert.throws(()=>s.acceptEvent(event({evidence_ref:'github:comment:2'}),receipt()),/EVENT_IDENTITY_COLLISION/);});
+ it('event schema/additional fields and delimiter injection fail closed',()=>{assert.throws(()=>canonicalEventHash({...event(),extra:1}),/INVALID_EVENT_SCHEMA/);assert.throws(()=>canonicalEventHash(event({event_id:'x\nattack'})),/INVALID_EVENT_ID/);});
+ it('wrong attempt/external receipt is blocked before acceptance',()=>{const s=new MemoryOrchestrationStore();assert.throws(()=>s.acceptEvent(event(),receipt({attempt_id:'old'})),/RECEIPT_CORRELATION_MISMATCH/);assert.equal(s.events.size,0);});
+ it('terminal states do not regress; UNKNOWN needs authoritative reconciliation',()=>{assert.equal(transitionAttempt('WAITING','COMPLETED'),'COMPLETED');assert.throws(()=>transitionAttempt('COMPLETED','WAITING'),/ATTEMPT_TERMINAL_REGRESSION/);assert.throws(()=>transitionAttempt('UNKNOWN','COMPLETED'),/UNKNOWN_REQUIRES_RECONCILIATION/);assert.equal(transitionAttempt('UNKNOWN','COMPLETED',{authoritativeReconciliation:true}),'COMPLETED');});
+ it('checkpoint claim has one winner and stale fence cannot finish',()=>{const s=new MemoryOrchestrationStore(),cp=s.acceptEvent(event(),receipt()).checkpoint,a=s.claimCheckpoint(cp.id,'a');assert.equal(s.claimCheckpoint(cp.id,'b'),null);assert.throws(()=>s.finishCheckpoint(cp.id,'b',a.fence,'COMPLETED'),/STALE_CHECKPOINT_OWNER/);});
 });
 
-describe('Slice B crash-safe effects', () => {
-  it('structured key order is equivalent and fixed vector matches S-0011', () => {
-    const a = hashEffectRequest({ mode: EFFECT_HASH_MODE.STRUCTURED, payload: { action: 'comment', body: 'ok' } });
-    const b = hashEffectRequest({ mode: EFFECT_HASH_MODE.STRUCTURED, payload: { body: 'ok', action: 'comment' } });
-    assert.equal(a.digest, b.digest); assert.equal(a.digest, '0d9d73f8d53d215cbf25bb17c93e0053a858c7def120f2547b67d53dfa4cb86c');
-  });
-  it('EXACT_BYTES differs for different transmitted bytes and reproduces across controllers', () => {
-    const one = hashEffectRequest({ mode: EFFECT_HASH_MODE.BYTES, bytes: new TextEncoder().encode('abc') });
-    const two = hashEffectRequest({ mode: EFFECT_HASH_MODE.BYTES, bytes: new TextEncoder().encode('abd') });
-    const again = hashEffectRequest({ mode: EFFECT_HASH_MODE.BYTES, bytes: new Uint8Array([97, 98, 99]) });
-    assert.notEqual(one.digest, two.digest); assert.equal(one.digest, again.digest);
-  });
-  it('changed effect payload conflicts with durable binding', () => {
-    const store = new MemoryOrchestrationStore(); store.prepareEffect({ operationId: 'op', destinationClass: DESTINATION_CLASS.C, request: { mode: EFFECT_HASH_MODE.STRUCTURED, payload: { x: 1 } }, grant: grant() });
-    assert.throws(() => store.prepareEffect({ operationId: 'op', destinationClass: DESTINATION_CLASS.C, request: { mode: EFFECT_HASH_MODE.STRUCTURED, payload: { x: 2 } }, grant: grant() }), /EFFECT_BINDING_CONFLICT/);
-  });
-  it('crash before dispatch leaves PREPARED and crash after DISPATCHING reconciles class C to indeterminate', () => {
-    const store = new MemoryOrchestrationStore(); const effect = store.prepareEffect({ operationId: 'op', destinationClass: DESTINATION_CLASS.C, request: { mode: EFFECT_HASH_MODE.STRUCTURED, payload: { x: 1 } }, grant: grant() });
-    assert.equal(effect.state, 'PREPARED'); store.beginDispatch('op'); store.reconcile('op', { authoritative: false, readOnly: true }); assert.equal(effect.state, 'UNKNOWN');
-    store.reconcile('op', { authoritative: true, readOnly: true, outcome: 'AMBIGUOUS' }); assert.equal(effect.state, 'INDETERMINATE_EFFECT');
-  });
-  it('class C ambiguous dispatch cannot replay and delayed former sender must be excluded', () => {
-    const store = new MemoryOrchestrationStore(); const effect = store.prepareEffect({ operationId: 'op', destinationClass: DESTINATION_CLASS.C, request: { mode: EFFECT_HASH_MODE.STRUCTURED, payload: { x: 1 } }, grant: grant({ retries: 2 }) });
-    store.beginDispatch('op'); store.reconcile('op', { authoritative: true, readOnly: true, outcome: 'NO_EFFECT', formerSendersExcluded: true });
-    assert.throws(() => store.beginDispatch('op', { authorityAllowsRetry: true, formerSendersExcluded: false }), /RETRY_NOT_AUTHORIZED_OR_FENCED/);
-    assert.equal(store.beginDispatch('op', { authorityAllowsRetry: true, formerSendersExcluded: true }).number, 2);
-  });
-  it('S-0010 retries=0 is stricter than generic destination retry', () => {
-    const store = new MemoryOrchestrationStore(); store.prepareEffect({ operationId: 'review', destinationClass: DESTINATION_CLASS.A, request: { mode: EFFECT_HASH_MODE.STRUCTURED, payload: { review: true } }, grant: grant({ retries: 0 }) });
-    store.beginDispatch('review'); store.reconcile('review', { authoritative: true, readOnly: true, outcome: 'NO_EFFECT', formerSendersExcluded: true });
-    assert.throws(() => store.beginDispatch('review', { authorityAllowsRetry: true, formerSendersExcluded: true }), /GRANT_RETRY_FORBIDDEN/);
-  });
-  it('malformed grant/recovery state fails closed', () => {
-    const store = new MemoryOrchestrationStore();
-    assert.throws(() => store.prepareEffect({ operationId: 'bad', request: { mode: EFFECT_HASH_MODE.STRUCTURED, payload: {} }, grant: { grantId: 'x' } }), /INVALID_GRANT_TUPLE/);
-    assert.throws(() => hashEffectRequest({ mode: 'UNKNOWN', payload: {} }), /UNKNOWN_EFFECT_HASH_MODE/);
-  });
+describe('Slice B effect/recovery',()=>{
+ it('S-0011 structured fixed vector and key-order equivalence',()=>{const a=hashEffectRequest({mode:EFFECT_HASH_MODE.STRUCTURED,payload:{action:'comment',body:'ok'},contract_ref:HASH_REF,contract_hash:HASH}),b=hashEffectRequest({mode:EFFECT_HASH_MODE.STRUCTURED,payload:{body:'ok',action:'comment'},contract_ref:HASH_REF,contract_hash:HASH});assert.equal(a.request_hash,b.request_hash);assert.equal(a.request_hash,'0d9d73f8d53d215cbf25bb17c93e0053a858c7def120f2547b67d53dfa4cb86c');});
+ it('EXACT_BYTES fixed vector, mismatch and cross-controller reproduction',()=>{const args={mode:EFFECT_HASH_MODE.BYTES,bytes:new Uint8Array([97,98,99]),contract_ref:HASH_REF,contract_hash:HASH},a=hashEffectRequest(args),b=hashEffectRequest({...args,bytes:new Uint8Array([97,98,100])}),again=hashEffectRequest(args);assert.equal(a.request_hash,'e26b7fd0f00f73af813011bf47bf29d14e6471a90c598f9c8f1863f6071834a1');assert.notEqual(a.request_hash,b.request_hash);assert.equal(a.request_hash,again.request_hash);});
+ it('unknown hash contract/missing exact bytes fails closed',()=>{assert.throws(()=>hashEffectRequest({mode:EFFECT_HASH_MODE.STRUCTURED,payload:{},contract_version:'v2',contract_ref:HASH_REF,contract_hash:HASH}),/UNKNOWN_EFFECT_HASH_VERSION/);assert.throws(()=>hashEffectRequest({mode:EFFECT_HASH_MODE.BYTES,contract_ref:HASH_REF,contract_hash:HASH}),/EXACT_BYTES_REQUIRED/);});
+ it('changed effect bindings conflict',()=>{const s=new MemoryOrchestrationStore();s.prepareEffect(effect());assert.throws(()=>s.prepareEffect(effect({request:{mode:EFFECT_HASH_MODE.STRUCTURED,payload:{action:'comment',body:'changed'},contract_ref:HASH_REF,contract_hash:HASH}})),/EFFECT_BINDING_CONFLICT/);});
+ it('crash before dispatch is PLANNED; possible class-C dispatch becomes indeterminate/no replay',()=>{const s=new MemoryOrchestrationStore(),e=s.prepareEffect(effect());assert.equal(e.state,'PLANNED');s.beginDispatch('op1');s.reconcile('op1',{authoritative:false,read_only:true});assert.equal(e.state,'INDETERMINATE_EFFECT');assert.throws(()=>s.beginDispatch('op1'),/EFFECT_NOT_REPLAYABLE/);});
+ it('NO_EFFECT retry requires authority and effective former-sender exclusion',()=>{const s=new MemoryOrchestrationStore();s.prepareEffect(effect({grant:grant({retries:2})}));s.beginDispatch('op1');s.reconcile('op1',{authoritative:true,read_only:true,outcome:'NO_EFFECT',former_senders_excluded:true});assert.throws(()=>s.beginDispatch('op1',{authorityAllowsRetry:true,formerSendersExcluded:false}),/RETRY_NOT_AUTHORIZED_OR_FENCED/);assert.equal(s.beginDispatch('op1',{authorityAllowsRetry:true,formerSendersExcluded:true}).episode_no,2);});
+ it('S-0010 retries=0 overrides class-A retry',()=>{const s=new MemoryOrchestrationStore();s.prepareEffect(effect({destination_class:DESTINATION_CLASS.A,grant:grant({retries:0})}));s.beginDispatch('op1');s.reconcile('op1',{authoritative:true,read_only:true,outcome:'NO_EFFECT',former_senders_excluded:true});assert.throws(()=>s.beginDispatch('op1',{authorityAllowsRetry:true,formerSendersExcluded:true}),/GRANT_RETRY_FORBIDDEN/);});
+ it('malformed partial recovery state fails closed',()=>assert.throws(()=>new MemoryOrchestrationStore().prepareEffect(effect({grant:{grant_id:'x'}})),/INVALID_GRANT_TUPLE/));
 });
