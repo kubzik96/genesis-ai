@@ -23,7 +23,7 @@
 | [DR-0009](DR-0009-Private-Dify-Broker-Tool-Plugin.md) | Private Dify Genesis Broker Tool Plugin | Принято | 2026-08-23 |
 | [DR-0010](DR-0010-Genesis-Long-Term-Project-Memory-V1.md) | Genesis Long-Term Project Memory V1 | Принято | 2026-09-02 |
 | [DR-0011](DR-0011-Genesis-Independent-Grok-Reviewer.md) | Genesis Independent Grok Reviewer | Принято | 2026-09-03 |
-| [DR-0012](DR-0012-Universal-Adaptive-Agent-Orchestration-Architecture.md) | Universal Adaptive Agent Orchestration Architecture | Предложено | 2026-09-11 |
+| [DR-0012](DR-0012-Universal-Adaptive-Agent-Orchestration-Architecture.md) | Universal Adaptive Agent Orchestration Architecture | Принято | 2026-09-11 |
 
 ## Следующий номер
 
