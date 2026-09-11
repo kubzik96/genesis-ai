@@ -1,183 +1,126 @@
 import { createHash } from 'node:crypto';
 
 const DIGEST = /^[a-f0-9]{64}$/;
+const SHA40 = /^[a-f0-9]{40}$/;
 const CONTROL = /[\u0000-\u001f\u007f]/;
-const SECURITY_FIELDS = ['capabilities', 'roles', 'independenceClass', 'permissionsClass', 'invocationModes', 'costClass'];
+const PROVIDER_KEYS = ['provider_id','adapter_id','model_id','aliases','capabilities','roles','independence_class','invocation_modes','permissions_class','cost_class','registry_revision','registry_authority_ref'];
+const EVENT_KEYS = ['source_namespace','event_id','event_type','provider_id','adapter_id','task_id','run_id','attempt_id','external_job_id','reconciliation_key','provider_sequence','repository','pr_number','head_sha','occurred_at','source','evidence_ref'];
+const EVENT_TYPES = new Set(['AGENT_SELECTED','AGENT_STARTED','AGENT_WAITING','AGENT_COMPLETED','AGENT_FAILED','AGENT_CANCELLED','REVIEW_STARTED','REVIEW_COMPLETED','LIMIT_EXHAUSTED','RATE_LIMITED','RESET_AT','PROVIDER_UNAVAILABLE']);
+const TERMINAL_EVENT_TYPES = new Set(['AGENT_COMPLETED','AGENT_FAILED','AGENT_CANCELLED','REVIEW_COMPLETED']);
+export const EFFECT_HASH_MODE = Object.freeze({ STRUCTURED:'STRUCTURED_CANONICAL_JSON', BYTES:'EXACT_BYTES' });
+export const DESTINATION_CLASS = Object.freeze({ A:'IDEMPOTENT_DESTINATION', B:'TRANSACTIONAL_EFFECT', C:'NON_IDEMPOTENT_NON_TRANSACTIONAL' });
+const ATTEMPT_FINAL = new Set(['COMPLETED','FAILED','FAILED_NO_DISPATCH','CANCELLED']);
+const CHECKPOINT_FINAL = new Set(['COMPLETED','BLOCKED','UNKNOWN']);
 
-export const EFFECT_HASH_MODE = Object.freeze({ STRUCTURED: 'STRUCTURED_CANONICAL_JSON', BYTES: 'EXACT_BYTES' });
-export const DESTINATION_CLASS = Object.freeze({ A: 'IDEMPOTENT_DESTINATION', B: 'TRANSACTIONAL_EFFECT', C: 'NON_IDEMPOTENT_NON_TRANSACTIONAL' });
-export const ATTEMPT_TERMINAL = new Set(['COMPLETED', 'FAILED', 'FAILED_NO_DISPATCH', 'CANCELLED', 'UNKNOWN']);
-export const CHECKPOINT_TERMINAL = new Set(['COMPLETED', 'BLOCKED', 'UNKNOWN']);
+function fail(code){const e=new Error(code);e.code=code;throw e;}
+function plain(v){return v&&typeof v==='object'&&!Array.isArray(v)&&Object.getPrototypeOf(v)===Object.prototype;}
+function exactKeys(v,keys,code){if(!plain(v)||Object.keys(v).some(k=>!keys.includes(k))||keys.some(k=>!(k in v)))fail(code);}
+function text(v,code,{nullable=false}={}){if(nullable&&v===null)return null;if(typeof v!=='string'||!v||CONTROL.test(v))fail(code);return v;}
+function setStrings(v,code){if(!Array.isArray(v))fail(code);const out=v.map(x=>text(x,code));if(new Set(out).size!==out.length)fail(code);return out.sort(byteCompare);}
+function byteCompare(a,b){return Buffer.compare(Buffer.from(a,'utf8'),Buffer.from(b,'utf8'));}
+export function canonicalJson(v){
+  if(v===null||typeof v==='boolean'||typeof v==='string')return JSON.stringify(v);
+  if(typeof v==='number'){if(!Number.isSafeInteger(v))fail('NON_CANONICAL_NUMBER');return String(v);}
+  if(Array.isArray(v))return `[${v.map(canonicalJson).join(',')}]`;
+  if(!plain(v))fail('NON_CANONICAL_VALUE');
+  return `{${Object.keys(v).sort(byteCompare).map(k=>`${JSON.stringify(k)}:${canonicalJson(v[k])}`).join(',')}}`;
+}
+export function sha256(v){return createHash('sha256').update(v).digest('hex');}
 
-function fail(code) { const error = new Error(code); error.code = code; throw error; }
-function plain(value) { return value && typeof value === 'object' && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype; }
-function text(value, code) { if (typeof value !== 'string' || !value || CONTROL.test(value)) fail(code); return value; }
-function sortedUnique(values, code) {
-  if (!Array.isArray(values) || values.length === 0) fail(code);
-  const out = values.map(v => text(v, code)).sort();
-  if (new Set(out).size !== out.length) fail(code);
-  return out;
-}
-export function canonicalJson(value) {
-  if (value === null || typeof value === 'boolean' || typeof value === 'string') return JSON.stringify(value);
-  if (typeof value === 'number') { if (!Number.isFinite(value)) fail('NON_CANONICAL_NUMBER'); return JSON.stringify(value); }
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
-  if (!plain(value)) fail('NON_CANONICAL_VALUE');
-  return `{${Object.keys(value).sort().map(k => `${JSON.stringify(k)}:${canonicalJson(value[k])}`).join(',')}}`;
-}
-export function sha256(value) { return createHash('sha256').update(value).digest('hex'); }
-
-export function canonicalProviderDescriptor(input) {
-  if (!plain(input)) fail('INVALID_PROVIDER_DESCRIPTOR');
-  const providerId = text(input.providerId, 'INVALID_PROVIDER_ID');
-  const adapterId = text(input.adapterId, 'INVALID_ADAPTER_ID');
-  const descriptor = { providerId, adapterId };
-  for (const key of SECURITY_FIELDS) {
-    if (key === 'costClass') descriptor[key] = text(input[key], `INVALID_${key.toUpperCase()}`);
-    else descriptor[key] = sortedUnique(input[key], `INVALID_${key.toUpperCase()}`);
-  }
-  if (input.modelId != null) descriptor.modelId = text(input.modelId, 'INVALID_MODEL_ID');
-  return descriptor;
-}
-export function providerDescriptorHash(input) { return sha256(canonicalJson(canonicalProviderDescriptor(input))); }
-
-export function validateResourceSnapshot(input) {
-  if (!plain(input)) fail('INVALID_RESOURCE_SNAPSHOT');
-  for (const key of ['available', 'invokable', 'credentialReady']) if (typeof input[key] !== 'boolean') fail(`UNKNOWN_${key.toUpperCase()}`);
-  const cost = input.cost;
-  if (cost != null && (!plain(cost) || !Number.isFinite(cost.amount) || cost.amount < 0 || typeof cost.currency !== 'string' || !cost.currency)) fail('INVALID_COST');
-  return { available: input.available, invokable: input.invokable, credentialReady: input.credentialReady, quota: input.quota ?? 'UNKNOWN', rateLimit: input.rateLimit ?? 'UNKNOWN', latency: input.latency ?? 'UNKNOWN', cost: cost ?? 'UNKNOWN' };
-}
-export function validateTaskRequirements(input) {
-  if (!plain(input)) fail('INVALID_TASK_REQUIREMENTS');
-  const required = {
-    capabilities: sortedUnique(input.capabilities, 'INVALID_CAPABILITIES'),
-    roles: sortedUnique(input.roles, 'INVALID_ROLES'),
-    permissions: sortedUnique(input.permissions, 'INVALID_PERMISSIONS'),
-    independence: text(input.independence, 'INVALID_INDEPENDENCE'),
-    authority: text(input.authority, 'INVALID_AUTHORITY'),
-    criticality: text(input.criticality, 'INVALID_CRITICALITY'),
+export function canonicalProviderDescriptor(input){
+  exactKeys(input,PROVIDER_KEYS,'INVALID_PROVIDER_DESCRIPTOR_SCHEMA');
+  return {
+    adapter_id:text(input.adapter_id,'INVALID_ADAPTER_ID'),
+    aliases:setStrings(input.aliases,'INVALID_ALIASES'),
+    capabilities:setStrings(input.capabilities,'INVALID_CAPABILITIES'),
+    cost_class:text(input.cost_class,'INVALID_COST_CLASS'),
+    independence_class:text(input.independence_class,'INVALID_INDEPENDENCE_CLASS'),
+    invocation_modes:setStrings(input.invocation_modes,'INVALID_INVOCATION_MODES'),
+    model_id:text(input.model_id,'INVALID_MODEL_ID',{nullable:true}),
+    permissions_class:text(input.permissions_class,'INVALID_PERMISSIONS_CLASS'),
+    provider_id:text(input.provider_id,'INVALID_PROVIDER_ID'),
+    registry_authority_ref:text(input.registry_authority_ref,'INVALID_REGISTRY_AUTHORITY_REF'),
+    registry_revision:text(input.registry_revision,'INVALID_REGISTRY_REVISION'),
+    roles:setStrings(input.roles,'INVALID_ROLES'),
   };
-  if (input.allowedProviders != null) required.allowedProviders = sortedUnique(input.allowedProviders, 'INVALID_ALLOWED_PROVIDERS');
-  if (input.budget != null) {
-    if (!plain(input.budget) || !Number.isFinite(input.budget.amount) || input.budget.amount < 0 || typeof input.budget.currency !== 'string' || !input.budget.currency) fail('INVALID_BUDGET');
-    required.budget = { amount: input.budget.amount, currency: input.budget.currency };
-  }
-  return required;
 }
-export function validateAuthorityProducer({ authority, producer }) {
-  text(authority, 'INVALID_AUTHORITY');
-  if (!plain(producer)) fail('INVALID_PRODUCER');
-  return { authority, producerId: text(producer.id, 'INVALID_PRODUCER_ID'), independence: text(producer.independence, 'INVALID_PRODUCER_INDEPENDENCE') };
+export function providerDescriptorHash(input){return sha256(Buffer.from(canonicalJson(canonicalProviderDescriptor(input)),'utf8'));}
+
+export function validateResourceSnapshot(s){
+  if(!plain(s))fail('INVALID_RESOURCE_SNAPSHOT');
+  text(s.provider_id,'INVALID_RESOURCE_PROVIDER');text(s.adapter_id,'INVALID_RESOURCE_ADAPTER');text(s.observed_at,'INVALID_OBSERVED_AT');
+  if(!['AVAILABLE','DEGRADED','UNAVAILABLE','UNKNOWN'].includes(s.availability))fail('INVALID_AVAILABILITY');
+  if(!['YES','NO','UNKNOWN'].includes(s.invokable)||!['YES','NO','UNKNOWN'].includes(s.credential_ready))fail('INVALID_READINESS');
+  if(!['AVAILABLE','EXHAUSTED','UNKNOWN'].includes(s.quota_state)||!['CLEAR','RATE_LIMITED','UNKNOWN'].includes(s.rate_limit_state))fail('INVALID_RESOURCE_STATE');
+  if(s.estimated_cost_minor_units!==null&&(!Number.isSafeInteger(s.estimated_cost_minor_units)||s.estimated_cost_minor_units<0))fail('INVALID_COST');
+  if(s.estimated_cost_minor_units!==null&&!s.currency)fail('INVALID_COST_CURRENCY');
+  return s;
 }
-function containsAll(have, need) { return need.every(v => have.includes(v)); }
-export function routeProvider({ requirements, candidates }) {
-  const req = validateTaskRequirements(requirements);
-  if (!Array.isArray(candidates)) fail('INVALID_CANDIDATES');
-  const admitted = [];
-  const rejected = [];
-  for (const candidate of candidates) {
-    try {
-      const descriptor = canonicalProviderDescriptor(candidate.descriptor);
-      const resource = validateResourceSnapshot(candidate.resource);
-      let reason = null;
-      if (!resource.available || !resource.invokable || !resource.credentialReady) reason = 'RESOURCE_NOT_READY';
-      else if (!containsAll(descriptor.capabilities, req.capabilities) || !containsAll(descriptor.roles, req.roles) || !containsAll(descriptor.permissionsClass, req.permissions)) reason = 'INCOMPATIBLE_CAPABILITY_OR_PERMISSION';
-      else if (!descriptor.independenceClass.includes(req.independence)) reason = 'INCOMPATIBLE_INDEPENDENCE';
-      else if (req.allowedProviders && !req.allowedProviders.includes(descriptor.providerId)) reason = 'PROVIDER_NOT_ALLOWED';
-      else if (req.budget) {
-        if (resource.cost === 'UNKNOWN') reason = 'UNKNOWN_COST';
-        else if (resource.cost.currency !== req.budget.currency || resource.cost.amount > req.budget.amount) reason = 'INCOMPATIBLE_COST';
-      }
-      if (reason) rejected.push({ providerId: descriptor.providerId, adapterId: descriptor.adapterId, reason });
-      else admitted.push({ descriptor, resource, score: Number.isFinite(candidate.score) ? candidate.score : 0 });
-    } catch (error) { rejected.push({ providerId: candidate?.descriptor?.providerId ?? 'UNKNOWN', adapterId: candidate?.descriptor?.adapterId ?? 'UNKNOWN', reason: error.code ?? 'INVALID_CANDIDATE' }); }
-  }
-  admitted.sort((a, b) => b.score - a.score || a.descriptor.providerId.localeCompare(b.descriptor.providerId) || a.descriptor.adapterId.localeCompare(b.descriptor.adapterId) || (a.descriptor.modelId ?? '').localeCompare(b.descriptor.modelId ?? ''));
-  if (!admitted.length) return { status: 'BLOCKED', selected: null, rejected };
-  const winner = admitted[0];
-  return { status: 'SELECTED', selected: { providerId: winner.descriptor.providerId, adapterId: winner.descriptor.adapterId, modelId: winner.descriptor.modelId ?? null, descriptorHash: providerDescriptorHash(winner.descriptor) }, rejected };
+export function validateTaskRequirements(r){
+  if(!plain(r)||!plain(r.budget)||!plain(r.authority)||!plain(r.artifact_producer))fail('INVALID_TASK_REQUIREMENTS');
+  text(r.task_id,'INVALID_TASK_ID');text(r.run_id,'INVALID_RUN_ID');setStrings(r.required_capabilities,'INVALID_REQUIRED_CAPABILITIES');text(r.required_role,'INVALID_REQUIRED_ROLE');
+  if(r.required_independence_class!==null)text(r.required_independence_class,'INVALID_REQUIRED_INDEPENDENCE');
+  setStrings(r.allowed_permissions,'INVALID_ALLOWED_PERMISSIONS');setStrings(r.allowed_providers,'INVALID_ALLOWED_PROVIDERS');
+  if(typeof r.budget.paid_allowed!=='boolean')fail('INVALID_BUDGET');
+  if(r.budget.max_cost_minor_units!==null&&(!Number.isSafeInteger(r.budget.max_cost_minor_units)||r.budget.max_cost_minor_units<0))fail('INVALID_BUDGET');
+  if(!['VERIFIED','UNVERIFIED','NOT_REQUIRED'].includes(r.authority.verified_state)||typeof r.authority.required!=='boolean'||!Array.isArray(r.authority.authorized_actions))fail('INVALID_AUTHORITY');
+  return r;
+}
+export function routeProvider({requirements,candidates}){
+  const r=validateTaskRequirements(requirements);if(!Array.isArray(candidates))fail('INVALID_CANDIDATES');const admitted=[],rejected=[];
+  for(const c of candidates){try{
+    const d=canonicalProviderDescriptor(c.descriptor),s=validateResourceSnapshot(c.resource);let reason=null;
+    if(s.provider_id!==d.provider_id||s.adapter_id!==d.adapter_id)reason='RESOURCE_IDENTITY_MISMATCH';
+    else if(!r.required_capabilities.every(x=>d.capabilities.includes(x))||!d.roles.includes(r.required_role))reason='CAPABILITY_OR_ROLE';
+    else if(r.required_independence_class!==null&&d.independence_class!==r.required_independence_class)reason='INDEPENDENCE';
+    else if(!r.allowed_permissions.includes(d.permissions_class))reason='PERMISSIONS';
+    else if(!r.allowed_providers.includes(d.provider_id))reason='PROVIDER_POLICY';
+    else if(r.authority.required&&r.authority.verified_state!=='VERIFIED')reason='AUTHORITY_UNVERIFIED';
+    else if(['UNAVAILABLE','UNKNOWN'].includes(s.availability)||s.invokable!=='YES'||s.credential_ready!=='YES'||s.quota_state!=='AVAILABLE'||s.rate_limit_state!=='CLEAR')reason='RESOURCE_NOT_ADMISSIBLE';
+    else if(d.cost_class==='unknown')reason='UNKNOWN_COST_CLASS';
+    else if(d.cost_class==='metered'&&!r.budget.paid_allowed)reason='PAID_FORBIDDEN';
+    else if(d.cost_class==='metered'&&(s.estimated_cost_minor_units===null||!s.currency||!r.budget.currency||s.currency!==r.budget.currency||r.budget.max_cost_minor_units===null||s.estimated_cost_minor_units>r.budget.max_cost_minor_units))reason='COST_NOT_PROVEN_OR_INCOMPATIBLE';
+    if(reason)rejected.push({provider_id:d.provider_id,adapter_id:d.adapter_id,reason});else admitted.push({d,rank:Array.isArray(c.rank)?c.rank:[]});
+  }catch(e){rejected.push({provider_id:c?.descriptor?.provider_id??'UNKNOWN',adapter_id:c?.descriptor?.adapter_id??'UNKNOWN',reason:e.code??'INVALID_CANDIDATE'});}}
+  admitted.sort((a,b)=>{const n=Math.max(a.rank.length,b.rank.length);for(let i=0;i<n;i++){const av=a.rank[i]??0,bv=b.rank[i]??0;if(av!==bv)return bv-av;}return byteCompare(a.d.provider_id,b.d.provider_id)||byteCompare(a.d.adapter_id,b.d.adapter_id)||byteCompare(a.d.model_id??'',b.d.model_id??'');});
+  if(!admitted.length)return{status:'BLOCKED',selected:null,rejected};const d=admitted[0].d;return{status:'SELECTED',selected:{provider_id:d.provider_id,adapter_id:d.adapter_id,model_id:d.model_id,descriptor_hash:providerDescriptorHash(d)},rejected};
 }
 
-export function canonicalEventIdentity(event) {
-  if (!plain(event)) fail('INVALID_EVENT');
-  const parts = ['sourceNamespace', 'providerId', 'adapterId', 'eventId'].map(k => text(event[k], `INVALID_${k.toUpperCase()}`));
-  return parts.join('\n');
+export function validateEvent(e){
+  exactKeys(e,EVENT_KEYS,'INVALID_EVENT_SCHEMA');for(const k of ['source_namespace','event_id','provider_id','adapter_id','task_id','run_id','occurred_at','source'])text(e[k],`INVALID_${k.toUpperCase()}`);
+  if(!EVENT_TYPES.has(e.event_type))fail('INVALID_EVENT_TYPE');
+  for(const k of ['attempt_id','external_job_id','reconciliation_key','repository','head_sha','evidence_ref'])if(e[k]!==null)text(e[k],`INVALID_${k.toUpperCase()}`);
+  if(e.head_sha!==null&&!SHA40.test(e.head_sha))fail('INVALID_HEAD_SHA');
+  if(e.provider_sequence!==null&&(!Number.isSafeInteger(e.provider_sequence)||e.provider_sequence<0))fail('INVALID_PROVIDER_SEQUENCE');
+  if(e.pr_number!==null&&(!Number.isSafeInteger(e.pr_number)||e.pr_number<1))fail('INVALID_PR_NUMBER');
+  if(TERMINAL_EVENT_TYPES.has(e.event_type)&&e.attempt_id===null)fail('TERMINAL_EVENT_REQUIRES_ATTEMPT');return e;
 }
-export function canonicalEventHash(event) {
-  const identity = canonicalEventIdentity(event);
-  return sha256(`GENESIS_AGENT_EVENT\0v1\0${identity}\0${canonicalJson(event.payload ?? null)}`);
+export function canonicalEventIdentity(e){validateEvent(e);return [e.source_namespace,e.provider_id,e.adapter_id,e.event_id].join('\n');}
+export function canonicalEventHash(e){validateEvent(e);return sha256(Buffer.from(canonicalJson(e),'utf8'));}
+export function correlateReceipt(e,r){
+  if(!plain(r)||e.run_id!==r.run_id||e.attempt_id!==r.attempt_id||e.provider_id!==r.provider_id||e.adapter_id!==r.adapter_id)fail('RECEIPT_CORRELATION_MISMATCH');
+  if(e.external_job_id!==null&&e.external_job_id!==r.external_job_id)fail('EXTERNAL_JOB_CORRELATION_MISMATCH');if(e.reconciliation_key!==null&&e.reconciliation_key!==r.reconciliation_key)fail('RECONCILIATION_KEY_MISMATCH');return true;
 }
-export function correlateReceipt(event, receipt) {
-  if (!plain(receipt) || event.runId !== receipt.runId || event.attemptId !== receipt.attemptId || event.providerId !== receipt.providerId || event.adapterId !== receipt.adapterId) fail('RECEIPT_CORRELATION_MISMATCH');
-  return true;
-}
-
-const ATTEMPT_TRANSITIONS = Object.freeze({ PREPARED: new Set(['FAILED_NO_DISPATCH', 'DISPATCH_CONFIRMED', 'UNKNOWN']), DISPATCH_CONFIRMED: new Set(['WAITING', 'COMPLETED', 'FAILED', 'CANCELLED', 'UNKNOWN']), WAITING: new Set(['COMPLETED', 'FAILED', 'CANCELLED', 'UNKNOWN']) });
-export function transitionAttempt(current, next) {
-  if (ATTEMPT_TERMINAL.has(current)) { if (current !== next) fail('ATTEMPT_TERMINAL_REGRESSION'); return current; }
-  if (!ATTEMPT_TRANSITIONS[current]?.has(next)) fail('INVALID_ATTEMPT_TRANSITION');
-  return next;
-}
-
-export class MemoryOrchestrationStore {
-  constructor() { this.events = new Map(); this.checkpoints = new Map(); this.effects = new Map(); }
-  acceptEvent(event, receipt) {
-    correlateReceipt(event, receipt);
-    const key = canonicalEventIdentity(event); const hash = canonicalEventHash(event);
-    const existing = this.events.get(key);
-    if (existing) { if (existing.hash !== hash) fail('EVENT_IDENTITY_COLLISION'); return { duplicate: true, checkpoint: existing.checkpoint }; }
-    const checkpoint = { id: `checkpoint:${hash}`, state: 'PENDING', owner: null, fence: 0 };
-    this.events.set(key, { hash, checkpoint }); this.checkpoints.set(checkpoint.id, checkpoint);
-    return { duplicate: false, checkpoint };
-  }
-  claimCheckpoint(id, owner) {
-    const cp = this.checkpoints.get(id); if (!cp) fail('CHECKPOINT_NOT_FOUND');
-    if (CHECKPOINT_TERMINAL.has(cp.state)) fail('CHECKPOINT_TERMINAL');
-    if (cp.owner && cp.owner !== owner) return null;
-    cp.owner = text(owner, 'INVALID_OWNER'); cp.state = 'IN_PROGRESS'; cp.fence += 1; return { ...cp };
-  }
-  finishCheckpoint(id, owner, fence, state) {
-    const cp = this.checkpoints.get(id); if (!cp || cp.owner !== owner || cp.fence !== fence) fail('STALE_CHECKPOINT_OWNER');
-    if (!CHECKPOINT_TERMINAL.has(state)) fail('INVALID_CHECKPOINT_TERMINAL'); cp.state = state; return { ...cp };
-  }
-  prepareEffect(record) {
-    if (!plain(record)) fail('INVALID_EFFECT');
-    const operationId = text(record.operationId, 'INVALID_OPERATION_ID');
-    const request = hashEffectRequest(record.request);
-    const existing = this.effects.get(operationId);
-    const bound = { operationId, destinationClass: record.destinationClass ?? DESTINATION_CLASS.C, request, episodes: [], state: 'PREPARED', grant: validateGrantTuple(record.grant) };
-    if (existing) { if (canonicalJson(existing.request) !== canonicalJson(request) || existing.destinationClass !== bound.destinationClass) fail('EFFECT_BINDING_CONFLICT'); return existing; }
-    this.effects.set(operationId, bound); return bound;
-  }
-  beginDispatch(operationId, { authorityAllowsRetry = false, formerSendersExcluded = false } = {}) {
-    const effect = this.effects.get(operationId); if (!effect) fail('EFFECT_NOT_FOUND');
-    if (effect.grant.retries === 0 && effect.episodes.length > 0) fail('GRANT_RETRY_FORBIDDEN');
-    const previous = effect.episodes.at(-1);
-    if (previous && previous.state !== 'NO_EFFECT') fail('PREVIOUS_EPISODE_NOT_NO_EFFECT');
-    if (previous && (!authorityAllowsRetry || !formerSendersExcluded)) fail('RETRY_NOT_AUTHORIZED_OR_FENCED');
-    const episode = { number: effect.episodes.length + 1, state: 'DISPATCHING' }; effect.episodes.push(episode); effect.state = 'DISPATCHING'; return episode;
-  }
-  reconcile(operationId, evidence) {
-    const effect = this.effects.get(operationId); if (!effect) fail('EFFECT_NOT_FOUND');
-    const episode = effect.episodes.at(-1); if (!episode) return effect;
-    if (!plain(evidence) || evidence.authoritative !== true || evidence.readOnly !== true) { episode.state = 'UNKNOWN'; effect.state = 'UNKNOWN'; return effect; }
-    if (evidence.outcome === 'SUCCEEDED') { episode.state = 'SUCCEEDED'; effect.state = 'SUCCEEDED'; }
-    else if (evidence.outcome === 'NO_EFFECT' && evidence.formerSendersExcluded === true) { episode.state = 'NO_EFFECT'; effect.state = 'NO_EFFECT'; }
-    else { episode.state = 'UNKNOWN'; effect.state = effect.destinationClass === DESTINATION_CLASS.C ? 'INDETERMINATE_EFFECT' : 'UNKNOWN'; }
-    return effect;
-  }
+const TRANSITIONS={PREPARED:new Set(['FAILED_NO_DISPATCH','DISPATCH_CONFIRMED','UNKNOWN']),DISPATCH_CONFIRMED:new Set(['WAITING','COMPLETED','FAILED','CANCELLED','UNKNOWN']),WAITING:new Set(['WAITING','COMPLETED','FAILED','CANCELLED','UNKNOWN'])};
+export function transitionAttempt(current,next,{authoritativeReconciliation=false}={}){
+  if(current==='UNKNOWN'){if(authoritativeReconciliation&&ATTEMPT_FINAL.has(next))return next;if(next==='UNKNOWN')return next;fail('UNKNOWN_REQUIRES_RECONCILIATION');}
+  if(ATTEMPT_FINAL.has(current)){if(current!==next)fail('ATTEMPT_TERMINAL_REGRESSION');return current;}if(!TRANSITIONS[current]?.has(next))fail('INVALID_ATTEMPT_TRANSITION');return next;
 }
 
-export function hashEffectRequest({ mode, payload, bytes, contractVersion = 'v1', contractRef = 'S-0011#effect-request-hashing-v1' }) {
-  if (contractVersion !== 'v1') fail('UNKNOWN_EFFECT_HASH_VERSION');
-  let preimage;
-  if (mode === EFFECT_HASH_MODE.STRUCTURED) preimage = Buffer.from(`GENESIS_EFFECT_REQUEST\0v1\0STRUCTURED_CANONICAL_JSON\0${canonicalJson(payload)}`, 'utf8');
-  else if (mode === EFFECT_HASH_MODE.BYTES) { if (!(bytes instanceof Uint8Array)) fail('EXACT_BYTES_REQUIRED'); preimage = Buffer.concat([Buffer.from('GENESIS_EFFECT_REQUEST\0v1\0EXACT_BYTES\0', 'utf8'), Buffer.from(bytes)]); }
-  else fail('UNKNOWN_EFFECT_HASH_MODE');
-  return { mode, version: contractVersion, contractRef, digest: sha256(preimage) };
+export class MemoryOrchestrationStore{
+  constructor(){this.events=new Map();this.checkpoints=new Map();this.effects=new Map();}
+  acceptEvent(e,receipt){validateEvent(e);if(e.attempt_id!==null)correlateReceipt(e,receipt);const key=canonicalEventIdentity(e),hash=canonicalEventHash(e),old=this.events.get(key);if(old){if(old.hash!==hash)fail('EVENT_IDENTITY_COLLISION');return{duplicate:true,checkpoint:old.checkpoint};}const checkpoint={id:`checkpoint:${hash}`,binding:{key,hash,task_id:e.task_id,run_id:e.run_id,attempt_id:e.attempt_id},state:'PENDING',owner:null,fence:0};this.events.set(key,{hash,checkpoint});this.checkpoints.set(checkpoint.id,checkpoint);return{duplicate:false,checkpoint};}
+  claimCheckpoint(id,owner){const cp=this.checkpoints.get(id);if(!cp)fail('CHECKPOINT_NOT_FOUND');if(CHECKPOINT_FINAL.has(cp.state))fail('CHECKPOINT_TERMINAL');if(cp.owner&&cp.owner!==owner)return null;cp.owner=text(owner,'INVALID_OWNER');cp.state='IN_PROGRESS';cp.fence+=1;return structuredClone(cp);}
+  finishCheckpoint(id,owner,fence,state){const cp=this.checkpoints.get(id);if(!cp||cp.owner!==owner||cp.fence!==fence)fail('STALE_CHECKPOINT_OWNER');if(!CHECKPOINT_FINAL.has(state))fail('INVALID_CHECKPOINT_TERMINAL');cp.state=state;return structuredClone(cp);}
+  prepareEffect(r){if(!plain(r))fail('INVALID_EFFECT');const operation_id=text(r.operation_id,'INVALID_OPERATION_ID'),request=hashEffectRequest(r.request),destination_class=Object.values(DESTINATION_CLASS).includes(r.destination_class)?r.destination_class:DESTINATION_CLASS.C,grant=validateGrantTuple(r.grant);const bound={operation_id,owning_identity:text(r.owning_identity,'INVALID_EFFECT_OWNER'),logical_slot:text(r.logical_slot,'INVALID_EFFECT_SLOT'),destination:text(r.destination,'INVALID_DESTINATION'),destination_class,request,grant,episodes:[],state:'PLANNED'};const old=this.effects.get(operation_id);if(old){for(const k of ['owning_identity','logical_slot','destination','destination_class'])if(old[k]!==bound[k])fail('EFFECT_BINDING_CONFLICT');if(canonicalJson(old.request)!==canonicalJson(request)||canonicalJson(old.grant)!==canonicalJson(grant))fail('EFFECT_BINDING_CONFLICT');return old;}this.effects.set(operation_id,bound);return bound;}
+  beginDispatch(id,{authorityAllowsRetry=false,formerSendersExcluded=false}={}){const e=this.effects.get(id);if(!e)fail('EFFECT_NOT_FOUND');if(e.state==='COMPLETED'||e.state==='INDETERMINATE_EFFECT')fail('EFFECT_NOT_REPLAYABLE');if(e.grant.retries===0&&e.episodes.length)fail('GRANT_RETRY_FORBIDDEN');const prev=e.episodes.at(-1);if(prev&&prev.state!=='NO_EFFECT')fail('PREVIOUS_EPISODE_NOT_NO_EFFECT');if(prev&&(!authorityAllowsRetry||!formerSendersExcluded))fail('RETRY_NOT_AUTHORIZED_OR_FENCED');const ep={episode_no:e.episodes.length+1,state:'DISPATCHING'};e.episodes.push(ep);e.state='IN_PROGRESS';return ep;}
+  reconcile(id,x){const e=this.effects.get(id);if(!e)fail('EFFECT_NOT_FOUND');const ep=e.episodes.at(-1);if(!ep)return e;if(!plain(x)||x.authoritative!==true||x.read_only!==true){ep.state='UNKNOWN';e.state='INDETERMINATE_EFFECT';return e;}if(x.outcome==='SUCCEEDED'){ep.state='SUCCEEDED';e.state='COMPLETED';}else if(x.outcome==='NO_EFFECT'&&x.former_senders_excluded===true){ep.state='NO_EFFECT';e.state='NO_EFFECT';}else{ep.state='UNKNOWN';e.state='INDETERMINATE_EFFECT';}return e;}
 }
-export function validateGrantTuple(grant) {
-  if (!plain(grant) || typeof grant.grantId !== 'string' || !grant.grantId || !DIGEST.test(grant.manifestHash) || !DIGEST.test(grant.issuanceDigest) || !Number.isInteger(grant.retries) || grant.retries < 0) fail('INVALID_GRANT_TUPLE');
-  return { grantId: grant.grantId, manifestHash: grant.manifestHash, issuanceDigest: grant.issuanceDigest, retries: grant.retries };
+
+export function hashEffectRequest({mode,payload,bytes,contract_version='v1',contract_ref,contract_hash}){
+  if(contract_version!=='v1')fail('UNKNOWN_EFFECT_HASH_VERSION');text(contract_ref,'MISSING_HASH_CONTRACT_REF');if(!DIGEST.test(contract_hash))fail('INVALID_HASH_CONTRACT_HASH');let preimage;
+  if(mode===EFFECT_HASH_MODE.STRUCTURED)preimage=Buffer.concat([Buffer.from('GENESIS_EFFECT_REQUEST\0v1\0STRUCTURED_CANONICAL_JSON\0','utf8'),Buffer.from(canonicalJson(payload),'utf8')]);
+  else if(mode===EFFECT_HASH_MODE.BYTES){if(!(bytes instanceof Uint8Array))fail('EXACT_BYTES_REQUIRED');preimage=Buffer.concat([Buffer.from('GENESIS_EFFECT_REQUEST\0v1\0EXACT_BYTES\0','utf8'),Buffer.from(bytes)]);}else fail('UNKNOWN_EFFECT_HASH_MODE');
+  return{mode,version:contract_version,contract_ref,contract_hash,request_hash:sha256(preimage)};
 }
+export function validateGrantTuple(g){if(!plain(g)||typeof g.grant_id!=='string'||!g.grant_id||!DIGEST.test(g.manifest_hash)||!DIGEST.test(g.issuance_digest)||!Number.isInteger(g.retries)||g.retries<0)fail('INVALID_GRANT_TUPLE');return{grant_id:g.grant_id,manifest_hash:g.manifest_hash,issuance_digest:g.issuance_digest,retries:g.retries};}
