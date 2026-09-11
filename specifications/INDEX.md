@@ -26,7 +26,7 @@
 | [S-0008](S-0008-Genesis-Independent-Grok-Reviewer-v0.1.md) | Genesis Independent Grok Reviewer v0.1 | Superseded | 1 | — (Issue #79 architecture tracker) | 2026-09-03 |
 | [S-0009](S-0009-Genesis-Independent-Grok-Reviewer-v0.2.md) | Genesis Independent Grok Reviewer v0.2 | Approved | 1 | — (Issue #79 architecture tracker) | 2026-09-03 |
 | [S-0010](S-0010-Genesis-Independent-Reviewer-Orchestration-v0.1.md) | Genesis Independent Reviewer Orchestration v0.1 | Approved | 2 | — (Issues #89, #116) | 2026-09-10 |
-| [S-0011](S-0011-Genesis-Universal-Adaptive-Agent-Orchestration-v0.1.md) | Genesis Universal Adaptive Agent Orchestration v0.1 | In Review | 2 | — (Issue #121) | 2026-09-11 |
+| [S-0011](S-0011-Genesis-Universal-Adaptive-Agent-Orchestration-v0.1.md) | Genesis Universal Adaptive Agent Orchestration v0.1 | Approved | 2 | — (Issue #121) | 2026-09-11 |
 
 ## Следующий номер
 
