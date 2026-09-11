@@ -22,7 +22,7 @@
 | Revision | Date | Status | Change |
 |---|---|---|---|
 | 1 | 2026-09-10/11 | Approved | Initial implementation-grade contract; CEO-approved after independent review. |
-| 2 | 2026-09-11 | **In Review** | Non-scope-expanding correctness hardening after post-approval exact-HEAD Qodo review: exact attempt correlation, canonical descriptor/event hashing, full S-0010 grant provenance and terminal lifecycle, canonical S-0009 result enums, deterministic routing tie-breaks, monotonic terminal-event semantics, and mandatory approved Decision Record before implementation. Requires fresh independent review and CEO approval before implementation EA. |
+| 2 | 2026-09-11 | **In Review** | Non-scope-expanding correctness hardening after post-approval exact-HEAD Qodo review: exact attempt correlation, canonical descriptor/event hashing, full S-0010 grant provenance and terminal lifecycle, canonical S-0009 result enums, deterministic routing tie-breaks, monotonic terminal-event semantics including cancellation, and mandatory approved Decision Record before implementation. Requires fresh independent review and CEO approval before implementation EA. |
 
 Revision 2 does not broaden product scope or grant implementation/runtime authority. Where Revision 2 clarifies a Revision 1 ambiguity, the stricter fail-closed rule in Revision 2 governs.
 
@@ -150,7 +150,7 @@ Rules:
 {
   "source_namespace": "trusted-source-namespace",
   "event_id": "stable-source-local-event-id",
-  "event_type": "AGENT_SELECTED|AGENT_STARTED|AGENT_WAITING|AGENT_COMPLETED|AGENT_FAILED|REVIEW_STARTED|REVIEW_COMPLETED|LIMIT_EXHAUSTED|RATE_LIMITED|RESET_AT|PROVIDER_UNAVAILABLE",
+  "event_type": "AGENT_SELECTED|AGENT_STARTED|AGENT_WAITING|AGENT_COMPLETED|AGENT_FAILED|AGENT_CANCELLED|REVIEW_STARTED|REVIEW_COMPLETED|LIMIT_EXHAUSTED|RATE_LIMITED|RESET_AT|PROVIDER_UNAVAILABLE",
   "provider_id": "string",
   "adapter_id": "string",
   "task_id": "string",
@@ -170,7 +170,9 @@ Rules:
 
 `source_namespace` comes from trusted adapter configuration, never caller payload.
 
-Terminal/dispatch-derived events `AGENT_COMPLETED`, `AGENT_FAILED` and `REVIEW_COMPLETED` MUST have non-null `attempt_id`. If the provider supplies `external_job_id` or `reconciliation_key`, the terminal event must carry the corresponding value and it MUST equal the durable InvocationReceipt before state mutation or continuation. A terminal event without required correlation is BLOCKED. Null `attempt_id` is allowed only for observations that are provably not tied to a dispatched attempt, such as provider-wide quota/rate-limit state.
+Terminal/dispatch-derived events `AGENT_COMPLETED`, `AGENT_FAILED`, `AGENT_CANCELLED` and `REVIEW_COMPLETED` MUST have non-null `attempt_id`. If the provider supplies `external_job_id` or `reconciliation_key`, the terminal event must carry the corresponding value and it MUST equal the durable InvocationReceipt before state mutation or continuation. A terminal event without required correlation is BLOCKED. Null `attempt_id` is allowed only for observations that are provably not tied to a dispatched attempt, such as provider-wide quota/rate-limit state.
+
+`AGENT_CANCELLED` is a terminal operational outcome only when cancellation has been proven by provider-supported acknowledgement/read-back for the exact receipt identity. A cancellation request by itself is not cancellation evidence. If cancellation outcome is ambiguous, the attempt becomes `UNKNOWN`, not `CANCELLED`. Cancellation does not restore or mint authority, does not make a consumed S-0010 grant reusable, and does not imply `FAILED_NO_DISPATCH` unless non-dispatch is separately proven under the canonical grant lifecycle.
 
 ### 5.2 Canonical event identity and payload hash
 
@@ -199,10 +201,18 @@ Event dedupe alone is insufficient. Core maintains a durable operational state m
 PREPARED
   → DISPATCH_CONFIRMED
   → WAITING
-  → COMPLETED | FAILED | UNKNOWN
+  → COMPLETED | FAILED | CANCELLED | UNKNOWN
 ```
 
-`DISPATCH_CONFIRMED → COMPLETED|FAILED|UNKNOWN` is allowed directly. `WAITING` may repeat as observation without regressing state. `COMPLETED`, `FAILED`, and `UNKNOWN` are terminal/non-regressible for autonomous continuation. A later distinct event cannot reopen or switch a terminal attempt.
+`DISPATCH_CONFIRMED → COMPLETED|FAILED|CANCELLED|UNKNOWN` is allowed directly. `WAITING` may repeat as observation without regressing state. `COMPLETED`, `FAILED`, `CANCELLED`, and `UNKNOWN` are terminal/non-regressible for autonomous continuation. A later distinct event cannot reopen or switch a terminal attempt.
+
+Cancellation transition rules:
+
+- `cancel?(receipt)` may request cancellation only for the exact durable receipt; it does not itself mutate state to `CANCELLED`.
+- Confirmed provider cancellation for the exact receipt yields normalized `AGENT_CANCELLED` and terminal `CANCELLED`.
+- Provider rejection of cancellation leaves the attempt in its prior nonterminal state unless independent provider status proves another terminal outcome.
+- Timeout/response loss/ambiguous cancellation result yields `UNKNOWN` when the actual external job state cannot be proven.
+- A later completion/failure after already confirmed terminal `CANCELLED` is conflicting post-terminal evidence and cannot trigger continuation; it requires fail-closed reconciliation if the conflict is material.
 
 Ordering rules:
 
@@ -333,7 +343,7 @@ canInvoke(envelope)  -> admissibility detail
 invoke(envelope)     -> InvocationReceipt | UNKNOWN
 poll?(receipt)       -> NormalizedAgentEvent
 reconcile?(attempt)  -> read-only reconciliation result
-cancel?(receipt)     -> normalized result
+cancel?(receipt)     -> normalized cancellation request/result observation
 normalizeEvent(raw)  -> NormalizedAgentEvent
 ```
 
@@ -376,7 +386,7 @@ Adapter never chooses governance/budget policy and never expands authority.
   "grant_id": "string|null",
   "manifest_hash": "sha256|null",
   "issuance_digest": "sha256|null",
-  "dispatch_state": "PREPARED|DISPATCH_CONFIRMED|UNKNOWN|COMPLETED|FAILED_NO_DISPATCH",
+  "dispatch_state": "PREPARED|DISPATCH_CONFIRMED|UNKNOWN|COMPLETED|FAILED|CANCELLED|FAILED_NO_DISPATCH",
   "external_job_id": "string|null",
   "reconciliation_key": "non-secret-string|null",
   "prepared_at": "RFC3339",
@@ -395,9 +405,10 @@ Write ordering and S-0010 grant terminalization:
 4. Once dispatch occurrence is proven, atomically transition the authoritative grant ledger for that exact attempt from `RESERVED` to `CONSUMED`, then persist/confirm `DISPATCH_CONFIRMED` with stable external/reconciliation identity before reporting success upstream. A successful reviewer invocation may never remain merely `RESERVED`.
 5. If deterministic evidence proves failure occurred before any external dispatch, atomically close the bound grant as `CLOSED_NO_CALL` and mark the receipt `FAILED_NO_DISPATCH`; only this state is eligible for any later retry/fallback evaluation under the canonical policy.
 6. If crash/timeout/response loss makes dispatch occurrence indeterminate, atomically record the bound grant lifecycle as `UNKNOWN` (or preserve the canonical S-0010 unknown-equivalent state) and the receipt as `UNKNOWN`; no automatic second paid/consequential/non-idempotent invoke is allowed.
-7. Grant transition and receipt transition MUST be bound to the same `task_id + run_id + attempt_id + grant_id + manifest_hash + issuance_digest + request_hash`. Any mismatch or partial write is fail-closed and requires read-only reconciliation.
-8. Reconciliation is read-only and may resolve `UNKNOWN` only from provider-supported evidence plus canonical grant evidence; it cannot mint a new grant or silently reset a consumed/closed/unknown grant.
-9. UNKNOWN is never TTL-cleared into reusable authority.
+7. A confirmed cancellation after dispatch marks only the operational receipt/attempt `CANCELLED`; it does not reverse the already consumed grant. A cancellation proven before any external dispatch may use `CLOSED_NO_CALL` only when canonical evidence separately proves no dispatch occurred.
+8. Grant transition and receipt transition MUST be bound to the same `task_id + run_id + attempt_id + grant_id + manifest_hash + issuance_digest + request_hash`. Any mismatch or partial write is fail-closed and requires read-only reconciliation.
+9. Reconciliation is read-only and may resolve `UNKNOWN` only from provider-supported evidence plus canonical grant evidence; it cannot mint a new grant or silently reset a consumed/closed/unknown grant.
+10. UNKNOWN is never TTL-cleared into reusable authority.
 
 ## 9. Event-first continuation and fallback
 
@@ -433,10 +444,11 @@ Fallback is allowed only to candidates passing the **same** TaskRequirements/gov
 2. PREPARED after crash requires reconciliation unless non-dispatch is provable.
 3. UNKNOWN forbids automatic repeat where duplicate side effects/model spend are possible.
 4. Duplicate events replay safely; distinct reordered/post-terminal events cannot regress terminal state.
-5. Recovery restores project truth from GitHub and operational attempt/dedupe state only from allowed runtime store.
-6. Stale task/run/attempt/PR/HEAD evidence never advances workflow.
-7. Retry/fallback is bounded/versioned, never infinite.
-8. S-0010 lifecycle remains stricter where applicable and is never weakened by generic orchestration.
+5. Confirmed `CANCELLED` is terminal operational state; ambiguous cancellation is `UNKNOWN`; neither state restores consumed authority.
+6. Recovery restores project truth from GitHub and operational attempt/dedupe state only from allowed runtime store.
+7. Stale task/run/attempt/PR/HEAD evidence never advances workflow.
+8. Retry/fallback is bounded/versioned, never infinite.
+9. S-0010 lifecycle remains stricter where applicable and is never weakened by generic orchestration.
 
 ## 11. Implementation slices
 
@@ -456,7 +468,7 @@ After Revision 2 approval, an approved Decision Record covering this new orchest
 - normalized event + trusted namespace;
 - canonical event hash/dedupe;
 - exact receipt correlation;
-- monotonic attempt state;
+- monotonic attempt state including confirmed cancellation;
 - InvocationEnvelope/Receipt + full S-0010 grant tuple;
 - bounded polling/read-only reconciliation.
 
@@ -496,7 +508,8 @@ One bounded flow: CEO goal → trusted task/authority → auto selection → dur
 - terminal event missing attempt/correlation required by receipt blocks;
 - terminal event for wrong attempt/external job blocks;
 - stale HEAD blocks continuation;
-- distinct STARTED/WAITING/FAILED/COMPLETED events delivered in relevant reorderings cannot regress/switch terminal state;
+- distinct STARTED/WAITING/FAILED/COMPLETED/CANCELLED events delivered in relevant reorderings cannot regress/switch terminal state;
+- cancellation request alone cannot produce CANCELLED; confirmed exact-receipt cancellation can; ambiguous cancellation becomes UNKNOWN;
 - post-terminal events cannot trigger second continuation;
 - provider sequence regression/no-sequence reconciliation paths tested.
 
@@ -514,6 +527,7 @@ One bounded flow: CEO goal → trusted task/authority → auto selection → dur
 - any tuple-member mismatch after reconstruction fails closed;
 - S-0010 grant is `RESERVED` before reviewer dispatch and is terminalized for the same attempt as `CONSUMED`, `CLOSED_NO_CALL`, or `UNKNOWN` according to proven dispatch outcome;
 - a successful dispatch cannot remain in `RESERVED`;
+- confirmed post-dispatch cancellation leaves the canonical grant consumed while terminalizing only the operational attempt as CANCELLED;
 - grant/receipt partial-write or identity mismatch fails closed into reconciliation, never a second dispatch;
 - PREPARED before dispatch and DISPATCH_CONFIRMED before upstream success;
 - crash/response loss can become UNKNOWN but never silent second consequential dispatch;
@@ -539,6 +553,7 @@ Implementation is proven only if:
 14. Full affected test suite is green and independent review binds exact PR HEAD.
 15. Ready/merge/deploy/LIVE remain separate CEO gates.
 16. An approved Decision Record exists before any Slice A/B implementation begins and covers the adaptive router, normalized event processing, durable attempt/recovery state, trust boundaries, and relationship to the existing Broker architecture.
+17. Cancellation is provider-neutral and deterministic: confirmed exact-receipt cancellation maps to `AGENT_CANCELLED`/`CANCELLED`, ambiguity maps to `UNKNOWN`, and cancellation never restores consumed authority.
 
 ## 14. Non-goals
 
@@ -565,10 +580,10 @@ Production route wiring, Durable Object migration, webhook deployment, secrets/c
 
 ## 16. Decision Record boundary
 
-An **approved Decision Record is mandatory before any Slice A/B implementation begins**. This is a governance prerequisite independent of whether the code lives inside the existing Broker service. The DR must cover at minimum: the adaptive router as a new orchestration component, normalized event processing, durable attempt/dedupe/recovery state, trust boundaries and canonical GitHub provenance, S-0009/S-0010 grant integration, failure/reconciliation semantics, and the relationship to the existing Broker architecture. S-0011 approval alone and any later implementation EA do not waive this prerequisite.
+An **approved Decision Record is mandatory before any Slice A/B implementation begins**. This is a governance prerequisite independent of whether the code lives inside the existing Broker service. The DR must cover at minimum: the adaptive router as a new orchestration component, normalized event processing, durable attempt/dedupe/recovery state, trust boundaries and canonical GitHub provenance, S-0009/S-0010 grant integration, failure/reconciliation/cancellation semantics, and the relationship to the existing Broker architecture. S-0011 approval alone and any later implementation EA do not waive this prerequisite.
 
 If implementation later introduces a new project/control-plane SoT, credential trust boundary, standing/chained consequential authority, automatic paid-spend policy, privileged provider authority, or materially new production event infrastructure that changes governance guarantees, the Decision Record must be revised/extended and approved before that expanded implementation.
 
 ## 17. Revision 2 review requirement
 
-Independent review must bind the exact current PR HEAD and verify at minimum the seven post-approval findings now addressed plus the two subsequent governance/lifecycle findings: exact receipt correlation, descriptor canonical hash, complete S-0010 grant tuple, canonical S-0009 enum compatibility, canonical event hash, deterministic total routing order, out-of-order/post-terminal event handling, S-0010 grant terminalization, and mandatory Decision Record before implementation. Revision 2 remains **In Review** until that review is clean and CEO separately approves Revision 2. That approval still does not grant implementation EA.
+Independent review must bind the exact current PR HEAD and verify all post-approval findings now addressed, including: exact receipt correlation, descriptor canonical hash, complete S-0010 grant tuple, canonical S-0009 enum compatibility, canonical event hash, deterministic total routing order, out-of-order/post-terminal handling, S-0010 grant terminalization, mandatory Decision Record before implementation, and provider-neutral cancellation semantics. Revision 2 remains **In Review** until that review is clean and CEO separately approves Revision 2. That approval still does not grant implementation EA.
