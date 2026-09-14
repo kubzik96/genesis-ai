@@ -6,15 +6,15 @@
 |---|---|
 | ID | S-0010 |
 | Title | Genesis Independent Reviewer Orchestration v0.1 |
-| Status | **In Review** |
+| Status | **Approved** |
 | Revision | 3 |
 | Author | ChatGPT — COO, по поручению CEO Genesis AI |
 | Creation date | 2026-09-05 |
-| Approval date | — (Revision 3 not approved) |
-| Approved by | — (Revision 2 remains the latest CEO-approved revision) |
+| Approval date | 2026-09-14 |
+| Approved by | CEO Genesis AI — [approval receipt](https://github.com/kubzik96/genesis-ai/pull/130#issuecomment-5667523404) |
 | Related Issue | #89; #116; #131 |
 | Related Specifications | S-0007 Revision 1; S-0009 Revision 1 |
-| Related Decisions | DR-0010; DR-0011; DR-0013 Proposed; DR-0008 remains authoritative where applicable |
+| Related Decisions | DR-0010; DR-0011; DR-0013 Accepted; DR-0008 remains authoritative where applicable |
 | Execution Authorization | **NOT_GRANTED** |
 
 ## Revision history
@@ -23,7 +23,7 @@
 |---|---|---|
 | 1 | 2026-09-05 | Initial approved reviewer-orchestration contract. |
 | 2 | 2026-09-10 | F2 authorization-consumption contract: canonical CEO EA → immutable `grantId` + `manifestHash` → durable one-consumption ledger; strict legacy/cutover and crash-reconciliation boundaries; exact future implementation allowlist and invariants. |
-| 3 | 2026-09-14 | Proposed trusted GitHub event-adapter contract from Issue #131 / DR-0013: authenticated producer/event identity, immutable command binding, atomic admission, independent default-OFF bridge control, credential separation and durable fail-closed evidence. Revision 2 remains the latest CEO-approved revision. |
+| 3 | 2026-09-14 | Approved trusted GitHub event-adapter contract from Issue #131 / DR-0013: authenticated producer/event identity, immutable command binding, atomic admission, independent default-OFF bridge control, credential separation and durable fail-closed evidence. Revision 3 is CEO-approved; Revision 2 grant-consumption semantics remain unchanged. |
 
 ## 1. Purpose
 
@@ -47,7 +47,7 @@ This specification orchestrates S-0009; it does not replace or broaden the revie
 
 Revision 2 additionally closes the F2 authorization-consumption design gap proven in Issue #116 and tests-only Draft PR #117. It does not itself implement the fix or authorize runtime mutation.
 
-Revision 3 proposes the minimum trusted GitHub event-adapter boundary needed for a GitHub-capable One-Window controller to request an already-authorized review without possessing Broker or xAI credentials. Revision 3 does not redesign the reviewer, create reviewer authority, install a GitHub App, deploy a webhook adapter, enable LIVE, or authorize any model call.
+Revision 3 defines the minimum trusted GitHub event-adapter boundary needed for a GitHub-capable One-Window controller to request an already-authorized review without possessing Broker or xAI credentials. Revision 3 does not redesign the reviewer, create reviewer authority, install a GitHub App, deploy a webhook adapter, enable LIVE, or authorize any model call.
 
 ## 2. Canonical boundaries
 
@@ -138,7 +138,7 @@ Revision 2 MUST fail closed across legacy records:
 
 Production inventory, migration and activation are outside ordinary F2 code implementation and require later operational gates.
 
-### 3.4 Trusted GitHub event-adapter command contract (Revision 3 proposal)
+### 3.4 Trusted GitHub event-adapter command contract (Revision 3)
 
 The trusted event adapter is transport and admission only. It MUST NOT mint, refresh, release, widen, reinterpret, or replace reviewer authority.
 
@@ -426,16 +426,16 @@ Revision 3 may be approved only with all of the following explicit:
 
 ## 13. Non-goals
 
-This In Review Revision 3 does not implement the trusted event adapter, install a GitHub App, deploy a webhook, invoke xAI, make an authenticated Broker request, enable bridge/reviewer LIVE, change secrets, change Cloudflare, resume authenticated Dify/Broker runtime, remove quarantine, mark Ready, merge a PR, authorize D2, or approve a Bounded Autonomy Envelope.
+This Approved Revision 3 does not implement the trusted event adapter, install a GitHub App, deploy a webhook, invoke xAI, make an authenticated Broker request, enable bridge/reviewer LIVE, change secrets, change Cloudflare, resume authenticated Dify/Broker runtime, remove quarantine, mark Ready, merge a PR, authorize D2, or approve a Bounded Autonomy Envelope.
 
 It does not grant ordinary GitHub writers reviewer-execution authority and does not make the trusted event adapter a new source of reviewer authority.
 
 ## 14. Gates and next step
 
-Current state: **Revision 3 / In Review / Execution Authorization NOT_GRANTED**. Revision 2 remains the latest CEO-approved revision.
+Current state: **Revision 3 / Approved / Execution Authorization NOT_GRANTED**. Revision 3 is CEO-approved; Revision 2 grant-consumption semantics remain unchanged.
 
-DR-0013 remains Proposed in Draft PR #130 and has independent Qodo evidence on its exact reviewed HEAD. Issue #131 defines the bounded normative delta represented by this Revision 3 candidate.
+DR-0013 is CEO-accepted in Draft PR #130 and has independent Qodo evidence on its exact reviewed HEAD. Issue #131 defines the bounded normative delta represented by this Revision 3 candidate.
 
-Next step: independently review the exact GitHub-published Revision 3 candidate together with its DR-0013 dependency. Any later CEO approval of Revision 3 and acceptance of DR-0013 remain distinct from implementation authorization. A subsequent bounded implementation EA must name exact base/HEAD, exact implementation/test/config allowlist and retain separate deployment, GitHub App installation, secrets, bridge/LIVE and first real Grok-call gates.
+Next step: verify exact-HEAD review evidence after approval metadata synchronization, then obtain separate exact Ready/merge authorization for the documentation PRs. CEO approval of Revision 3 and acceptance of DR-0013 remain distinct from implementation authorization. A subsequent bounded implementation EA must name exact base/HEAD, exact implementation/test/config allowlist and retain separate deployment, GitHub App installation, secrets, bridge/LIVE and first real Grok-call gates.
 
 No Specification Approval or successful review implicitly grants any of those later operations.
