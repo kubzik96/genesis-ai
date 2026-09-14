@@ -177,6 +177,8 @@ Verified carrier repository, producer App ID, installation ID, event name, actio
 
 Bridge mode extends the existing strict JSON body of authenticated `POST /v1/reviews/grok` by exactly one top-level `bridge` member alongside the still-required `authorization`, `context`, and `run_id`. It creates no new public or unauthenticated model endpoint.
 
+Before constructing any language-level JSON object or performing any `JSON.parse`-equivalent operation, the reviewer boundary MUST tokenize/scan the exact raw UTF-8 request body and reject duplicate top-level occurrences of `authorization`, `context`, `run_id`, or `bridge`. Such duplication MUST fail closed with zero admission and zero reviewer/model dispatch; bridge requests MUST NOT fall back to direct mode after this rejection.
+
 `bridge` MUST be a closed object with exactly these members:
 
 ```json
@@ -398,6 +400,7 @@ Before any Revision 3 implementation may be considered review-ready, non-consequ
 15. The adapter invokes only the existing authenticated reviewer execution boundary; no unauthenticated public model path is introduced.
 16. Crash or uncertain persistence after admission/dispatch cannot produce a second model call; only read-only reconciliation is allowed.
 17. Consequential evidence is unusable until durable GitHub persistence/read-back reproduces the exact command/delivery/grant/request/PR/HEAD binding.
+18. Duplicate top-level `authorization`, `context`, `run_id`, or `bridge` keys are rejected from the raw reviewer handoff body before object construction in both direct and bridge modes, with zero admission/model dispatch and no bridge-to-direct fallback.
 
 Any real GitHub App install, webhook deployment, authenticated Broker call or LIVE reviewer invocation remains separately gated.
 
