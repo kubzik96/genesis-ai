@@ -142,20 +142,73 @@ Production inventory, migration and activation are outside ordinary F2 code impl
 
 The trusted event adapter is transport and admission only. It MUST NOT mint, refresh, release, widen, reinterpret, or replace reviewer authority.
 
-An executable bridge command is admissible only when all of the following are true before model dispatch:
+#### 3.4.1 Closed command envelope and canonical bytes
 
-1. The producer is the dedicated, separately approved GitHub App identity selected by DR-0013; ordinary repository writers are not trusted producers.
-2. The event carrier is cryptographically authenticated and the adapter verifies the expected repository, installation/producer identity, sender identity where available, closed event/action type, and unique delivery identity.
-3. The command has a versioned closed schema and immutable `commandId`.
-4. The command binds exact repository, PR number, expected 40-character HEAD, `grantId`, `manifestHash`, and canonical authorization provenance/issuance digest sufficient to verify the already-issued grant.
-5. The command may reference only an already-issued canonical CEO reviewer grant. It MUST NOT create a grant or convert any GitHub write into model-call authority.
-6. The adapter and authoritative Durable Object admission MUST atomically bind `commandId` + delivery identity + canonical grant + repository/PR/exact HEAD + immutable request/operation identity before any model dispatch.
-7. Duplicate, replayed, concurrently raced, mutated, stale-HEAD, wrong-target, invalid-grant, already-consumed, closed, or ambiguous commands MUST produce zero additional model requests.
-8. If admission, dispatch status, durable evidence, or finalization is uncertain, the state MUST become/remain fail-closed `UNKNOWN`; only read-only reconciliation is permitted and no second model request is allowed.
-9. The bridge MUST have an explicit independent default-OFF control. Bridge OFF means zero reviewer dispatch from the event adapter even if reviewer LIVE is enabled. Reviewer LIVE/OFF remains a separate control; reviewer OFF means zero xAI/Grok dispatch even if the bridge is enabled.
-10. The One-Window controller MUST hold neither `BROKER_SERVICE_TOKEN` nor `XAI_API_KEY`. The adapter may hold only the credentials separately authorized for its bounded role; the existing reviewer runtime retains the xAI credential.
-11. The existing authenticated reviewer runtime and `POST /v1/reviews/grok` remain the sole reviewer execution boundary. Revision 3 creates no public unauthenticated model endpoint.
-12. A terminal result intended to influence a consequential gate MUST be durably persisted/read back and bind the trusted command identity, canonical grant, repository/PR and exact reviewed HEAD.
+The sole Revision 3 command wire object is `genesis.review-command.v1`. It MUST be a JSON object with exactly these required members and no optional or unknown members:
+
+```json
+{"action":"request_review","commandId":"github-review-command:123","deliveryId":"00000000-0000-4000-8000-000000000000","eventAction":"approved_action","eventName":"approved_event","expectedHeadSha":"0123456789abcdef0123456789abcdef01234567","grantId":"github:issue-comment:123","installationId":123,"issuanceDigest":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","manifestHash":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","prNumber":123,"producerAppId":123,"repository":"kubzik96/genesis-ai","version":"genesis.review-command.v1"}
+```
+
+Field contract:
+
+- `version` MUST equal `genesis.review-command.v1`; `action` MUST equal `request_review`.
+- `commandId` MUST match `^github-review-command:[1-9][0-9]{0,19}$` and is immutable for the command bytes it names.
+- `deliveryId` MUST be the lowercase canonical GitHub delivery UUID and match `^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`.
+- `eventName` and `eventAction` MUST match `^[a-z][a-z0-9_]{0,63}$` and each MUST equal the single separately approved event/action literal; wildcard or caller-selected values are forbidden.
+- `producerAppId`, `installationId`, and `prNumber` MUST be positive JSON safe integers, never numeric strings. Producer and installation MUST equal the separately approved dedicated GitHub App identity.
+- `repository` MUST equal the case-sensitive literal `kubzik96/genesis-ai`.
+- `expectedHeadSha` MUST be exactly 40 lowercase hexadecimal characters; `manifestHash` and `issuanceDigest` MUST each be exactly 64 lowercase hexadecimal characters.
+- `grantId` MUST match `^github:issue-comment:[1-9][0-9]*$` and identify an already-issued canonical CEO grant. `issuanceDigest` binds that grant's canonical issuance/provenance bytes; neither value creates authority.
+
+The envelope is closed. A parser MUST reject a non-object root, missing/extra/duplicate member, wrong primitive type, `null`, nested arrays/objects as field values, out-of-range integer, invalid UTF-8, BOM, or any value outside the exact literals/patterns above. Duplicate keys MUST be rejected during tokenization before constructing a language object.
+
+Canonical command bytes are strict UTF-8 JSON with members sorted by ascending Unicode code-point order, no insignificant whitespace, shortest unsigned base-10 integers, and JSON strings whose allowed field values are printable ASCII. The adapter MUST reserialize the validated command and require byte-for-byte equality with the received command bytes. `commandHash` is lowercase hexadecimal `SHA-256(canonical command bytes)`. Any mismatch, noncanonical encoding, or reuse of `commandId` for different bytes is a mutated command and MUST fail closed with zero dispatch.
+
+#### 3.4.2 Authenticated carrier and identity binding
+
+Before parsing the carrier, the adapter MUST verify the GitHub webhook signature over the exact raw HTTP request-body octets using the separately authorized webhook verification material and GitHub-specified signature algorithm/header. Signature verification over reconstructed JSON, decoded/re-encoded content, or only the nested command is invalid.
+
+Only after successful signature verification may the adapter extract the command from the one event-specific location fixed by the later approved implementation contract. The event name/action, command location, repository, producer App ID, installation ID and any sender constraint MUST be closed configuration, not caller-controlled fallbacks.
+
+Verified carrier repository, producer App ID, installation ID, event name, action and delivery UUID MUST exactly equal the command values and their pinned values. Missing, duplicate, ambiguous, forged or mismatched identity/header fields MUST fail closed. Ordinary GitHub writers cannot substitute for the dedicated producer.
+
+#### 3.4.3 Bounded reviewer handoff
+
+Bridge mode extends the existing strict JSON body of authenticated `POST /v1/reviews/grok` by exactly one top-level `bridge` member alongside the still-required `authorization`, `context`, and `run_id`. It creates no new public or unauthenticated model endpoint.
+
+`bridge` MUST be a closed object with exactly these members:
+
+```json
+{"version":"genesis.review-bridge.v1","commandId":"github-review-command:123","commandHash":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","deliveryId":"00000000-0000-4000-8000-000000000000","producerAppId":123,"installationId":123,"eventName":"approved_event","eventAction":"approved_action"}
+```
+
+Every value MUST satisfy the matching Section 3.4.1 rule and MUST come from completed adapter verification, not from an ordinary caller. Unknown/missing/duplicate `bridge` members MUST be rejected. Direct mode remains exactly the existing three-member body and MUST NOT contain `bridge`; bridge mode requires all four top-level members and MUST NOT downgrade to direct mode when bridge metadata is absent or invalid.
+
+The adapter-to-reviewer request MUST use the existing service authentication and existing body/time limits. `authorization` remains the existing grant-bearing reviewer authorization; `context` and `run_id` retain their existing meanings. The canonical reviewer `request_hash` remains the immutable hash of the prepared S-0009 reviewer request; bridge metadata MUST NOT alter its derivation or create a second reviewer operation identity.
+
+#### 3.4.4 Atomic admission and replay semantics
+
+Before model dispatch, one authoritative Durable Object transaction MUST verify command/grant/request agreement and create-or-read an immutable admission record keyed by (`version`, `commandId`, `commandHash`, `deliveryId`, `grantId`, `manifestHash`, `issuanceDigest`). The record MUST also bind producer/installation/event/action, repository, PR, exact expected HEAD, `run_id`, canonical reviewer `request_hash`, and the existing grant-consumption state.
+
+The transaction MUST atomically enforce:
+
+1. the command references a valid, unused, exact-HEAD canonical grant;
+2. command and bridge values agree with the authorization and prepared reviewer request;
+3. no same `commandId` exists with different hash/tuple;
+4. no same delivery is admitted for a different command;
+5. no grant already has an admitted/consumed/closed/unknown attempt that would permit another dispatch;
+6. only the first valid admission may transition toward dispatch.
+
+Duplicate exact replay may return only the previously stored immutable outcome/evidence reference; it MUST NOT dispatch again. Any mutated/replayed/raced/stale/wrong-target/invalid-grant/closed/ambiguous case produces zero additional model requests. If admission, dispatch, result persistence or finalization is uncertain, state MUST become/remain `UNKNOWN`; only read-only reconciliation is permitted.
+
+#### 3.4.5 Controls, credentials and durable evidence
+
+The bridge MUST have an explicit independent default-OFF control. Bridge OFF means zero event-adapter reviewer dispatch even if reviewer LIVE is enabled. Reviewer OFF means zero xAI/Grok dispatch even if bridge admission would otherwise succeed.
+
+The One-Window controller MUST hold neither `BROKER_SERVICE_TOKEN` nor `XAI_API_KEY`. The adapter may hold only separately authorized webhook-verification material and the least privilege credential required to reach the existing authenticated reviewer boundary. The reviewer runtime retains the xAI credential. Grok/xAI receives no GitHub mutation or Broker credential.
+
+Terminal bridge evidence intended to influence a consequential gate MUST durably bind at minimum: command version/ID/hash, delivery ID, producer App/installation/event/action, `grantId`, `manifestHash`, `issuanceDigest`, repository, PR, exact expected/reviewed/acceptance-time HEAD, `run_id`, canonical reviewer `request_hash`, terminal admission/consumption state, normalized S-0009 result, and durable GitHub persistence/read-back receipt. Missing or conflicting evidence is non-gate-safe and MUST NOT allow a second model request.
 
 ## 4. Review invocation contract
 
@@ -200,7 +253,7 @@ Revision 2 requires the next evidence-envelope version used for F2-safe runtime 
 - versioned evidence-envelope identifier;
 - durable GitHub receipt/comment identifier after write/read-back.
 
-Revision 3 additionally requires event-adapter initiated evidence to bind a versioned trusted command identity and verified delivery/admission identity sufficient to prove which admitted command consumed the grant.
+Revision 3 additionally requires event-adapter initiated evidence to bind the complete Section 3.4.5 command/delivery/admission identity so the persisted result proves exactly which authenticated command consumed which grant and reviewer operation. Read-back MUST reproduce the same command/grant/request/HEAD binding before the evidence is gate-safe.
 
 Immediately before persistence, Genesis MUST complete the acceptance-time exact-HEAD check. If the HEAD changed, the result is stale and MUST NOT be persisted as positive gate evidence.
 
@@ -242,7 +295,7 @@ Genesis MUST stop without positive gate evidence when any of the following occur
 9. Grok/xAI would be the sole independent reviewer of Grok-produced work;
 10. trusted durable persistence is unavailable for a verdict intended to influence a consequential gate;
 11. execution/evidence/finalization state is `RESERVED` or `UNKNOWN` and cannot be reconciled read-only;
-12. an event-adapter invocation has an untrusted/forged producer, bad event authentication, wrong repo/installation/action, malformed or mutated command, duplicate/replayed/raced delivery, stale target, invalid grant/provenance, bridge OFF, reviewer OFF, or uncertain admission/persistence;
+12. an event-adapter invocation has an untrusted/forged producer, bad event authentication, wrong repo/installation/action, malformed/noncanonical/mutated command, command/hash/delivery mismatch, duplicate/replayed/raced delivery, stale target, invalid grant/provenance, bridge OFF, reviewer OFF, or uncertain admission/persistence;
 13. a requested action would silently expand into Ready, merge, remediation, deployment, secrets, Dify, Broker, Cloudflare, quarantine removal, another model call, or another control plane.
 
 Fail-closed behavior MUST NOT automatically retry the xAI request or release a grant for reuse.
@@ -330,17 +383,21 @@ Before any Revision 3 implementation may be considered review-ready, non-consequ
 
 1. Ordinary issue/PR comments, labels, branch pushes and repository writes cannot trigger reviewer execution.
 2. Forged or untrusted producer identity produces zero reviewer/model dispatch.
-3. Invalid webhook/event authentication, wrong repository, wrong GitHub App installation/producer, wrong sender/action where pinned, or malformed command produces zero dispatch.
-4. Missing or mutated `commandId`, delivery identity, repository/PR/exact HEAD, `grantId`, `manifestHash` or issuance provenance produces zero dispatch.
-5. Duplicate delivery, replayed command or concurrent race for one command/grant admits at most one model dispatch total.
-6. Stale or changed exact HEAD blocks before dispatch and does not release/recycle authority.
-7. Already consumed/closed/UNKNOWN grant or command state produces zero additional dispatch.
-8. Bridge default-OFF produces zero reviewer dispatch even when reviewer LIVE is enabled.
-9. Reviewer OFF produces zero xAI/Grok dispatch even when bridge admission is otherwise valid.
-10. The One-Window controller can construct/request the trusted command without possessing `BROKER_SERVICE_TOKEN` or `XAI_API_KEY`.
-11. The adapter invokes only the existing authenticated reviewer execution boundary; no unauthenticated public model path is introduced.
-12. Crash or uncertain persistence after admission/dispatch cannot produce a second model call; only read-only reconciliation is allowed.
-13. Consequential evidence is unusable until durable GitHub persistence/read-back binds command, grant, PR and exact HEAD.
+3. Invalid raw-body webhook signature, wrong repository, wrong GitHub App installation/producer, wrong sender/action where pinned, or malformed command produces zero dispatch.
+4. Missing/extra/duplicate command keys, wrong primitive types, invalid UTF-8, noncanonical JSON, mutated `commandId`, `commandHash`, delivery identity, repository/PR/exact HEAD, `grantId`, `manifestHash` or issuance provenance produces zero dispatch.
+5. `commandId` reused with different canonical bytes/hash or delivery ID reused for another command produces zero dispatch.
+6. Direct mode rejects `bridge`; bridge mode requires the exact closed `genesis.review-bridge.v1` object and cannot silently downgrade to direct mode.
+7. Bridge metadata reaching the reviewer runtime exactly matches authenticated adapter output and the Durable Object admission tuple.
+8. Duplicate exact delivery/command replay returns only previously stored immutable evidence/outcome and causes zero additional model dispatch.
+9. Concurrent race for one command/grant admits at most one model dispatch total.
+10. Stale or changed exact HEAD blocks before dispatch and does not release/recycle authority.
+11. Already consumed/closed/UNKNOWN grant or command state produces zero additional dispatch.
+12. Bridge default-OFF produces zero reviewer dispatch even when reviewer LIVE is enabled.
+13. Reviewer OFF produces zero xAI/Grok dispatch even when bridge admission is otherwise valid.
+14. The One-Window controller can request the trusted command without possessing `BROKER_SERVICE_TOKEN` or `XAI_API_KEY`.
+15. The adapter invokes only the existing authenticated reviewer execution boundary; no unauthenticated public model path is introduced.
+16. Crash or uncertain persistence after admission/dispatch cannot produce a second model call; only read-only reconciliation is allowed.
+17. Consequential evidence is unusable until durable GitHub persistence/read-back reproduces the exact command/delivery/grant/request/PR/HEAD binding.
 
 Any real GitHub App install, webhook deployment, authenticated Broker call or LIVE reviewer invocation remains separately gated.
 
@@ -352,13 +409,15 @@ Revision 3 may be approved only with all of the following explicit:
 - S-0009/DR-0011 remain the reviewer contract and reviewer execution boundary;
 - ordinary GitHub write authority is not reviewer-execution authority;
 - only the dedicated authenticated trusted producer/event path may submit executable bridge commands;
+- the exact `genesis.review-command.v1` envelope, canonical serialization and `commandHash` rules are normative and closed;
+- raw-body carrier authentication and pinned producer/repository/installation/event/action identity are required before command parsing/admission;
+- the existing authenticated `POST /v1/reviews/grok` bridge handoff uses the exact closed `genesis.review-bridge.v1` extension and cannot downgrade to direct mode;
 - commands bind an already-issued canonical grant and cannot mint/refresh/release authority;
-- command + delivery + grant + repo/PR/exact HEAD are atomically admitted before dispatch;
-- duplicate/replay/race/UNKNOWN/stale/invalid cases produce zero additional model dispatches;
+- command + hash + delivery + grant + repo/PR/exact HEAD + reviewer request identity are atomically admitted before dispatch;
+- duplicate/replay/race/UNKNOWN/stale/invalid/mutated cases produce zero additional model dispatches;
 - bridge and reviewer LIVE have independent explicit default-OFF controls;
 - the One-Window controller holds neither Broker nor xAI credentials;
-- existing authenticated `POST /v1/reviews/grok` remains the sole reviewer execution boundary;
-- consequential evidence durably binds command, grant, PR and exact HEAD before gate use;
+- consequential evidence durably binds and read-back verifies command, delivery, grant, request, PR and exact HEAD before gate use;
 - GitHub remains canonical project SoT while Durable Object remains execution-consumption/admission state;
 - Ready, merge, implementation EA, GitHub App install, webhook deploy, secrets, Dify, Broker production calls, Cloudflare, bridge/LIVE/model calls, D2 and quarantine removal remain distinct later gates.
 
