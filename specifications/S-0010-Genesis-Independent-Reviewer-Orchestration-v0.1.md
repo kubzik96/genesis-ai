@@ -330,11 +330,11 @@ S-0010 does not authorize:
 - a public unauthenticated reviewer/model endpoint;
 - authority for ordinary GitHub writers to trigger reviewer execution.
 
-DR-0013 is the proposed Decision Record for the Revision 3 trust boundary. Until it is accepted and Revision 3 is independently reviewed and CEO-approved, implementation MUST NOT treat the proposed adapter boundary as operational authority.
+DR-0013 is the CEO-accepted Decision Record for the Revision 3 trust boundary. Acceptance and Revision 3 approval are recorded in the approval receipt; implementation authority remains NOT_GRANTED.
 
 ## 10. Implementation boundary after Approval
 
-Revision 3 approval, if later granted, does NOT itself grant implementation authority. A separate Execution Authorization MUST name exact base/HEAD preconditions, executor and exact file allowlist for any trusted event-adapter implementation.
+Revision 3 approval does NOT itself grant implementation authority. A separate Execution Authorization MUST name exact base/HEAD preconditions, executor and exact file allowlist for any trusted event-adapter implementation.
 
 The Revision 2 **maximum implementation allowlist for the bounded F2 code fix** remains historical and unchanged:
 
@@ -406,9 +406,9 @@ Any real GitHub App install, webhook deployment, authenticated Broker call or LI
 
 ## 12. Acceptance criteria
 
-Revision 3 may be approved only with all of the following explicit:
+Revision 3 approval records the following acceptance requirements:
 
-- Revision 2 grant-consumption semantics remain unchanged and remain the latest already-approved baseline;
+- Revision 2 grant-consumption semantics remain unchanged as the approved grant-consumption baseline;
 - S-0009/DR-0011 remain the reviewer contract and reviewer execution boundary;
 - ordinary GitHub write authority is not reviewer-execution authority;
 - only the dedicated authenticated trusted producer/event path may submit executable bridge commands;
