@@ -2,11 +2,15 @@
 
 ## Status
 
-**Proposed / In Review**
+**Accepted**
 
 ## Date
 
 2026-09-12
+
+## CEO acceptance
+
+2026-09-14 — [CEO approval receipt](https://github.com/kubzik96/genesis-ai/pull/130#issuecomment-5667523404); approved source HEAD: `dc19da38df16aa68b6122794ec9fc1b53286e412`.
 
 ## Context
 
@@ -16,7 +20,7 @@ Issue #128 established the remaining One-Window transport gap: the ChatGPT/Genes
 
 Codex design work in Issue #129 independently reached the same boundary and proposed a dedicated GitHub App plus external webhook adapter as the minimum safe bridge.
 
-This Decision Record proposes that architecture only. It grants no implementation or runtime authority.
+This Decision Record accepts that architecture only. It grants no implementation or runtime authority.
 
 ## Decision
 
@@ -172,7 +176,7 @@ A future default-OFF implementation MUST prove with tests at minimum:
 
 ## Governance boundary
 
-This DR is **Proposed**. It does not alter the CEO-approved status of S-0010 Revision 2 and does not itself grant S-0010 Revision 3 approval.
+This DR is **Accepted**. S-0010 Revision 3 approval is recorded separately in the same CEO approval receipt; acceptance of this DR does not itself grant specification approval.
 
 Acceptance of this DR alone grants **no** implementation, GitHub App creation/installation, webhook deployment, secret/PAT operation, authenticated Broker call, xAI/Grok call, Cloudflare deployment/traffic change, LIVE/bridge enablement, Dify action, Ready, merge, DR-0008 security-boundary lift, or standing model-call authority.
 

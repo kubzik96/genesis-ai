@@ -24,9 +24,10 @@
 | [DR-0010](DR-0010-Genesis-Long-Term-Project-Memory-V1.md) | Genesis Long-Term Project Memory V1 | Принято | 2026-09-02 |
 | [DR-0011](DR-0011-Genesis-Independent-Grok-Reviewer.md) | Genesis Independent Grok Reviewer | Принято | 2026-09-03 |
 | [DR-0012](DR-0012-Universal-Adaptive-Agent-Orchestration-Architecture.md) | Universal Adaptive Agent Orchestration Architecture | Принято | 2026-09-11 |
+| [DR-0013](DR-0013-Trusted-GitHub-Reviewer-Event-Adapter.md) | Trusted GitHub Reviewer Event Adapter | Принято | 2026-09-14 |
 
 ## Следующий номер
 
-`DR-0013`
+`DR-0014`
 
-> Примечание: номер DR-0003 зарезервирован для T-005. DR-0006 зарезервирован за отложенным решением о роли Codex. Следующий свободный — DR-0013.
+> Примечание: номер DR-0003 зарезервирован для T-005. DR-0006 зарезервирован за отложенным решением о роли Codex. Следующий свободный — DR-0014.
