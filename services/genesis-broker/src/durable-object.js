@@ -24,6 +24,7 @@ import { XAI_BUDGET_RESERVATION_TICKS } from './xai-contract.js';
 import { createProductionXaiReviewClient } from './xai-review-client.js';
 import { executeReviewerRuntimeOperation, normalizeReviewResult, validateReviewerRuntimeBody } from './reviewer-runtime.js';
 import { verifyCanonicalReviewerGrant } from './reviewer-orchestrator.js';
+import { validateBridgeCorrelation } from './reviewer-bridge.js';
 
 export class BrokerDurableObject {
   constructor(state, env) {
@@ -81,8 +82,21 @@ export class BrokerDurableObject {
     return this._withLock(() => this._processWrite(payload, github));
   }
 
-  async _processReview({ idempotencyKey, requestHash, runId, authorization, context }, github) {
+  async _processReview({ idempotencyKey, requestHash, runId, authorization, context, admissionMode, bridge }, github) {
     const storage = this.state.storage;
+    const bridgeMode = admissionMode === 'bridge';
+    const bridgeBlocked = (code) => this._json({ status: 409, body: normalizeReviewResult({ code }),
+      githubCalled: false, githubStatus: null, modelCalled: false, persistenceAttempted: false, idempotencyState: null });
+    if ((admissionMode !== undefined && !bridgeMode) || (!bridgeMode && bridge !== undefined)) {
+      return bridgeBlocked('REVIEW_BRIDGE_MODE_MISMATCH');
+    }
+    if (bridgeMode) {
+      const correlated = await validateBridgeCorrelation(bridge, authorization, this.env);
+      if (!correlated.ok) return bridgeBlocked(correlated.body?.code ?? 'REVIEW_BRIDGE_INVALID');
+      bridge = correlated.value?.bridge ?? bridge;
+      if (this.env.XAI_REVIEWER_LIVE_ENABLED !== 'true') return bridgeBlocked('REVIEW_PRODUCTION_OFF');
+      if (typeof storage.transaction !== 'function') return bridgeBlocked('REVIEW_BRIDGE_STORAGE_UNAVAILABLE');
+    }
     const checked = validateReviewerRuntimeBody({ authorization, context, run_id: runId });
     if (!checked.ok) {
       return this._json({
@@ -108,6 +122,47 @@ export class BrokerDurableObject {
     }
 
     const existing = (await storage.get(`idem:${idempotencyKey}`)) ?? null;
+    // Cross-mode or changed correlation must never reuse historical positive evidence.
+    if (existing && JSON.stringify(existing.bridge ?? null) !== JSON.stringify(bridge ?? null)) {
+      return bridgeBlocked('REVIEW_BRIDGE_IDENTITY_MISMATCH');
+    }
+    const commandKey = bridgeMode ? `review:command:${bridge.commandId}` : null;
+    const deliveryKey = bridgeMode ? `review:delivery:${bridge.deliveryId}` : null;
+    if (bridgeMode) {
+      for (const key of [commandKey, deliveryKey]) {
+        const record = await storage.get(key);
+        if (existing?.state === IDEM_STATES.SUCCEEDED && record === undefined) {
+          return bridgeBlocked('BLOCKED_RECONCILIATION_REQUIRED');
+        }
+        if (record !== undefined && (record.request_hash !== requestHash || record.run_id !== runId
+          || record.idempotency_key !== idempotencyKey || record.grantId !== authorization.grantId
+          || record.manifestHash !== authorization.manifestHash || record.issuanceDigest !== authorization.issuanceDigest
+          || record.repository !== FIXED_FULL_NAME || record.pr_number !== authorization.prNumber
+          || record.expected_head_sha !== authorization.expectedHeadSha
+          || record.consumption_key !== `review:grant:${authorization.grantId}`
+          || record.outcome_key !== `idem:${idempotencyKey}`
+          || JSON.stringify(record.bridge) !== JSON.stringify(bridge))) {
+          return bridgeBlocked('REVIEW_BRIDGE_IDENTITY_CONFLICT');
+        }
+        if (record !== undefined && !existing) return bridgeBlocked('BLOCKED_RECONCILIATION_REQUIRED');
+      }
+      if (existing?.state === IDEM_STATES.SUCCEEDED) {
+        const grant = await storage.get(`review:grant:${authorization.grantId}`);
+        if (grant?.state !== 'CONSUMED' || grant.request_hash !== requestHash
+          || grant.grantId !== authorization.grantId || grant.manifestHash !== authorization.manifestHash
+          || grant.issuanceDigest !== authorization.issuanceDigest || grant.repository !== FIXED_FULL_NAME
+          || grant.pr_number !== authorization.prNumber || grant.expected_head_sha !== authorization.expectedHeadSha
+          || grant.run_id !== runId || grant.idempotency_key !== idempotencyKey
+          || JSON.stringify(grant.bridge) !== JSON.stringify(bridge)
+          || grant.evidence_receipt?.read_back_verified !== true) {
+          return bridgeBlocked('BLOCKED_RECONCILIATION_REQUIRED');
+        }
+      }
+      // An interrupted bridge attempt is reconciled read-only, never resumed into dispatch.
+      if (existing && ![IDEM_STATES.SUCCEEDED, IDEM_STATES.FAILED].includes(existing.state)) {
+        return bridgeBlocked('BLOCKED_RECONCILIATION_REQUIRED');
+      }
+    }
     const decision = evaluateIdempotency(existing, requestHash);
     // Exact in-flight recovery for F2 provisional VERIFYING: evaluateIdempotency returns
     // IN_FLIGHT for PENDING before the grant/claim branch is reached. Allow the same
@@ -556,6 +611,7 @@ export class BrokerDurableObject {
       idempotency_key: idempotencyKey,
       request_hash: requestHash,
       operation: 'review_grok',
+      ...(bridgeMode ? { bridge } : {}),
       run_id: runId,
       gate: null,
       state: IDEM_STATES.PENDING,
@@ -570,6 +626,7 @@ export class BrokerDurableObject {
       manifestHash: auth.manifestHash,
       issuanceDigest: auth.issuanceDigest,
       operation: 'review_grok',
+      ...(bridgeMode ? { bridge } : {}),
       request_hash: requestHash,
       run_id: runId,
       idempotency_key: idempotencyKey,
@@ -625,6 +682,7 @@ export class BrokerDurableObject {
       ...verifiedGrant.value,
       state: 'RESERVED',
       operation: 'review_grok',
+      ...(bridgeMode ? { bridge } : {}),
       request_hash: requestHash,
       run_id: runId,
       idempotency_key: idempotencyKey,
@@ -632,11 +690,30 @@ export class BrokerDurableObject {
       pr_number: auth.prNumber,
       expected_head_sha: auth.expectedHeadSha,
     };
-    await storage.put(Object.fromEntries([
+    const reservationEntries = [
       [grantKey, reservedGrant],
       [claimKey, { ...provisionalClaim, state: 'VERIFIED', grant_bound: true }],
       [`idem:${idempotencyKey}`, pending],
-    ]));
+    ];
+    if (bridgeMode) {
+      // One authoritative transaction shares the existing one-consumption grant.
+      // Command/delivery records are immutable references, not a second budget ledger.
+      const admitted = await storage.transaction(async (txn) => {
+        if (await txn.get(grantKey) !== undefined || await txn.get(commandKey) !== undefined
+          || await txn.get(deliveryKey) !== undefined) return false;
+        const identity = { bridge, grantId: auth.grantId, manifestHash: auth.manifestHash,
+          issuanceDigest: auth.issuanceDigest, repository: FIXED_FULL_NAME,
+          pr_number: auth.prNumber, expected_head_sha: auth.expectedHeadSha,
+          request_hash: requestHash, run_id: runId, idempotency_key: idempotencyKey,
+          consumption_key: grantKey, outcome_key: `idem:${idempotencyKey}` };
+        await txn.put(Object.fromEntries([...reservationEntries,
+          [commandKey, identity], [deliveryKey, identity]]));
+        return true;
+      });
+      if (!admitted) return bridgeBlocked('REVIEW_BRIDGE_IDENTITY_CONFLICT');
+    } else {
+      await storage.put(Object.fromEntries(reservationEntries));
+    }
 
     const calls = {
       githubCalled: true,
@@ -674,7 +751,23 @@ export class BrokerDurableObject {
       // Persist consumption before handing control to the provider. A failed write
       // may have committed; uncertainty can never return the grant to unused state.
       dispatchUncertain = true;
-      await storage.put(grantKey, { ...reservedGrant, state: 'CONSUMED' });
+      if (bridgeMode) {
+        const consumed = await storage.transaction(async (txn) => {
+          const grant = await txn.get(grantKey);
+          const command = await txn.get(commandKey);
+          const delivery = await txn.get(deliveryKey);
+          if (grant?.state !== 'RESERVED' || grant.idempotency_key !== idempotencyKey
+            || grant.request_hash !== requestHash || JSON.stringify(grant.bridge) !== JSON.stringify(bridge)
+            || command?.idempotency_key !== idempotencyKey || delivery?.idempotency_key !== idempotencyKey
+            || JSON.stringify(command?.bridge) !== JSON.stringify(bridge)
+            || JSON.stringify(delivery?.bridge) !== JSON.stringify(bridge)) return false;
+          await txn.put(grantKey, { ...reservedGrant, state: 'CONSUMED' });
+          return true;
+        });
+        if (!consumed) return false;
+      } else {
+        await storage.put(grantKey, { ...reservedGrant, state: 'CONSUMED' });
+      }
       dispatchUncertain = false;
       return true;
     };
@@ -687,7 +780,7 @@ export class BrokerDurableObject {
         github: trackedGithub,
         reviewClient,
         claimDispatch,
-        executionIdentity: { run_id: runId, request_hash: requestHash },
+        executionIdentity: { run_id: runId, request_hash: requestHash, ...(bridgeMode ? { bridge } : {}) },
       });
     } catch {
       operationResult = {
