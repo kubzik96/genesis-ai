@@ -1,4 +1,5 @@
 import { FIXED_FULL_NAME } from './constants.js';
+import { parseStrictJsonBytes } from './reviewer-bridge.js';
 import { parseLinkNext } from './github-client.js';
 import { orchestrateIndependentReview, validateReviewerAuthorization } from './reviewer-orchestrator.js';
 import { containsCredentialLikeValue } from './secret-scan.js';
@@ -114,7 +115,7 @@ export async function readJsonBodyBounded(request, byteLimit = XAI_REVIEW_REQUES
     offset += chunk.byteLength;
   }
   try {
-    return { ok: true, value: JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(buffer)) };
+    return { ok: true, value: parseStrictJsonBytes(buffer) };
   } catch {
     return { ok: false, status: 400, body: { error: 'INVALID_JSON', message: 'Body must be valid UTF-8 JSON' } };
   }
@@ -179,7 +180,9 @@ export async function executeReviewerRuntimeOperation({ authorization, context, 
     return { status: 409, body: normalizeReviewResult(blocked('REVIEW_GRANT_REQUIRED', 'Durable grant and execution identity are required')) };
   }
   const binding = Object.freeze({ grantId: authorization.grantId, manifestHash: authorization.manifestHash,
-    request_hash: executionIdentity.request_hash, run_id: executionIdentity.run_id });
+    request_hash: executionIdentity.request_hash, run_id: executionIdentity.run_id,
+    ...(executionIdentity.bridge ? { bridge: executionIdentity.bridge, issuanceDigest: authorization.issuanceDigest,
+      expected_head_sha: authorization.expectedHeadSha } : {}) });
   let evidenceReceipt = null;
   if (!github || typeof github.getPull !== 'function' || typeof github.getPullFiles !== 'function'
     || typeof github.getPullDiff !== 'function' || typeof github.addIssueComment !== 'function'
