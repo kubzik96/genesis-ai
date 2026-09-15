@@ -7,14 +7,14 @@
 | ID | S-0010 |
 | Title | Genesis Independent Reviewer Orchestration v0.1 |
 | Status | **Approved** |
-| Revision | 2 |
+| Revision | 3 |
 | Author | ChatGPT — COO, по поручению CEO Genesis AI |
 | Creation date | 2026-09-05 |
-| Approval date | 2026-09-10 |
-| Approved by | CEO Genesis AI |
-| Related Issue | #89; #116 |
+| Approval date | 2026-09-14 |
+| Approved by | CEO Genesis AI — [approval receipt](https://github.com/kubzik96/genesis-ai/pull/130#issuecomment-5667523404) |
+| Related Issue | #89; #116; #131 |
 | Related Specifications | S-0007 Revision 1; S-0009 Revision 1 |
-| Related Decisions | DR-0010; DR-0011; DR-0008 remains authoritative where applicable |
+| Related Decisions | DR-0010; DR-0011; DR-0013 Accepted; DR-0008 remains authoritative where applicable |
 | Execution Authorization | **NOT_GRANTED** |
 
 ## Revision history
@@ -23,6 +23,7 @@
 |---|---|---|
 | 1 | 2026-09-05 | Initial approved reviewer-orchestration contract. |
 | 2 | 2026-09-10 | F2 authorization-consumption contract: canonical CEO EA → immutable `grantId` + `manifestHash` → durable one-consumption ledger; strict legacy/cutover and crash-reconciliation boundaries; exact future implementation allowlist and invariants. |
+| 3 | 2026-09-14 | Approved trusted GitHub event-adapter contract from Issue #131 / DR-0013: authenticated producer/event identity, immutable command binding, atomic admission, independent default-OFF bridge control, credential separation and durable fail-closed evidence. Revision 3 is CEO-approved; Revision 2 grant-consumption semantics remain unchanged. |
 
 ## 1. Purpose
 
@@ -46,6 +47,8 @@ This specification orchestrates S-0009; it does not replace or broaden the revie
 
 Revision 2 additionally closes the F2 authorization-consumption design gap proven in Issue #116 and tests-only Draft PR #117. It does not itself implement the fix or authorize runtime mutation.
 
+Revision 3 defines the minimum trusted GitHub event-adapter boundary needed for a GitHub-capable One-Window controller to request an already-authorized review without possessing Broker or xAI credentials. Revision 3 does not redesign the reviewer, create reviewer authority, install a GitHub App, deploy a webhook adapter, enable LIVE, or authorize any model call.
+
 ## 2. Canonical boundaries
 
 GitHub `kubzik96/genesis-ai` remains the durable Source of Record. `MEMORY.md` remains a recovery index, not a second Source of Truth.
@@ -54,9 +57,11 @@ S-0009 Revision 1 and DR-0011 remain authoritative for reviewer identity, exact-
 
 S-0010 MUST NOT give Grok/xAI GitHub PATs, repository write credentials, Broker service tokens, or any capability to mutate GitHub. Durable persistence is performed only by the trusted Genesis side after validation and acceptance-time exact-HEAD verification.
 
+Ordinary GitHub repository write authority is not reviewer-execution authority. Issue comments, PR comments, labels, branch pushes, ordinary repository writes, review approvals, tests, or agent output MUST NOT by themselves become executable reviewer authority.
+
 The token-economy routing preference is advisory: Grok/xAI is preferred for consequential independent review, architecture, security, disputed decisions, and important gate evidence; routine read-only checks, minor housekeeping, and ordinary diagnostics SHOULD avoid unnecessary xAI spend. This routing rule does not create standing LIVE/model-call authority.
 
-DR-0008 remains fully authoritative. Nothing in Revision 2 lifts quarantine, authorizes an authenticated production Broker call, enables LIVE, deploys a Worker, mutates secrets, or authorizes D2.
+DR-0008 remains fully authoritative. Nothing in Revision 3 lifts quarantine, authorizes an authenticated production Broker call, enables LIVE, deploys a Worker or webhook adapter, installs a GitHub App, mutates secrets, or authorizes D2.
 
 ## 3. Authorization envelope
 
@@ -133,6 +138,80 @@ Revision 2 MUST fail closed across legacy records:
 
 Production inventory, migration and activation are outside ordinary F2 code implementation and require later operational gates.
 
+### 3.4 Trusted GitHub event-adapter command contract (Revision 3)
+
+The trusted event adapter is transport and admission only. It MUST NOT mint, refresh, release, widen, reinterpret, or replace reviewer authority.
+
+#### 3.4.1 Closed command envelope and canonical bytes
+
+The sole Revision 3 command wire object is `genesis.review-command.v1`. It MUST be a JSON object with exactly these required members and no optional or unknown members:
+
+```json
+{"action":"request_review","commandId":"github-review-command:123","deliveryId":"00000000-0000-4000-8000-000000000000","eventAction":"approved_action","eventName":"approved_event","expectedHeadSha":"0123456789abcdef0123456789abcdef01234567","grantId":"github:issue-comment:123","installationId":123,"issuanceDigest":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","manifestHash":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","prNumber":123,"producerAppId":123,"repository":"kubzik96/genesis-ai","version":"genesis.review-command.v1"}
+```
+
+Field contract:
+
+- `version` MUST equal `genesis.review-command.v1`; `action` MUST equal `request_review`.
+- `commandId` MUST match `^github-review-command:[1-9][0-9]{0,19}$` and is immutable for the command bytes it names.
+- `deliveryId` MUST be the lowercase canonical GitHub delivery UUID and match `^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`.
+- `eventName` and `eventAction` MUST match `^[a-z][a-z0-9_]{0,63}$` and each MUST equal the single separately approved event/action literal; wildcard or caller-selected values are forbidden.
+- `producerAppId`, `installationId`, and `prNumber` MUST be positive JSON safe integers, never numeric strings. Producer and installation MUST equal the separately approved dedicated GitHub App identity.
+- `repository` MUST equal the case-sensitive literal `kubzik96/genesis-ai`.
+- `expectedHeadSha` MUST be exactly 40 lowercase hexadecimal characters; `manifestHash` and `issuanceDigest` MUST each be exactly 64 lowercase hexadecimal characters.
+- `grantId` MUST match `^github:issue-comment:[1-9][0-9]*$` and identify an already-issued canonical CEO grant. `issuanceDigest` binds that grant's canonical issuance/provenance bytes; neither value creates authority.
+
+The envelope is closed. A parser MUST reject a non-object root, missing/extra/duplicate member, wrong primitive type, `null`, nested arrays/objects as field values, out-of-range integer, invalid UTF-8, BOM, or any value outside the exact literals/patterns above. Duplicate keys MUST be rejected during tokenization before constructing a language object.
+
+Canonical command bytes are strict UTF-8 JSON with members sorted by ascending Unicode code-point order, no insignificant whitespace, shortest unsigned base-10 integers, and JSON strings whose allowed field values are printable ASCII. The adapter MUST reserialize the validated command and require byte-for-byte equality with the received command bytes. `commandHash` is lowercase hexadecimal `SHA-256(canonical command bytes)`. Any mismatch, noncanonical encoding, or reuse of `commandId` for different bytes is a mutated command and MUST fail closed with zero dispatch.
+
+#### 3.4.2 Authenticated carrier and identity binding
+
+Before parsing the carrier, the adapter MUST verify the GitHub webhook signature over the exact raw HTTP request-body octets using the separately authorized webhook verification material and GitHub-specified signature algorithm/header. Signature verification over reconstructed JSON, decoded/re-encoded content, or only the nested command is invalid.
+
+Only after successful signature verification may the adapter extract the command from the one event-specific location fixed by the later approved implementation contract. The event name/action, command location, repository, producer App ID, installation ID and any sender constraint MUST be closed configuration, not caller-controlled fallbacks.
+
+Verified carrier repository, producer App ID, installation ID, event name, action and delivery UUID MUST exactly equal the command values and their pinned values. Missing, duplicate, ambiguous, forged or mismatched identity/header fields MUST fail closed. Ordinary GitHub writers cannot substitute for the dedicated producer.
+
+#### 3.4.3 Bounded reviewer handoff
+
+Bridge mode extends the existing strict JSON body of authenticated `POST /v1/reviews/grok` by exactly one top-level `bridge` member alongside the still-required `authorization`, `context`, and `run_id`. It creates no new public or unauthenticated model endpoint.
+
+Before constructing any language-level JSON object or performing any `JSON.parse`-equivalent operation, the reviewer boundary MUST tokenize/scan the exact raw UTF-8 request body and reject duplicate top-level occurrences of `authorization`, `context`, `run_id`, or `bridge`. Such duplication MUST fail closed with zero admission and zero reviewer/model dispatch; bridge requests MUST NOT fall back to direct mode after this rejection.
+
+`bridge` MUST be a closed object with exactly these members:
+
+```json
+{"version":"genesis.review-bridge.v1","commandId":"github-review-command:123","commandHash":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","deliveryId":"00000000-0000-4000-8000-000000000000","producerAppId":123,"installationId":123,"eventName":"approved_event","eventAction":"approved_action"}
+```
+
+Every value MUST satisfy the matching Section 3.4.1 rule and MUST come from completed adapter verification, not from an ordinary caller. Unknown/missing/duplicate `bridge` members MUST be rejected. Direct mode remains exactly the existing three-member body and MUST NOT contain `bridge`; bridge mode requires all four top-level members and MUST NOT downgrade to direct mode when bridge metadata is absent or invalid.
+
+The adapter-to-reviewer request MUST use the existing service authentication and existing body/time limits. `authorization` remains the existing grant-bearing reviewer authorization; `context` and `run_id` retain their existing meanings. The canonical reviewer `request_hash` remains the immutable hash of the prepared S-0009 reviewer request; bridge metadata MUST NOT alter its derivation or create a second reviewer operation identity.
+
+#### 3.4.4 Atomic admission and replay semantics
+
+Before model dispatch, one authoritative Durable Object transaction MUST verify command/grant/request agreement and create-or-read an immutable admission record keyed by (`version`, `commandId`, `commandHash`, `deliveryId`, `grantId`, `manifestHash`, `issuanceDigest`). The record MUST also bind producer/installation/event/action, repository, PR, exact expected HEAD, `run_id`, canonical reviewer `request_hash`, and the existing grant-consumption state.
+
+The transaction MUST atomically enforce:
+
+1. the command references a valid, unused, exact-HEAD canonical grant;
+2. command and bridge values agree with the authorization and prepared reviewer request;
+3. no same `commandId` exists with different hash/tuple;
+4. no same delivery is admitted for a different command;
+5. no grant already has an admitted/consumed/closed/unknown attempt that would permit another dispatch;
+6. only the first valid admission may transition toward dispatch.
+
+Duplicate exact replay may return only the previously stored immutable outcome/evidence reference; it MUST NOT dispatch again. Any mutated/replayed/raced/stale/wrong-target/invalid-grant/closed/ambiguous case produces zero additional model requests. If admission, dispatch, result persistence or finalization is uncertain, state MUST become/remain `UNKNOWN`; only read-only reconciliation is permitted.
+
+#### 3.4.5 Controls, credentials and durable evidence
+
+The bridge MUST have an explicit independent default-OFF control. Bridge OFF means zero event-adapter reviewer dispatch even if reviewer LIVE is enabled. Reviewer OFF means zero xAI/Grok dispatch even if bridge admission would otherwise succeed.
+
+The One-Window controller MUST hold neither `BROKER_SERVICE_TOKEN` nor `XAI_API_KEY`. The adapter may hold only separately authorized webhook-verification material and the least privilege credential required to reach the existing authenticated reviewer boundary. The reviewer runtime retains the xAI credential. Grok/xAI receives no GitHub mutation or Broker credential.
+
+Terminal bridge evidence intended to influence a consequential gate MUST durably bind at minimum: command version/ID/hash, delivery ID, producer App/installation/event/action, `grantId`, `manifestHash`, `issuanceDigest`, repository, PR, exact expected/reviewed/acceptance-time HEAD, `run_id`, canonical reviewer `request_hash`, terminal admission/consumption state, normalized S-0009 result, and durable GitHub persistence/read-back receipt. Missing or conflicting evidence is non-gate-safe and MUST NOT allow a second model request.
+
 ## 4. Review invocation contract
 
 Genesis MUST reuse the existing S-0009 reviewer transport and validation contract unless a later separately approved specification authorizes a material change.
@@ -141,12 +220,13 @@ For each authorized review operation:
 
 1. Verify repository identity and exact PR HEAD.
 2. Validate canonical `grantId`/`manifestHash` binding and ensure the grant is admissible before model dispatch.
-3. Collect only bounded changed-file metadata, unified diff, canonical task/specification context, and explicit review criteria required for the decision.
-4. Exclude secrets, tokens, authorization headers, unrelated repository context, private payloads, and raw sensitive logs.
-5. Invoke `grok-4.3` through the approved reviewer transport with exactly one request, retries `0`, streaming disabled, tools disabled, and configured byte/time/output bounds.
-6. Validate the response against the S-0009 closed schema and cross-field invariants.
-7. Re-fetch the current PR HEAD after review and require equality with the expected and reviewed SHA values.
-8. Normalize any transport, schema, identity, grant-consumption, scope, authorization, or HEAD ambiguity to a non-gate-safe blocked result.
+3. If invocation arrives through the Revision 3 event adapter, validate the complete Section 3.4 command/authentication/admission contract before dispatch.
+4. Collect only bounded changed-file metadata, unified diff, canonical task/specification context, and explicit review criteria required for the decision.
+5. Exclude secrets, tokens, authorization headers, unrelated repository context, private payloads, and raw sensitive logs.
+6. Invoke `grok-4.3` through the approved reviewer transport with exactly one request, retries `0`, streaming disabled, tools disabled, and configured byte/time/output bounds.
+7. Validate the response against the S-0009 closed schema and cross-field invariants.
+8. Re-fetch the current PR HEAD after review and require equality with the expected and reviewed SHA values.
+9. Normalize any transport, schema, producer/event identity, command identity, grant-consumption, scope, authorization, persistence, or HEAD ambiguity to a non-gate-safe blocked result.
 
 No automatic second request is permitted. A new request after failure or a changed HEAD requires a new applicable authorization.
 
@@ -175,6 +255,8 @@ Revision 2 requires the next evidence-envelope version used for F2-safe runtime 
 - versioned evidence-envelope identifier;
 - durable GitHub receipt/comment identifier after write/read-back.
 
+Revision 3 additionally requires event-adapter initiated evidence to bind the complete Section 3.4.5 command/delivery/admission identity so the persisted result proves exactly which authenticated command consumed which grant and reviewer operation. Read-back MUST reproduce the same command/grant/request/HEAD binding before the evidence is gate-safe.
+
 Immediately before persistence, Genesis MUST complete the acceptance-time exact-HEAD check. If the HEAD changed, the result is stale and MUST NOT be persisted as positive gate evidence.
 
 Persistence MUST occur through a trusted Genesis GitHub write boundary. Grok/xAI itself receives no write capability.
@@ -189,6 +271,7 @@ After authorization, Genesis SHOULD autonomously complete all non-consequential 
 
 - exact-HEAD read verification;
 - canonical grant binding verification;
+- trusted event/command verification and atomic admission when the Revision 3 bridge is used;
 - bounded review-request preparation;
 - single reviewer invocation;
 - output validation;
@@ -214,7 +297,8 @@ Genesis MUST stop without positive gate evidence when any of the following occur
 9. Grok/xAI would be the sole independent reviewer of Grok-produced work;
 10. trusted durable persistence is unavailable for a verdict intended to influence a consequential gate;
 11. execution/evidence/finalization state is `RESERVED` or `UNKNOWN` and cannot be reconciled read-only;
-12. a requested action would silently expand into Ready, merge, remediation, deployment, secrets, Dify, Broker, Cloudflare, quarantine removal, another model call, or another control plane.
+12. an event-adapter invocation has an untrusted/forged producer, bad event authentication, wrong repo/installation/action, malformed/noncanonical/mutated command, command/hash/delivery mismatch, duplicate/replayed/raced delivery, stale target, invalid grant/provenance, bridge OFF, reviewer OFF, or uncertain admission/persistence;
+13. a requested action would silently expand into Ready, merge, remediation, deployment, secrets, Dify, Broker, Cloudflare, quarantine removal, another model call, or another control plane.
 
 Fail-closed behavior MUST NOT automatically retry the xAI request or release a grant for reuse.
 
@@ -238,18 +322,21 @@ S-0010 does not authorize:
 - deployment or Cloudflare changes;
 - Dify execution or configuration changes;
 - authenticated Broker runtime use;
+- GitHub App installation or webhook/event-adapter deployment;
+- bridge enablement;
 - secrets creation, inspection, transfer, rotation, or replacement;
 - DR-0008 quarantine removal;
 - modification of the S-0005 writer authority;
-- a new control plane or trust boundary.
+- a public unauthenticated reviewer/model endpoint;
+- authority for ordinary GitHub writers to trigger reviewer execution.
 
-If implementation requires a new trust boundary, new control plane, Grok GitHub credentials, expanded Broker authority, or a material departure from S-0009/DR-0011, implementation MUST stop and a new or revised Decision Record is required before proceeding.
+DR-0013 is the CEO-accepted Decision Record for the Revision 3 trust boundary. Acceptance and Revision 3 approval are recorded in the approval receipt; implementation authority remains NOT_GRANTED.
 
 ## 10. Implementation boundary after Approval
 
-Revision 2 approval does NOT grant implementation authority. A separate Execution Authorization MUST name exact base/HEAD preconditions, executor and exact file allowlist.
+Revision 3 approval does NOT itself grant implementation authority. A separate Execution Authorization MUST name exact base/HEAD preconditions, executor and exact file allowlist for any trusted event-adapter implementation.
 
-The accepted **maximum implementation allowlist for the bounded F2 code fix** is:
+The Revision 2 **maximum implementation allowlist for the bounded F2 code fix** remains historical and unchanged:
 
 ### Production/runtime source
 
@@ -259,24 +346,20 @@ The accepted **maximum implementation allowlist for the bounded F2 code fix** is
 
 ### Tests
 
-- **creation or update explicitly permitted:** `services/genesis-broker/tests/reviewer-authorization-reproduction.test.js`. This path is currently published in tests-only Draft PR #117, not in `main`; a future F2 implementation may create it from the verified #117 characterization evidence and then replace/augment defect expectations with normative at-most-one invariants.
+- **creation or update explicitly permitted for the Revision 2 F2 fix only:** `services/genesis-broker/tests/reviewer-authorization-reproduction.test.js`.
 - `services/genesis-broker/tests/reviewer-orchestrator.test.js`
 - `services/genesis-broker/tests/reviewer-runtime.test.js`
 - `services/genesis-broker/tests/durable-object.test.js`
 
-No other production/runtime/config/schema/documentation path is pre-authorized by this specification. In particular, `src/index.js`, `src/do-proxy-store.js`, `wrangler.toml`, migrations, Cloudflare configuration, secrets, Dify, S-0005 writer code and GitHub credential handling are OUTSIDE the implementation allowlist unless a later CEO gate explicitly expands it.
+That Revision 2 allowlist MUST NOT be interpreted as pre-authorization for the Revision 3 bridge. In particular, event/webhook routes, GitHub App configuration, `src/index.js`, `src/do-proxy-store.js`, `wrangler.toml`, migrations, Cloudflare configuration, secrets, Dify, S-0005 writer code and GitHub credential handling remain OUTSIDE any Revision 3 implementation authority until a later explicit bounded gate names them.
 
-If implementation proves impossible within this allowlist, STOP and return the exact missing path/reason; do not silently expand scope.
-
-The implementation SHOULD preserve the existing transport and request-hash path where possible: current `src/index.js` already hashes the normalized authorization object together with run/context, and current `src/do-proxy-store.js` forwards the authorization to the Durable Object. Revision 2 therefore does not assume either file must change.
-
-No deployment or first production-runtime activation is part of F2 code implementation.
+No deployment, GitHub App installation, webhook activation, bridge enablement, reviewer LIVE enablement or first production-runtime invocation is authorized by this specification.
 
 ## 11. Verification requirements
 
-Before a Revision 2 implementation may be considered review-ready, local/mock or otherwise non-consequential verification MUST demonstrate at minimum:
+Before any Revision 3 implementation may be considered review-ready, non-consequential local/mock verification MUST preserve every Revision 2/S-0009 invariant and demonstrate at minimum:
 
-### Existing S-0010 invariants
+### Existing S-0010 / F2 invariants
 
 - no authorization => zero xAI requests;
 - valid authorization => at most one reviewer request;
@@ -289,68 +372,70 @@ Before a Revision 2 implementation may be considered review-ready, local/mock or
 - durable evidence is bound to the reviewed exact HEAD;
 - Grok/xAI has no GitHub mutation capability;
 - Grok self-review is rejected as sole independent review evidence;
+- same canonical grant across changed run/key identities remains at most one model dispatch;
+- concurrent requests for the same grant admit at most one dispatch;
+- crash/UNKNOWN cannot make a grant reusable;
+- arbitrary caller-supplied `grantId` is rejected;
+- `manifestHash`/issuance-provenance mismatch blocks before dispatch;
+- legacy records cannot fall through to fresh execution;
+- existing F1 stale-positive replay protection remains green;
 - no automatic Ready, merge, remediation, deploy, Dify, Broker, Cloudflare, secrets, or quarantine action occurs.
 
-### F2 invariants
+### Revision 3 trusted-event-adapter invariants
 
-1. Same canonical grant + same run + same idempotency identity: replay only; model dispatch total remains ≤1.
-2. Same grant + new `run_id`: no new model dispatch.
-3. Same grant + new Idempotency-Key: no new model dispatch.
-4. Same grant + both new run/key: no new model dispatch.
-5. Concurrent requests for the same grant across different run/key identities: exactly one admission/model dispatch maximum.
-6. Durable Object reconstruction after reserve preserves the consumed/blocked grant and does not permit another model dispatch.
-7. Crash after model dispatch but before final state cannot make the grant reusable.
-8. Crash after evidence write/read-back ambiguity cannot make the grant reusable; state becomes/remains `UNKNOWN` until reconciliation.
-9. A caller-supplied arbitrary new `grantId` without canonical issuer mapping is rejected before model dispatch.
-10. Same authorization payload with a different legitimate canonical CEO issuance can use a different grant only when the issuer evidence proves that separate issuance.
-11. `manifestHash` mismatch or mutated canonical EA receipt blocks before model dispatch.
-12. Legacy request without `grantId` cannot fall through to fresh execution.
-13. Historical same-key/hash SUCCEEDED replay remains model-free and still performs F1 current-HEAD verification.
-14. Legacy PENDING/UNKNOWN/CONFLICT remains fail-closed and model-free.
-15. Failed provider/malformed result after dispatch consumes/closes the grant; no auto-release/retry.
-16. Evidence V2 binds `grantId`, `manifestHash`, request/operation identity and exact PR/HEAD sufficiently for later read-only reconciliation.
-17. Existing F1 stale-positive replay protection remains green.
-18. Full Broker suite remains green with no unauthorized network/production calls.
+1. Ordinary issue/PR comments, labels, branch pushes and repository writes cannot trigger reviewer execution.
+2. Forged or untrusted producer identity produces zero reviewer/model dispatch.
+3. Invalid raw-body webhook signature, wrong repository, wrong GitHub App installation/producer, wrong sender/action where pinned, or malformed command produces zero dispatch.
+4. Missing/extra/duplicate command keys, wrong primitive types, invalid UTF-8, noncanonical JSON, mutated `commandId`, `commandHash`, delivery identity, repository/PR/exact HEAD, `grantId`, `manifestHash` or issuance provenance produces zero dispatch.
+5. `commandId` reused with different canonical bytes/hash or delivery ID reused for another command produces zero dispatch.
+6. Direct mode rejects `bridge`; bridge mode requires the exact closed `genesis.review-bridge.v1` object and cannot silently downgrade to direct mode.
+7. Bridge metadata reaching the reviewer runtime exactly matches authenticated adapter output and the Durable Object admission tuple.
+8. Duplicate exact delivery/command replay returns only previously stored immutable evidence/outcome and causes zero additional model dispatch.
+9. Concurrent race for one command/grant admits at most one model dispatch total.
+10. Stale or changed exact HEAD blocks before dispatch and does not release/recycle authority.
+11. Already consumed/closed/UNKNOWN grant or command state produces zero additional dispatch.
+12. Bridge default-OFF produces zero reviewer dispatch even when reviewer LIVE is enabled.
+13. Reviewer OFF produces zero xAI/Grok dispatch even when bridge admission is otherwise valid.
+14. The One-Window controller can request the trusted command without possessing `BROKER_SERVICE_TOKEN` or `XAI_API_KEY`.
+15. The adapter invokes only the existing authenticated reviewer execution boundary; no unauthenticated public model path is introduced.
+16. Crash or uncertain persistence after admission/dispatch cannot produce a second model call; only read-only reconciliation is allowed.
+17. Consequential evidence is unusable until durable GitHub persistence/read-back reproduces the exact command/delivery/grant/request/PR/HEAD binding.
+18. Duplicate top-level `authorization`, `context`, `run_id`, or `bridge` keys are rejected from the raw reviewer handoff body before object construction in both direct and bridge modes, with zero admission/model dispatch and no bridge-to-direct fallback.
 
-The tests-only evidence in PR #117 remains characterization evidence for the defect. A fix MUST replace/augment the known-defect two-dispatch expectations with the normative at-most-one-grant invariant rather than claiming those existing green tests prove remediation.
-
-Any real LIVE reviewer invocation remains separately gated.
+Any real GitHub App install, webhook deployment, authenticated Broker call or LIVE reviewer invocation remains separately gated.
 
 ## 12. Acceptance criteria
 
-S-0010 Revision 2 is accepted only with all of the following explicit:
+Revision 3 approval records the following acceptance requirements:
 
-- S-0009/DR-0011 remain the reviewer contract and trust boundary;
-- each reviewer model call requires applicable bounded authority;
-- canonical CEO issuance is represented by immutable `grantId` plus `manifestHash` binding;
-- run_id, Idempotency-Key and request hash are technical execution identities, not grant identities;
-- one grant admits at most one model dispatch and cannot auto-release after failure/crash/unknown;
-- legacy records cannot be silently upgraded into fresh authority;
-- request-time, reviewed, and acceptance-time HEAD are bound;
-- model output is untrusted until validated;
-- consequential review evidence is durably persisted by trusted Genesis before use;
-- Grok/xAI receives zero GitHub write credentials and zero mutation authority;
-- actor independence is preserved;
-- failure of invocation, validation, grant checks, HEAD checks or persistence fails closed;
-- GitHub remains canonical project SoT while Durable Object is the execution-consumption ledger;
-- Ready, merge, implementation EA, deploy, secrets, Dify, Broker production calls, Cloudflare, LIVE/model calls, D2 and quarantine removal remain distinct gates.
+- Revision 2 grant-consumption semantics remain unchanged as the approved grant-consumption baseline;
+- S-0009/DR-0011 remain the reviewer contract and reviewer execution boundary;
+- ordinary GitHub write authority is not reviewer-execution authority;
+- only the dedicated authenticated trusted producer/event path may submit executable bridge commands;
+- the exact `genesis.review-command.v1` envelope, canonical serialization and `commandHash` rules are normative and closed;
+- raw-body carrier authentication and pinned producer/repository/installation/event/action identity are required before command parsing/admission;
+- the existing authenticated `POST /v1/reviews/grok` bridge handoff uses the exact closed `genesis.review-bridge.v1` extension and cannot downgrade to direct mode;
+- commands bind an already-issued canonical grant and cannot mint/refresh/release authority;
+- command + hash + delivery + grant + repo/PR/exact HEAD + reviewer request identity are atomically admitted before dispatch;
+- duplicate/replay/race/UNKNOWN/stale/invalid/mutated cases produce zero additional model dispatches;
+- bridge and reviewer LIVE have independent explicit default-OFF controls;
+- the One-Window controller holds neither Broker nor xAI credentials;
+- consequential evidence durably binds and read-back verifies command, delivery, grant, request, PR and exact HEAD before gate use;
+- GitHub remains canonical project SoT while Durable Object remains execution-consumption/admission state;
+- Ready, merge, implementation EA, GitHub App install, webhook deploy, secrets, Dify, Broker production calls, Cloudflare, bridge/LIVE/model calls, D2 and quarantine removal remain distinct later gates.
 
 ## 13. Non-goals
 
-This Approved Specification does not implement F2, invoke xAI, deploy anything, change secrets, change Cloudflare, resume authenticated Dify/Broker runtime, remove quarantine, merge a PR, authorize D2, or approve a Bounded Autonomy Envelope.
+This Approved Revision 3 does not implement the trusted event adapter, install a GitHub App, deploy a webhook, invoke xAI, make an authenticated Broker request, enable bridge/reviewer LIVE, change secrets, change Cloudflare, resume authenticated Dify/Broker runtime, remove quarantine, mark Ready, merge a PR, authorize D2, or approve a Bounded Autonomy Envelope.
 
-It does not attempt to solve the separate Codex initial-PR publication limitation.
-
-Crash reconciliation beyond the minimum F2 fail-closed association requirements is a separate implementation/design step: Revision 2 requires enough identity/evidence to make future reconciliation possible, but does not authorize automatic state repair or CAS completion.
+It does not grant ordinary GitHub writers reviewer-execution authority and does not make the trusted event adapter a new source of reviewer authority.
 
 ## 14. Gates and next step
 
-Current state: **Approved Revision 2 / Execution Authorization NOT_GRANTED**.
+Current state: **Revision 3 / Approved / Execution Authorization NOT_GRANTED**. Revision 3 is CEO-approved; Revision 2 grant-consumption semantics remain unchanged.
 
-Revision 1 was approved on 2026-09-05 against independently reviewed PR #91 HEAD `aa53292d3c7e8063a3da58bbebf7c05dd6f760ca`.
+DR-0013 is CEO-accepted in Draft PR #130 and has independent Qodo evidence on its exact reviewed HEAD. Issue #131 defines the bounded normative delta represented by this Revision 3 candidate.
 
-F2 was independently reproduced and durably published in Issue #116 / tests-only Draft PR #117. Draft PR #118 exact HEAD `dcf88f247a5eb92fbec7a48cacb4e6886bfa856c` provided the design review surface. On 2026-09-10 the CEO accepted the design direction `canonical GitHub CEO EA → immutable grantId + manifestHash → durable one-consumption ledger` and separately authorized docs-only canonicalization, implementation allowlist/invariants/tests and independent review.
-
-Next step after exact-HEAD independent review of this Revision 2 canonicalization: return a separate bounded CEO Execution Authorization for implementation using only the Section 10 allowlist. That implementation authorization remains distinct from Ready, merge, production deploy, LIVE, secrets, authenticated Broker calls, DR-0008 quarantine lift and D2.
+Next step: verify exact-HEAD review evidence after approval metadata synchronization, then obtain separate exact Ready/merge authorization for the documentation PRs. CEO approval of Revision 3 and acceptance of DR-0013 remain distinct from implementation authorization. A subsequent bounded implementation EA must name exact base/HEAD, exact implementation/test/config allowlist and retain separate deployment, GitHub App installation, secrets, bridge/LIVE and first real Grok-call gates.
 
 No Specification Approval or successful review implicitly grants any of those later operations.
