@@ -8,6 +8,7 @@ import { matchRoute } from './allowlist.js';
 import { createGithubClient } from './github-client.js';
 import { requestHash } from './hash.js';
 import { auditEvent } from './audit.js';
+import { validateBridgeAdmission } from './reviewer-bridge.js';
 import {
   readJsonBodyBounded,
   validateReviewerRuntimeBody,
@@ -18,6 +19,11 @@ import { DurableObjectProxyStore } from './do-proxy-store.js';
 export { BrokerDurableObject };
 
 const REVIEW_PATH = '/v1/reviews/grok';
+export const BRIDGE_PATH = '/v1/reviews/grok/bridge';
+
+export function isBridgeAdmissionRoute(request) {
+  return request?.method.toUpperCase() === 'POST' && new URL(request.url).pathname === BRIDGE_PATH;
+}
 
 function result(status, body) {
   return {
@@ -37,12 +43,16 @@ export function isReviewerRuntimeRoute(request) {
 
 export async function handleReviewerRuntimeRequest(request, env = {}) {
   const tStart = Date.now();
-  if (!isReviewerRuntimeRoute(request)) return result(404, { error: 'NOT_FOUND', message: 'Unknown endpoint or method' });
+  const bridgeMode = isBridgeAdmissionRoute(request);
+  if (!bridgeMode && !isReviewerRuntimeRoute(request)) return result(404, { error: 'NOT_FOUND', message: 'Unknown endpoint or method' });
 
   const authn = authenticateService(request.headers.get('authorization'), env.BROKER_SERVICE_TOKEN);
   if (!authn.ok) {
     auditEvent({ endpoint: REVIEW_PATH, outcome: 'auth_failed', error: authn.error, latency_ms: Date.now() - tStart });
     return result(authn.status, { error: authn.error, message: authn.message });
+  }
+  if (bridgeMode && env.GITHUB_REVIEW_BRIDGE_ENABLED !== 'true') {
+    return result(409, { error: 'REVIEW_BRIDGE_OFF', verdict: 'BLOCKED', ready_gate_safe: 'NO', consequential_gate_evidence_available: false });
   }
   if (!env.GITHUB_PAT || !env.store) {
     auditEvent({ endpoint: REVIEW_PATH, outcome: 503, error: 'REVIEW_DURABLE_BOUNDARY_UNAVAILABLE', latency_ms: Date.now() - tStart });
@@ -59,7 +69,16 @@ export async function handleReviewerRuntimeRequest(request, env = {}) {
     auditEvent({ endpoint: REVIEW_PATH, outcome: parsed.status, error: parsed.body.error, idempotency_key: idemKey, latency_ms: Date.now() - tStart });
     return result(parsed.status, parsed.body);
   }
-  const checked = validateReviewerRuntimeBody(parsed.value);
+  let bridge;
+  let reviewerBody = parsed.value;
+  if (bridgeMode) {
+    const admission = await validateBridgeAdmission(parsed.value, env);
+    if (!admission.ok) return result(admission.status, admission.body);
+    bridge = admission.value.bridge;
+    reviewerBody = { authorization: admission.value.authorization, context: admission.value.context, run_id: admission.value.runId };
+  }
+  // Mode comes from the authenticated entry, never from an optional body field.
+  const checked = validateReviewerRuntimeBody(reviewerBody);
   if (!checked.ok) {
     auditEvent({ endpoint: REVIEW_PATH, outcome: checked.status, error: checked.body.error ?? checked.body.code, run_id: parsed.value?.run_id, idempotency_key: idemKey, latency_ms: Date.now() - tStart });
     return result(checked.status, checked.body);
@@ -78,6 +97,7 @@ export async function handleReviewerRuntimeRequest(request, env = {}) {
       runId: checked.value.runId,
       authorization: checked.value.authorization,
       context: checked.value.context,
+      ...(bridgeMode ? { admissionMode: 'bridge', bridge } : {}),
     });
     if (!stored || !Number.isSafeInteger(stored.status) || !stored.body) throw new Error('invalid durable response');
   } catch {
@@ -93,7 +113,8 @@ export async function handleReviewerRuntimeRequest(request, env = {}) {
     });
     return result(503, {
       error: 'REVIEW_DURABLE_BOUNDARY_UNAVAILABLE',
-      message: 'Durable reviewer boundary unavailable; retry only with the same Idempotency-Key',
+      message: bridgeMode ? 'Bridge state uncertain; read-only reconciliation required; no automatic retry' : 'Durable reviewer boundary unavailable; retry only with the same Idempotency-Key',
+      ...(bridgeMode ? { verdict: 'BLOCKED', ready_gate_safe: 'NO', consequential_gate_evidence_available: false } : {}),
     });
   }
   auditEvent({
@@ -123,7 +144,7 @@ export default {
       runtimeEnv.github = createGithubClient({ pat: env.GITHUB_PAT });
     }
 
-    const resultValue = isReviewerRuntimeRoute(request)
+    const resultValue = (isReviewerRuntimeRoute(request) || isBridgeAdmissionRoute(request))
       ? await handleReviewerRuntimeRequest(request, runtimeEnv)
       : await handleRequest(request, runtimeEnv);
     return new Response(resultValue.body, {

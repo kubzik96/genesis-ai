@@ -35,7 +35,7 @@ export class DurableObjectProxyStore {
     return response.json();
   }
 
-  async executeReview({ idempotencyKey, requestHash, runId, authorization, context }) {
+  async executeReview({ idempotencyKey, requestHash, runId, authorization, context, admissionMode, bridge }) {
     const response = await this.stub.fetch('https://do.internal/execute-review', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -43,6 +43,7 @@ export class DurableObjectProxyStore {
         idempotencyKey,
         requestHash,
         operation: 'review_grok',
+        ...(admissionMode === 'bridge' ? { admissionMode, bridge } : {}),
         runId,
         authorization,
         context,
