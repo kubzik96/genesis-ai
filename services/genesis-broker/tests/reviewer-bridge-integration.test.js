@@ -30,11 +30,15 @@ function issuedGrant(id = 9001, manifest = AUTHORIZATION) {
       created_at: '2026-09-10T00:00:00Z', updated_at: '2026-09-10T00:00:00Z' } };
 }
 const GRANT = issuedGrant();
+const SECOND_GRANT = issuedGrant(9002);
 const GRANT_KEY = 'review:grant:' + GRANT.authorization.grantId;
 
 function harness({ interruptFinalization = false, failReadback = false, holdFirstModel = false, providerFailure = null, failReservation = false, failConsumption = false, mutateAfterAdmission = false, crashDuringVerify = false, tamperReadback = false, commitReservationThenThrow = false } = {}) {
   const state = new Map();
-  const grants = new Map([[9001, structuredClone(GRANT.receipt)]]);
+  const grants = new Map([
+    [9001, structuredClone(GRANT.receipt)],
+    [9002, structuredClone(SECOND_GRANT.receipt)],
+  ]);
   let currentHead = HEAD;
   let headFailure = false;
   const transitions = [];
@@ -328,6 +332,30 @@ for (const [name, change] of [
     assert.equal(h.state.size, 0);
   });
 }
+
+it('concurrent reconstructed DO: same idempotency key with different identities admits at most one dispatch and evidence write', async () => {
+  const h = harness();
+  const competingCommand = {
+    ...COMMAND,
+    commandId: 'github-review-command:456',
+    deliveryId: '00000000-0000-4000-8000-000000000002',
+    grantId: SECOND_GRANT.authorization.grantId,
+    manifestHash: SECOND_GRANT.authorization.manifestHash,
+    issuanceDigest: SECOND_GRANT.authorization.issuanceDigest,
+  };
+  const first = h.post();
+  h.reconstruct();
+  const second = h.post({
+    command: canonical(competingCommand),
+    authorization: SECOND_GRANT.authorization,
+    context: 'Competing bounded offline canonical audit context',
+    run_id: 'bridge-run-competing',
+  });
+  const responses = await Promise.all([first, second]);
+  assert.deepEqual(responses.map(response => response.status).sort(), [200, 409]);
+  assert.equal(h.counts.model, 1);
+  assert.equal(h.counts.persistence, 1);
+});
 
 for (const [name, command] of [
   ['whitespace', ' ' + canonical(COMMAND)],

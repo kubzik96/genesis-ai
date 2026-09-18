@@ -634,14 +634,24 @@ export class BrokerDurableObject {
       pr_number: auth.prNumber,
       expected_head_sha: auth.expectedHeadSha,
     };
-    await storage.put(Object.fromEntries([
+    const provisionalEntries = [
       [claimKey, provisionalClaim],
       [`idem:${idempotencyKey}`, pending],
       [`run:${runId}`, {
         ...runState,
         review_grok_pending: { idempotency_key: idempotencyKey, request_hash: requestHash },
       }],
-    ]));
+    ];
+    if (bridgeMode) {
+      const claimed = await storage.transaction(async (txn) => {
+        if (await txn.get(`idem:${idempotencyKey}`) !== undefined) return false;
+        await txn.put(Object.fromEntries(provisionalEntries));
+        return true;
+      });
+      if (!claimed) return bridgeBlocked('REVIEW_BRIDGE_IDENTITY_CONFLICT');
+    } else {
+      await storage.put(Object.fromEntries(provisionalEntries));
+    }
 
     const verifiedGrant = await verifyCanonicalReviewerGrant(auth, github);
     if (!verifiedGrant.ok) {
@@ -699,14 +709,16 @@ export class BrokerDurableObject {
       // One authoritative transaction shares the existing one-consumption grant.
       // Command/delivery records are immutable references, not a second budget ledger.
       const admitted = await storage.transaction(async (txn) => {
+        const idempotency = await txn.get(`idem:${idempotencyKey}`);
         if (await txn.get(grantKey) !== undefined || await txn.get(commandKey) !== undefined
-          || await txn.get(deliveryKey) !== undefined) return false;
+          || await txn.get(deliveryKey) !== undefined
+          || JSON.stringify(idempotency) !== JSON.stringify(pending)) return false;
         const identity = { bridge, grantId: auth.grantId, manifestHash: auth.manifestHash,
           issuanceDigest: auth.issuanceDigest, repository: FIXED_FULL_NAME,
           pr_number: auth.prNumber, expected_head_sha: auth.expectedHeadSha,
           request_hash: requestHash, run_id: runId, idempotency_key: idempotencyKey,
           consumption_key: grantKey, outcome_key: `idem:${idempotencyKey}` };
-        await txn.put(Object.fromEntries([...reservationEntries,
+        await txn.put(Object.fromEntries([...reservationEntries.slice(0, 2),
           [commandKey, identity], [deliveryKey, identity]]));
         return true;
       });
