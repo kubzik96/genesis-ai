@@ -33,7 +33,7 @@ const GRANT = issuedGrant();
 const SECOND_GRANT = issuedGrant(9002);
 const GRANT_KEY = 'review:grant:' + GRANT.authorization.grantId;
 
-function harness({ interruptFinalization = false, failReadback = false, holdFirstModel = false, providerFailure = null, failReservation = false, failConsumption = false, mutateAfterAdmission = false, crashDuringVerify = false, tamperReadback = false, commitReservationThenThrow = false } = {}) {
+function harness({ interruptFinalization = false, failReadback = false, holdFirstModel = false, providerFailure = null, failReservation = false, failConsumption = false, mutateAfterAdmission = false, crashDuringVerify = false, tamperReadback = false, commitReservationThenThrow = false, synchronizeIdempotencyReads = false } = {}) {
   const state = new Map();
   const grants = new Map([
     [9001, structuredClone(GRANT.receipt)],
@@ -55,6 +55,11 @@ function harness({ interruptFinalization = false, failReadback = false, holdFirs
   const modelStarted = new Promise(resolve => { signalModelStarted = resolve; });
   const modelReleased = new Promise(resolve => { releaseModel = resolve; });
   const secondForwarded = new Promise(resolve => { signalSecondForwarded = resolve; });
+  let signalFirstIdempotencyRead;
+  let signalBothIdempotencyReads;
+  let idempotencyReads = 0;
+  const firstIdempotencyRead = new Promise(resolve => { signalFirstIdempotencyRead = resolve; });
+  const bothIdempotencyReads = new Promise(resolve => { signalBothIdempotencyReads = resolve; });
   // Transactions serialize across reconstructed DO instances and roll back on rejection.
   let transactionTail = Promise.resolve();
   let committedCrash = false;
@@ -70,7 +75,15 @@ function harness({ interruptFinalization = false, failReadback = false, holdFirs
     for (const [k,v] of entries) target.set(k, structuredClone(v));
   };
   const storage = {
-    async get(key) { return structuredClone(state.get(key)); },
+    async get(key) {
+      if (synchronizeIdempotencyReads && key.startsWith('idem:') && idempotencyReads < 2) {
+        idempotencyReads++;
+        if (idempotencyReads === 1) signalFirstIdempotencyRead();
+        if (idempotencyReads === 2) signalBothIdempotencyReads();
+        await bothIdempotencyReads;
+      }
+      return structuredClone(state.get(key));
+    },
     async put(key, value) { return putInto(state, key, value); },
     async transaction(callback) {
       const operation = transactionTail.then(async () => {
@@ -170,14 +183,17 @@ function harness({ interruptFinalization = false, failReadback = false, holdFirs
   let object = new BrokerDurableObject({ storage }, env);
   env.BROKER_DO = {
     idFromName(name) { assert.equal(name, 'kubzik96/genesis-ai'); return name; },
-    get() { return { fetch(url, options) {
-      const response = object.fetch(new Request(url, options));
-      if (++forwarded === 2) signalSecondForwarded();
-      return response;
-    } }; },
+    get() {
+      const capturedObject = object;
+      return { fetch(url, options) {
+        const response = capturedObject.fetch(new Request(url, options));
+        if (++forwarded === 2) signalSecondForwarded();
+        return response;
+      } };
+    },
   };
   return {
-    env, counts, state, comments, grants, transitions, transactions, modelRequests, modelStarted, secondForwarded, releaseModel,
+    env, counts, state, comments, grants, transitions, transactions, modelRequests, modelStarted, secondForwarded, firstIdempotencyRead, releaseModel,
     setHead(sha) { currentHead = sha; },
     failHead() { headFailure = true; },
     reconstruct() { object = new BrokerDurableObject({ storage }, env); },
@@ -334,7 +350,7 @@ for (const [name, change] of [
 }
 
 it('concurrent reconstructed DO: same idempotency key with different identities admits at most one dispatch and evidence write', async () => {
-  const h = harness();
+  const h = harness({ synchronizeIdempotencyReads: true });
   const competingCommand = {
     ...COMMAND,
     commandId: 'github-review-command:456',
@@ -344,6 +360,7 @@ it('concurrent reconstructed DO: same idempotency key with different identities 
     issuanceDigest: SECOND_GRANT.authorization.issuanceDigest,
   };
   const first = h.post();
+  await h.firstIdempotencyRead;
   h.reconstruct();
   const second = h.post({
     command: canonical(competingCommand),
